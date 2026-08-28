@@ -11,7 +11,7 @@ import { useRequireAuth } from "@/lib/useRequireAuth";
 type TypeFilter = "all" | ModType;
 
 export default function CataloguePage() {
-  const { isLoading } = useRequireAuth();
+  const { session, isLoading } = useRequireAuth();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [activeTags, setActiveTags] = useState<string[]>([]);
@@ -44,7 +44,7 @@ export default function CataloguePage() {
     <div className="flex min-h-screen flex-col">
       <AppHeader
         active="catalogue"
-        subtitle={`les briscards · ${currentSession.membersTotal} membres`}
+        subtitle={`${session?.guildName ?? "serveur"} · ${currentSession.membersTotal} membres`}
         stats={[
           { label: "FICHES", value: siteStats.fiches },
           { label: "VOTES", value: siteStats.votes },

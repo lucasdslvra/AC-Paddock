@@ -12,9 +12,15 @@ const BULLETS = [
   "on vérifie que tu es sur le serveur du groupe",
 ];
 
-export function LoginView() {
+interface LoginViewProps {
+  guildName: string | null;
+}
+
+export function LoginView({ guildName }: LoginViewProps) {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
+  const isGuildDenied = error === "AccessDenied";
+  const serverLabel = guildName ? `« ${guildName} »` : "autorisé";
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -97,11 +103,14 @@ export function LoginView() {
                 </span>
               </div>
               <div className="mt-[10px] font-sans text-sm font-semibold leading-[1.4]">
-                Tu n&apos;es pas membre du serveur « Les Briscards ».
+                {isGuildDenied
+                  ? `Tu n'es pas membre du serveur ${serverLabel}.`
+                  : "Un problème est survenu pendant la connexion."}
               </div>
               <div className="mt-[6px] font-mono text-[11px] leading-[1.6] text-[var(--color-text-secondary)]">
-                Demande une invitation à un admin, puis reconnecte-toi. Aucune session n&apos;a été
-                créée.
+                {isGuildDenied
+                  ? "Demande une invitation à un admin, puis reconnecte-toi. Aucune session n'a été créée."
+                  : "Réessaie dans un instant. Si le problème persiste, préviens un admin."}
               </div>
               <div className="mt-3 flex gap-2">
                 <button
@@ -111,13 +120,15 @@ export function LoginView() {
                 >
                   Réessayer
                 </button>
-                <a
-                  href="https://discord.com"
-                  className="rounded-[3px] px-3 py-[7px] font-sans text-[11px] font-medium text-[var(--color-text-secondary)]"
-                  style={{ borderBottom: "1px solid var(--color-border-strong)" }}
-                >
-                  Contacter un admin
-                </a>
+                {isGuildDenied && (
+                  <a
+                    href="https://discord.com"
+                    className="rounded-[3px] px-3 py-[7px] font-sans text-[11px] font-medium text-[var(--color-text-secondary)]"
+                    style={{ borderBottom: "1px solid var(--color-border-strong)" }}
+                  >
+                    Contacter un admin
+                  </a>
+                )}
               </div>
             </div>
           )}

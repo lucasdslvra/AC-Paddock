@@ -7,7 +7,7 @@ import { admin, mods, tags } from "@/lib/mock-data";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 
 export default function AdminPage() {
-  const { isLoading } = useRequireAuth();
+  const { session, isLoading } = useRequireAuth();
 
   if (isLoading) {
     return <p className="p-8">Chargement…</p>;
@@ -148,7 +148,7 @@ export default function AdminPage() {
             <div className="mt-3">
               <div className="font-sans text-xs font-medium">Serveur Discord autorisé</div>
               <div className="mt-[7px] rounded-sm border border-[var(--color-border-strong)] px-[11px] py-[9px] font-mono text-[11px] text-[var(--color-text-secondary)]">
-                {admin.access.guildName} · {admin.access.guildIdMasked}
+                {session?.guildName ?? admin.access.guildName} · {admin.access.guildIdMasked}
               </div>
               <div className="mt-[7px] font-mono text-[10px] leading-[1.6] text-[var(--color-text-secondary)]">
                 Vérifié à chaque connexion. Quitter le serveur coupe l&apos;accès à la session

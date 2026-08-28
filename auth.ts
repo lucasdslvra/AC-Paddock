@@ -7,6 +7,7 @@ declare module "next-auth" {
     user: {
       id: string;
     } & DefaultSession["user"];
+    guildName?: string;
   }
 }
 
@@ -15,6 +16,7 @@ declare module "next-auth/jwt" {
     discordId?: string;
     discordUsername?: string;
     discordAvatar?: string | null;
+    guildName?: string;
   }
 }
 
@@ -24,16 +26,40 @@ interface DiscordProfile {
   avatar: string | null;
 }
 
+interface DiscordGuild {
+  id: string;
+  name: string;
+}
+
+async function fetchUserGuilds(accessToken: string): Promise<DiscordGuild[] | null> {
+  try {
+    const res = await fetch("https://discord.com/api/users/@me/guilds", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Discord({
       clientId: process.env.AUTH_DISCORD_ID,
       clientSecret: process.env.AUTH_DISCORD_SECRET,
+      authorization: { params: { scope: "identify guilds" } },
     }),
   ],
   session: { strategy: "jwt" },
+  pages: { signIn: "/", error: "/" },
   callbacks: {
-    async jwt({ token, profile }) {
+    async signIn({ account }) {
+      if (!account?.access_token) return false;
+      const guilds = await fetchUserGuilds(account.access_token);
+      return guilds?.some((guild) => guild.id === process.env.DISCORD_GUILD_ID) ?? false;
+    },
+    async jwt({ token, profile, account }) {
       if (profile) {
         const discordProfile = profile as unknown as DiscordProfile;
         token.discordId = discordProfile.id;
@@ -46,6 +72,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.discordAvatar = null;
         }
       }
+      if (account?.access_token) {
+        const guilds = await fetchUserGuilds(account.access_token);
+        const guild = guilds?.find((g) => g.id === process.env.DISCORD_GUILD_ID);
+        if (guild) {
+          token.guildName = guild.name;
+        }
+      }
       return token;
     },
     async session({ session, token }) {
@@ -54,6 +87,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.name = (token.discordUsername as string) ?? session.user.name;
         session.user.image = (token.discordAvatar as string | null) ?? session.user.image;
       }
+      session.guildName = token.guildName;
       return session;
     },
   },

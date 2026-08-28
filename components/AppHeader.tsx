@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { signOut, useSession } from "next-auth/react";
-import { useState } from "react";
-import { AvatarPlaceholder } from "./AvatarPlaceholder";
+import { useSession } from "next-auth/react";
 import { ThemeToggle } from "./ThemeToggle";
+import { UserMenu } from "./UserMenu";
 
 type NavKey = "catalogue" | "soiree" | "historique" | "admin";
 
@@ -25,7 +24,6 @@ interface AppHeaderProps {
 
 export function AppHeader({ active = null, variant = "default", subtitle, stats, cta }: AppHeaderProps) {
   const { data: session } = useSession();
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const isAdmin = variant === "admin";
 
@@ -113,33 +111,7 @@ export function AppHeader({ active = null, variant = "default", subtitle, stats,
 
         {!isAdmin && <ThemeToggle />}
 
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setMenuOpen((open) => !open)}
-            className="block"
-            aria-label="Menu du compte"
-          >
-            <AvatarPlaceholder size={26} />
-          </button>
-          {menuOpen && (
-            <div
-              className="absolute right-0 top-[34px] z-10 flex flex-col gap-2 rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-[var(--color-foreground)] shadow-md"
-              style={{ minWidth: 160 }}
-            >
-              <span className="font-mono text-[11px] text-[var(--color-text-muted)]">
-                {session?.user?.name ?? "…"}
-              </span>
-              <button
-                type="button"
-                onClick={() => signOut({ redirectTo: "/" })}
-                className="rounded-sm border border-[var(--color-border-strong)] px-2 py-1 text-left font-sans text-xs font-medium"
-              >
-                Se déconnecter
-              </button>
-            </div>
-          )}
-        </div>
+        <UserMenu />
 
         {cta && !isAdmin && (
           <Link

@@ -1,6 +1,7 @@
 import NextAuth, { type DefaultSession } from "next-auth";
 import Discord from "next-auth/providers/discord";
 import "next-auth/jwt";
+import { AUTH_ERROR_CODES } from "@/lib/auth-errors";
 
 declare module "next-auth" {
   interface Session {
@@ -55,9 +56,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   pages: { signIn: "/", error: "/" },
   callbacks: {
     async signIn({ account }) {
-      if (!account?.access_token) return false;
+      // Returning a string redirects with a dedicated error code and, per Auth.js,
+      // short-circuits before any session is created.
+      if (!account?.access_token) return `/?error=${AUTH_ERROR_CODES.checkFailed}`;
+
       const guilds = await fetchUserGuilds(account.access_token);
-      return guilds?.some((guild) => guild.id === process.env.DISCORD_GUILD_ID) ?? false;
+      if (!guilds) return `/?error=${AUTH_ERROR_CODES.checkFailed}`;
+
+      const isMember = guilds.some((guild) => guild.id === process.env.DISCORD_GUILD_ID);
+      return isMember || `/?error=${AUTH_ERROR_CODES.notGuildMember}`;
     },
     async jwt({ token, profile, account }) {
       if (profile) {

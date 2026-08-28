@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { AvatarPlaceholder } from "./AvatarPlaceholder";
 import { ThemeToggle } from "./ThemeToggle";
+import { UserMenu } from "./UserMenu";
 
 interface Crumb {
   label: string;
@@ -41,7 +41,7 @@ export function BreadcrumbHeader({ crumbs, actions }: BreadcrumbHeaderProps) {
       <div className="ml-auto flex items-center gap-3">
         {actions}
         <ThemeToggle />
-        <AvatarPlaceholder size={26} />
+        <UserMenu />
       </div>
     </header>
   );

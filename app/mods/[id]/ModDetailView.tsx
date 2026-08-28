@@ -9,6 +9,7 @@ import { MiniBarChart } from "@/components/MiniBarChart";
 import { ProgressBar } from "@/components/ProgressBar";
 import { TagPill } from "@/components/TagPill";
 import { TypeBadge } from "@/components/TypeBadge";
+import { UserAvatar } from "@/components/UserAvatar";
 import { currentSession, getModById } from "@/lib/mock-data";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 
@@ -19,7 +20,7 @@ interface ModDetailViewProps {
 const TYPE_PLURAL = { vehicule: "Véhicules", circuit: "Circuits" } as const;
 
 export function ModDetailView({ id }: ModDetailViewProps) {
-  const { isLoading } = useRequireAuth();
+  const { session, isLoading } = useRequireAuth();
   const mod = getModById(id);
   const [voted, setVoted] = useState(false);
 
@@ -44,6 +45,8 @@ export function ModDetailView({ id }: ModDetailViewProps) {
   const engaged = currentSession.engagedMods.find((entry) => entry.modId === mod.id);
   const sessionVotes = (engaged?.sessionVotes ?? 0) + (voted ? 1 : 0);
   const lastContribution = mod.contributions?.[0];
+  // Mock authors have no avatar of their own; only the signed-in member does.
+  const authorImage = session?.user?.name === mod.author ? session.user.image : null;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -202,10 +205,13 @@ export function ModDetailView({ id }: ModDetailViewProps) {
               {voted ? "✓ Tu as voté — retirer" : "+1 Voter pour ce mod"}
             </button>
             <div className="mt-3 flex items-center gap-[5px]">
+              {voted && (
+                <UserAvatar src={session?.user?.image} name={session?.user?.name} size={20} ring />
+              )}
               <AvatarPlaceholder size={20} />
               <AvatarPlaceholder size={20} />
               <AvatarPlaceholder size={20} />
-              <AvatarPlaceholder size={20} />
+              {!voted && <AvatarPlaceholder size={20} />}
               <span className="ml-1 font-mono text-[10px] text-[var(--color-text-on-ink)]">
                 + 8 autres membres
               </span>
@@ -281,9 +287,12 @@ export function ModDetailView({ id }: ModDetailViewProps) {
               </span>
             </div>
           </div>
-          <div className="px-1 font-mono text-[10px] leading-[1.6] text-[var(--color-text-muted)]">
-            Auteur d&apos;origine : {mod.author}.
-            {lastContribution && ` Dernière modif : ${lastContribution.author}, ${lastContribution.whenLabel}.`}
+          <div className="flex items-start gap-2 px-1 font-mono text-[10px] leading-[1.6] text-[var(--color-text-muted)]">
+            <UserAvatar src={authorImage} name={mod.author} size={16} />
+            <span>
+              Auteur d&apos;origine : {mod.author}.
+              {lastContribution && ` Dernière modif : ${lastContribution.author}, ${lastContribution.whenLabel}.`}
+            </span>
           </div>
         </div>
       </div>

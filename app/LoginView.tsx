@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { StatBlock } from "@/components/StatBlock";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { siteStats } from "@/lib/mock-data";
+import { AUTH_ERROR_CODES } from "@/lib/auth-errors";
 
 const BULLETS = [
   "aucun mot de passe à retenir",
@@ -16,11 +17,55 @@ interface LoginViewProps {
   guildName: string | null;
 }
 
+interface ErrorCopy {
+  badge: string;
+  title: string;
+  detail: string;
+  showContactAdmin: boolean;
+}
+
+function getErrorCopy(code: string, serverLabel: string): ErrorCopy {
+  switch (code) {
+    case AUTH_ERROR_CODES.notGuildMember:
+    // Auth.js raises its own AccessDenied if a refusal ever bypasses our codes.
+    case "AccessDenied":
+      return {
+        badge: "ÉTAT · ACCÈS REFUSÉ",
+        title: `Tu n'es pas membre du serveur ${serverLabel}.`,
+        detail:
+          "Demande une invitation à un admin, puis reconnecte-toi. Aucune session n'a été créée.",
+        showContactAdmin: true,
+      };
+    case AUTH_ERROR_CODES.checkFailed:
+      return {
+        badge: "ÉTAT · VÉRIFICATION IMPOSSIBLE",
+        title: "Impossible de vérifier ton appartenance au serveur.",
+        detail:
+          "Discord n'a pas répondu. Réessaie dans un instant — ton accès n'est pas remis en cause.",
+        showContactAdmin: false,
+      };
+    case "Configuration":
+      return {
+        badge: "ÉTAT · CONFIGURATION",
+        title: "La connexion Discord est mal configurée.",
+        detail: "Préviens un admin : les identifiants Discord de l'app doivent être vérifiés.",
+        showContactAdmin: true,
+      };
+    default:
+      return {
+        badge: "ÉTAT · ÉCHEC DE CONNEXION",
+        title: "Un problème est survenu pendant la connexion.",
+        detail: "Réessaie dans un instant. Si le problème persiste, préviens un admin.",
+        showContactAdmin: false,
+      };
+  }
+}
+
 export function LoginView({ guildName }: LoginViewProps) {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
-  const isGuildDenied = error === "AccessDenied";
   const serverLabel = guildName ? `« ${guildName} »` : "autorisé";
+  const errorCopy = error ? getErrorCopy(error, serverLabel) : null;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -86,7 +131,7 @@ export function LoginView({ guildName }: LoginViewProps) {
             </div>
           </div>
 
-          {error && (
+          {errorCopy && (
             <div
               className="rounded-sm border bg-[var(--color-surface)] p-4"
               style={{ borderColor: "var(--color-border-strong)", borderLeft: "3px solid var(--color-danger)" }}
@@ -96,21 +141,17 @@ export function LoginView({ guildName }: LoginViewProps) {
                   className="px-[6px] py-[2px] font-mono text-[10px] tracking-[0.08em] text-white"
                   style={{ background: "var(--color-danger)" }}
                 >
-                  ÉTAT · ACCÈS REFUSÉ
+                  {errorCopy.badge}
                 </span>
                 <span className="font-mono text-[10px] text-[var(--color-text-muted)]">
                   après retour OAuth
                 </span>
               </div>
               <div className="mt-[10px] font-sans text-sm font-semibold leading-[1.4]">
-                {isGuildDenied
-                  ? `Tu n'es pas membre du serveur ${serverLabel}.`
-                  : "Un problème est survenu pendant la connexion."}
+                {errorCopy.title}
               </div>
               <div className="mt-[6px] font-mono text-[11px] leading-[1.6] text-[var(--color-text-secondary)]">
-                {isGuildDenied
-                  ? "Demande une invitation à un admin, puis reconnecte-toi. Aucune session n'a été créée."
-                  : "Réessaie dans un instant. Si le problème persiste, préviens un admin."}
+                {errorCopy.detail}
               </div>
               <div className="mt-3 flex gap-2">
                 <button
@@ -120,7 +161,7 @@ export function LoginView({ guildName }: LoginViewProps) {
                 >
                   Réessayer
                 </button>
-                {isGuildDenied && (
+                {errorCopy.showContactAdmin && (
                   <a
                     href="https://discord.com"
                     className="rounded-[3px] px-3 py-[7px] font-sans text-[11px] font-medium text-[var(--color-text-secondary)]"

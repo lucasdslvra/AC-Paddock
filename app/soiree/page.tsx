@@ -54,8 +54,12 @@ export default function SoireePage() {
           </div>
         </div>
         <div className="ml-auto flex items-end gap-[26px]">
-          <StatBlock label="IL RESTE" value={currentSession.daysRemainingLabel} />
-          <StatBlock label="ONT VOTÉ" value={`${currentSession.membersVoted} / ${currentSession.membersTotal}`} />
+          <StatBlock label="IL RESTE" value={currentSession.daysRemainingLabel} valueSize={26} />
+          <StatBlock
+            label="ONT VOTÉ"
+            value={`${currentSession.membersVoted} / ${currentSession.membersTotal}`}
+            valueSize={26}
+          />
           <div className="flex flex-col gap-[5px]">
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">MEMBRES</div>
             <div className="flex gap-1">

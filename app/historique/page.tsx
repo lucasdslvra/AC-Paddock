@@ -42,8 +42,8 @@ export default function HistoriquePage() {
           ))}
         </div>
         <div className="flex gap-[22px]">
-          <StatBlock label="MODS JOUÉS" value={totalModsPlayed} />
-          <StatBlock label="VOTANTS / SOIRÉE" value={avgVotants} />
+          <StatBlock label="MODS JOUÉS" value={totalModsPlayed} order="value-first" />
+          <StatBlock label="VOTANTS / SOIRÉE" value={avgVotants} order="value-first" />
         </div>
       </div>
 

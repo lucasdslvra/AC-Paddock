@@ -4,6 +4,7 @@ import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import { useState } from "react";
 import { AvatarPlaceholder } from "./AvatarPlaceholder";
+import { ThemeToggle } from "./ThemeToggle";
 
 type NavKey = "catalogue" | "soiree" | "historique" | "admin";
 
@@ -40,11 +41,11 @@ export function AppHeader({ active = null, variant = "default", subtitle, stats,
       <div className="flex items-center gap-[11px]">
         <div
           className="flex h-[26px] w-[26px] items-center justify-center"
-          style={{ background: isAdmin ? "var(--color-amber)" : "var(--color-ink)" }}
+          style={{ background: isAdmin ? "var(--color-amber)" : "var(--color-emphasis-bg)" }}
         >
           <span
             className="font-mono text-[11px] font-semibold"
-            style={{ color: isAdmin ? "#17181c" : "var(--color-amber)" }}
+            style={{ color: isAdmin ? "#17181c" : "var(--color-emphasis-icon)" }}
           >
             P
           </span>
@@ -77,7 +78,7 @@ export function AppHeader({ active = null, variant = "default", subtitle, stats,
               className="rounded-sm px-3 py-[6px] font-sans text-xs font-medium"
               style={
                 active === item.key
-                  ? { background: "var(--color-ink)", color: "var(--color-surface)" }
+                  ? { background: "var(--foreground)", color: "var(--background)" }
                   : { color: "var(--color-text-secondary)" }
               }
             >
@@ -110,6 +111,8 @@ export function AppHeader({ active = null, variant = "default", subtitle, stats,
           </span>
         )}
 
+        {!isAdmin && <ThemeToggle />}
+
         <div className="relative">
           <button
             type="button"
@@ -129,7 +132,7 @@ export function AppHeader({ active = null, variant = "default", subtitle, stats,
               </span>
               <button
                 type="button"
-                onClick={() => signOut({ redirectTo: "/login" })}
+                onClick={() => signOut({ redirectTo: "/" })}
                 className="rounded-sm border border-[var(--color-border-strong)] px-2 py-1 text-left font-sans text-xs font-medium"
               >
                 Se déconnecter

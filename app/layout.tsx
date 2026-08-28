@@ -1,7 +1,20 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { Providers } from "./providers";
+
+const NO_FLASH_THEME_SCRIPT = `
+(function () {
+  try {
+    var paramTheme = new URLSearchParams(location.search).get("theme");
+    var theme = paramTheme === "dark" || paramTheme === "light" ? paramTheme : localStorage.getItem("paddock-theme");
+    if (theme === "dark") {
+      document.documentElement.setAttribute("data-theme", "dark");
+    }
+  } catch (e) {}
+})();
+`;
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
@@ -25,8 +38,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="fr"
       className={`${spaceGrotesk.variable} ${ibmPlexMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-grid">
+        <Script id="no-flash-theme" strategy="beforeInteractive">
+          {NO_FLASH_THEME_SCRIPT}
+        </Script>
         <Providers>{children}</Providers>
       </body>
     </html>

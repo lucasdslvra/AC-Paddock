@@ -26,6 +26,12 @@
   --color-placeholder-b: #efece5;
   --color-bar-dimmed: rgba(20, 24, 32, 0.22);
   --color-track: rgba(20, 24, 32, 0.1);
+
+  /* High-emphasis fills (logo mark, primary CTA): ink-on-light in light mode,
+     amber-on-ink in dark mode — the mockup's dark counter-proof flips these. */
+  --color-emphasis-bg: var(--color-ink);
+  --color-emphasis-icon: var(--color-amber);
+  --color-emphasis-text: var(--color-surface);
 }
 
 @theme inline {
@@ -47,26 +53,28 @@
   --font-mono: var(--font-ibm-plex-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #101216;
-    --foreground: #e7e8ea;
-    --color-surface: #171a1f;
-    --color-ink: #101216;
-    --color-grid-line: rgba(255, 255, 255, 0.045);
+:root[data-theme="dark"] {
+  --background: #101216;
+  --foreground: #e7e8ea;
+  --color-surface: #171a1f;
+  --color-ink: #101216;
+  --color-grid-line: rgba(255, 255, 255, 0.045);
 
-    --color-text-muted: #7d838a;
+  --color-text-muted: #7d838a;
 
-    --color-border-hairline: rgba(255, 255, 255, 0.09);
-    --color-border: rgba(255, 255, 255, 0.1);
-    --color-border-strong: rgba(255, 255, 255, 0.2);
-    --color-border-dashed: rgba(255, 255, 255, 0.28);
+  --color-border-hairline: rgba(255, 255, 255, 0.09);
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-border-strong: rgba(255, 255, 255, 0.2);
+  --color-border-dashed: rgba(255, 255, 255, 0.28);
 
-    --color-placeholder-a: #20242a;
-    --color-placeholder-b: #1a1e23;
-    --color-bar-dimmed: rgba(255, 255, 255, 0.2);
-    --color-track: rgba(255, 255, 255, 0.12);
-  }
+  --color-placeholder-a: #20242a;
+  --color-placeholder-b: #1a1e23;
+  --color-bar-dimmed: rgba(255, 255, 255, 0.2);
+  --color-track: rgba(255, 255, 255, 0.12);
+
+  --color-emphasis-bg: var(--color-amber);
+  --color-emphasis-icon: var(--color-ink);
+  --color-emphasis-text: var(--color-ink);
 }
 
 .bg-grid {
@@ -79,4 +87,5 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  transition: background-color 0.25s ease, color 0.25s ease;
 }

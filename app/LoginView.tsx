@@ -3,6 +3,7 @@
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { StatBlock } from "@/components/StatBlock";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { siteStats } from "@/lib/mock-data";
 
 const BULLETS = [
@@ -19,16 +20,14 @@ export function LoginView() {
     <div className="flex min-h-screen flex-col">
       <header className="flex items-center justify-between border-b border-[var(--color-border)] px-[22px] py-[14px]">
         <div className="flex items-center gap-[11px]">
-          <div className="flex h-[26px] w-[26px] items-center justify-center bg-[var(--color-ink)]">
-            <span className="font-mono text-[11px] font-semibold text-[var(--color-amber)]">P</span>
+          <div className="flex h-[26px] w-[26px] items-center justify-center bg-[var(--color-emphasis-bg)]">
+            <span className="font-mono text-[11px] font-semibold text-[var(--color-emphasis-icon)]">P</span>
           </div>
           <div className="font-sans text-[17px] font-bold leading-none tracking-[-0.02em]">
             Paddock
           </div>
         </div>
-        <div className="font-mono text-[10px] tracking-[0.06em] text-[var(--color-text-muted)]">
-          ACCÈS PRIVÉ · SERVEUR « LES BRISCARDS »
-        </div>
+        <ThemeToggle />
       </header>
 
       <div className="grid flex-1 grid-cols-1 items-center gap-10 px-8 py-12 md:grid-cols-2 md:px-16">
@@ -48,9 +47,9 @@ export function LoginView() {
             on sait déjà ce qu&apos;on installe.
           </p>
           <div className="mt-[26px] flex gap-[26px] border-t border-[var(--color-border)] pt-[18px]">
-            <StatBlock label="FICHES" value={siteStats.fiches} />
-            <StatBlock label="VOTES" value={siteStats.votes} />
-            <StatBlock label="SOIRÉES" value={siteStats.soirees} />
+            <StatBlock label="FICHES" value={siteStats.fiches} order="value-first" />
+            <StatBlock label="VOTES" value={siteStats.votes} order="value-first" />
+            <StatBlock label="SOIRÉES" value={siteStats.soirees} order="value-first" />
           </div>
         </div>
 
@@ -66,9 +65,9 @@ export function LoginView() {
               type="button"
               onClick={() => signIn("discord", { redirectTo: "/catalogue" })}
               className="mt-[18px] flex w-full items-center justify-center gap-[10px] rounded-[3px] p-[14px]"
-              style={{ background: "var(--color-ink)", color: "var(--color-surface)" }}
+              style={{ background: "var(--color-emphasis-bg)", color: "var(--color-emphasis-text)" }}
             >
-              <span className="h-4 w-4 rounded-sm" style={{ background: "var(--color-amber)" }} />
+              <span className="h-4 w-4 rounded-sm" style={{ background: "var(--color-emphasis-icon)" }} />
               <span className="font-sans text-sm font-semibold">Se connecter avec Discord</span>
             </button>
             <div className="mt-4 flex flex-col gap-[7px] border-t border-[var(--color-border-hairline)] pt-[14px]">

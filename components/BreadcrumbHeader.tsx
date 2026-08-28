@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AvatarPlaceholder } from "./AvatarPlaceholder";
+import { ThemeToggle } from "./ThemeToggle";
 
 interface Crumb {
   label: string;
@@ -18,8 +19,8 @@ export function BreadcrumbHeader({ crumbs, actions }: BreadcrumbHeaderProps) {
   return (
     <header className="flex items-center gap-5 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-[22px] py-[14px]">
       <div className="flex items-center gap-[11px]">
-        <div className="flex h-[26px] w-[26px] items-center justify-center bg-[var(--color-ink)]">
-          <span className="font-mono text-[11px] font-semibold text-[var(--color-amber)]">P</span>
+        <div className="flex h-[26px] w-[26px] items-center justify-center bg-[var(--color-emphasis-bg)]">
+          <span className="font-mono text-[11px] font-semibold text-[var(--color-emphasis-icon)]">P</span>
         </div>
         <div className="font-sans text-[17px] font-bold leading-none tracking-[-0.02em]">Paddock</div>
       </div>
@@ -39,6 +40,7 @@ export function BreadcrumbHeader({ crumbs, actions }: BreadcrumbHeaderProps) {
 
       <div className="ml-auto flex items-center gap-3">
         {actions}
+        <ThemeToggle />
         <AvatarPlaceholder size={26} />
       </div>
     </header>

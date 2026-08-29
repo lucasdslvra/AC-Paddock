@@ -6,52 +6,81 @@ import { AppHeader } from "@/components/AppHeader";
 import { ModCard } from "@/components/ModCard";
 import { ProgressBar } from "@/components/ProgressBar";
 import { TagPill } from "@/components/TagPill";
-import { parseTagsParam, serializeTagsParam } from "@/lib/mods/tags";
+import type { ModType } from "@/lib/generated/prisma/enums";
 import {
-  currentSession,
-  mods,
-  siteStats,
-  tags as demoTags,
-  type ModType,
-} from "@/lib/mock-data";
+  MAX_SEARCH_LENGTH,
+  MOD_SORTS,
+  modQueryToSearchParams,
+  parseModQuery,
+  SEARCH_DEBOUNCE_MS,
+  type ModQuery,
+  type ModSort,
+} from "@/lib/mods/query";
+import { useModCatalogue } from "@/lib/mods/useCatalogue";
+import { apiModToView } from "@/lib/mods/view";
+import { currentSession, siteStats } from "@/lib/mock-data";
 import { useRequireAuth } from "@/lib/useRequireAuth";
-
-type TypeFilter = "all" | ModType;
 
 interface AvailableTag {
   name: string;
   count: number;
 }
 
+/** US-E2 — le vocabulaire du cahier §4 (car/track) reste en coulisse (lib/mods/type.ts). */
+const TYPE_FILTERS: { key: ModType | null; label: string }[] = [
+  { key: null, label: "Tous" },
+  { key: "CAR", label: "Véhicules" },
+  { key: "TRACK", label: "Circuits" },
+];
+
+/** US-E4 — les deux tris du cahier §2.3, sous les mots de l'interface. */
+const SORT_LABELS: Record<ModSort, string> = {
+  date: "date d'ajout",
+  votes: "votes",
+};
+
 export function CatalogueView() {
-  const { session, isLoading } = useRequireAuth();
+  const { session, isLoading: isAuthLoading } = useRequireAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [knownTags, setKnownTags] = useState<AvailableTag[]>([]);
 
-  // US-C2 — l'URL est la seule source de vérité des tags actifs, pas un état local.
-  // Un lien `/catalogue?tags=drift,jdm` arrive donc déjà filtré, la sélection survit à
-  // un rechargement, et une pastille cliquée depuis une fiche de mod atterrit juste.
-  const activeTags = useMemo(
-    () => parseTagsParam(searchParams.getAll("tags")),
-    [searchParams],
-  );
+  // L'URL est la seule source de vérité des filtres, pas un état local : un lien
+  // `/catalogue?tags=drift,jdm&type=CAR&sort=votes` arrive donc déjà filtré, la
+  // sélection survit à un rechargement, et une pastille cliquée depuis une fiche de mod
+  // atterrit juste. C'est le même analyseur que celui de GET /api/mods (US-E1).
+  const query = useMemo(() => parseModQuery(searchParams), [searchParams]);
 
-  const setActiveTags = useCallback(
-    (next: string[]) => {
-      const params = new URLSearchParams(searchParams);
-      params.delete("tags");
-      if (next.length > 0) params.set("tags", serializeTagsParam(next));
+  const updateQuery = useCallback(
+    (patch: Partial<ModQuery>, options?: { scroll?: boolean }) => {
+      // Tout changement de filtre ramène en page 1 : rester en page 4 après avoir coché
+      // un tag afficherait une page vide alors que des résultats existent. Un patch qui
+      // porte `page` écrase évidemment cette remise à zéro.
+      const next: ModQuery = { ...query, page: 1, ...patch };
+      const params = modQueryToSearchParams(next).toString();
 
-      const query = params.toString();
       // `replace` plutôt que `push` : cocher quatre tags ne doit pas demander quatre
       // retours en arrière pour revenir à la page d'où l'on vient.
-      router.replace(query ? `/catalogue?${query}` : "/catalogue", { scroll: false });
+      router.replace(params ? `/catalogue?${params}` : "/catalogue", {
+        scroll: options?.scroll ?? false,
+      });
     },
-    [router, searchParams],
+    [query, router],
   );
+
+  const { data, isLoading, hasFailed } = useModCatalogue(query);
+
+  // Le champ garde sa propre valeur pendant la frappe : passer par l'URL à chaque
+  // lettre lancerait une requête par caractère (US-E3).
+  const [searchInput, setSearchInput] = useState(query.search);
+
+  useEffect(() => {
+    const trimmed = searchInput.trim().slice(0, MAX_SEARCH_LENGTH);
+    if (trimmed === query.search) return;
+
+    const timer = setTimeout(() => updateQuery({ search: trimmed }), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchInput, query.search, updateQuery]);
 
   // Le vocabulaire réel, alimenté par les fiches des membres (US-C1).
   useEffect(() => {
@@ -61,51 +90,43 @@ export function CatalogueView() {
       .then((rows: { name: string; modCount: number }[]) =>
         setKnownTags(rows.map((row) => ({ name: row.name, count: row.modCount }))),
       )
-      // Les tags de démo restent affichés : le filtre marche encore, en dégradé.
+      // Le filtre par tags marche encore en dégradé : les tags actifs restent affichés.
       .catch(() => {});
     return () => controller.abort();
   }, []);
 
   const availableTags = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const tag of knownTags) counts.set(tag.name, tag.count);
+    const counts = new Map(knownTags.map((tag) => [tag.name, tag.count]));
 
-    // Les fiches de démonstration vivent encore en dur, et leurs tags ne sont pas en
-    // base : sans ce second passage, le filtre n'aurait rien à mordre tant que le
-    // catalogue n'est pas branché sur GET /api/mods (US-E1). Cette boucle disparaîtra
-    // avec les fiches mock.
-    for (const tag of demoTags) counts.set(tag.name, (counts.get(tag.name) ?? 0) + tag.count);
-
-    // Un tag venu de l'URL mais inconnu des deux sources reste affiché, sinon le filtre
-    // serait actif sans que rien ne le montre — ni ne permette de le retirer.
-    for (const tag of activeTags) if (!counts.has(tag)) counts.set(tag, 0);
+    // Un tag venu de l'URL mais inconnu de la base reste affiché, sinon le filtre serait
+    // actif sans que rien ne le montre — ni ne permette de le retirer.
+    for (const tag of query.tags) if (!counts.has(tag)) counts.set(tag, 0);
 
     return Array.from(counts, ([name, count]) => ({ name, count })).sort(
       (a, b) => b.count - a.count || a.name.localeCompare(b.name),
     );
-  }, [knownTags, activeTags]);
+  }, [knownTags, query.tags]);
 
-  const vehiculeCount = mods.filter((mod) => mod.type === "vehicule").length;
-  const circuitCount = mods.filter((mod) => mod.type === "circuit").length;
+  const toggleTag = useCallback(
+    (tag: string) => {
+      updateQuery({
+        tags: query.tags.includes(tag)
+          ? query.tags.filter((active) => active !== tag)
+          : [...query.tags, tag],
+      });
+    },
+    [query.tags, updateQuery],
+  );
 
-  const filteredMods = useMemo(() => {
-    return mods
-      .filter((mod) => (typeFilter === "all" ? true : mod.type === typeFilter))
-      .filter((mod) => (search.trim() ? mod.name.toLowerCase().includes(search.trim().toLowerCase()) : true))
-      // Les tags se combinent en ET, comme côté API : `drift + jdm` veut dire les deux.
-      .filter((mod) => activeTags.every((tag) => mod.tags.includes(tag)))
-      .sort((a, b) => b.totalVotes - a.totalVotes);
-  }, [typeFilter, search, activeTags]);
-
-  function toggleTag(tag: string) {
-    setActiveTags(
-      activeTags.includes(tag) ? activeTags.filter((t) => t !== tag) : [...activeTags, tag],
-    );
-  }
-
-  if (isLoading) {
+  if (isAuthLoading) {
     return <p className="p-8">Chargement…</p>;
   }
+
+  const mods = data?.mods.map(apiModToView) ?? [];
+  const counts = data?.counts ?? { all: 0, CAR: 0, TRACK: 0 };
+  const total = data?.total ?? 0;
+  const pageCount = data?.pageCount ?? 1;
+  const hasFilters = query.tags.length > 0 || query.type !== null || query.search !== "";
 
   const engagedCount = currentSession.engagedMods.length + currentSession.extraEngagedCount;
   const sessionProgress = Math.round((currentSession.membersVoted / currentSession.membersTotal) * 100);
@@ -127,9 +148,11 @@ export function CatalogueView() {
           <div className="flex items-center gap-2 rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-[11px] py-[9px]">
             <span className="font-mono text-[11px] text-[var(--color-text-faint)]">⌕</span>
             <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              maxLength={MAX_SEARCH_LENGTH}
               placeholder="nom du mod"
+              aria-label="Rechercher un mod par nom"
               className="w-full bg-transparent font-mono text-xs text-[var(--color-foreground)] outline-none placeholder:text-[var(--color-text-faint)]"
             />
           </div>
@@ -139,52 +162,53 @@ export function CatalogueView() {
               TYPE
             </div>
             <div className="flex flex-col gap-1">
-              {(
-                [
-                  { key: "all", label: "Tous", count: mods.length },
-                  { key: "vehicule", label: "Véhicules", count: vehiculeCount },
-                  { key: "circuit", label: "Circuits", count: circuitCount },
-                ] as const
-              ).map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => setTypeFilter(option.key)}
-                  className="flex justify-between rounded-sm px-[10px] py-[7px] font-sans text-xs font-medium"
-                  style={
-                    typeFilter === option.key
-                      ? { background: "var(--color-ink)", color: "var(--color-surface)" }
-                      : { color: "var(--color-text-secondary)" }
-                  }
-                >
-                  <span>{option.label}</span>
-                  <span className="font-mono text-[11px]" style={{ opacity: typeFilter === option.key ? 1 : 0.7 }}>
-                    {option.count}
-                  </span>
-                </button>
-              ))}
+              {TYPE_FILTERS.map((option) => {
+                const isActive = query.type === option.key;
+                return (
+                  <button
+                    key={option.key ?? "all"}
+                    type="button"
+                    onClick={() => updateQuery({ type: option.key })}
+                    aria-pressed={isActive}
+                    className="flex justify-between rounded-sm px-[10px] py-[7px] font-sans text-xs font-medium"
+                    style={
+                      isActive
+                        ? { background: "var(--color-ink)", color: "var(--color-surface)" }
+                        : { color: "var(--color-text-secondary)" }
+                    }
+                  >
+                    <span>{option.label}</span>
+                    <span className="font-mono text-[11px]" style={{ opacity: isActive ? 1 : 0.7 }}>
+                      {option.key ? counts[option.key] : counts.all}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           <div>
             <div className="mb-2 font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
-              TAGS · {activeTags.length} ACTIFS
+              TAGS · {query.tags.length} ACTIFS
             </div>
             <div className="flex flex-wrap gap-[5px]">
               {availableTags.map((tag) => (
                 <TagPill
                   key={tag.name}
                   label={tag.name}
-                  active={activeTags.includes(tag.name)}
-                  removable={activeTags.includes(tag.name)}
+                  active={query.tags.includes(tag.name)}
+                  removable={query.tags.includes(tag.name)}
                   onClick={() => toggleTag(tag.name)}
                 />
               ))}
             </div>
-            {activeTags.length > 0 && (
+            {hasFilters && (
               <button
                 type="button"
-                onClick={() => setActiveTags([])}
+                onClick={() => {
+                  setSearchInput("");
+                  updateQuery({ tags: [], type: null, search: "" });
+                }}
                 className="mt-[10px] inline-block border-b font-sans text-[11px] font-medium text-[var(--color-link)]"
                 style={{ borderColor: "var(--color-amber)" }}
               >
@@ -213,35 +237,130 @@ export function CatalogueView() {
         </aside>
 
         <div className="p-[18px]">
-          <div className="mb-[14px] flex items-baseline justify-between">
+          <div className="mb-[14px] flex items-baseline justify-between gap-4">
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
-              {filteredMods.length} RÉSULTATS SUR {mods.length}
-              {activeTags.length > 0 ? ` — FILTRE : ${activeTags.join(" + ").toUpperCase()}` : ""}
+              {/* Tant que la première réponse n'est pas là, annoncer « 0 RÉSULTATS »
+                  serait un mensonge : on ne sait pas encore. */}
+              {data === null ? "CHARGEMENT…" : `${total} RÉSULTAT${total > 1 ? "S" : ""}`}
+              {pageCount > 1 ? ` · PAGE ${query.page} SUR ${pageCount}` : ""}
+              {query.tags.length > 0 ? ` — FILTRE : ${query.tags.join(" + ").toUpperCase()}` : ""}
             </div>
-            <div className="font-mono text-[11px] text-[var(--color-text-secondary)]">tri : votes ▾</div>
+            <label className="flex shrink-0 items-center gap-[6px] font-mono text-[11px] text-[var(--color-text-secondary)]">
+              tri :
+              <select
+                value={query.sort}
+                onChange={(event) => updateQuery({ sort: event.target.value as ModSort })}
+                className="cursor-pointer rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-[6px] py-[3px] font-mono text-[11px] text-[var(--color-foreground)] outline-none"
+              >
+                {MOD_SORTS.map((sort) => (
+                  <option key={sort} value={sort}>
+                    {SORT_LABELS[sort]}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredMods.map((mod) => (
+
+          {/* La grille est estompée pendant qu'une nouvelle réponse arrive, plutôt que
+              vidée : les cartes affichées se périment un instant, elles ne sautent pas. */}
+          <div
+            className="grid grid-cols-1 gap-3 transition-opacity sm:grid-cols-2 lg:grid-cols-3"
+            style={{ opacity: isLoading && data !== null ? 0.55 : 1 }}
+            aria-busy={isLoading}
+          >
+            {mods.map((mod) => (
               <ModCard key={mod.id} mod={mod} />
             ))}
           </div>
-          {filteredMods.length === 0 && activeTags.length > 0 && (
+
+          {hasFailed && data === null && (
             <div className="rounded-sm border border-dashed border-[var(--color-border-dashed)] p-8 text-center">
-              <p className="font-sans text-sm font-semibold">Aucune fiche avec tous ces tags.</p>
-              <p className="mt-[6px] font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-muted)]">
-                Les tags se combinent : chaque tag ajouté restreint un peu plus. Retires-en
-                un, ou{" "}
+              <p className="font-sans text-sm font-semibold">Le catalogue n&apos;a pas pu être chargé.</p>
+              <p className="mt-[6px] font-mono text-[10.5px] text-[var(--color-text-muted)]">
+                Vérifie ta connexion, puis recharge la page.
+              </p>
+            </div>
+          )}
+
+          {data !== null && total === 0 && (
+            <div className="rounded-sm border border-dashed border-[var(--color-border-dashed)] p-8 text-center">
+              {hasFilters ? (
+                <>
+                  <p className="font-sans text-sm font-semibold">Aucune fiche ne correspond.</p>
+                  <p className="mt-[6px] font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-muted)]">
+                    Les filtres se combinent : chaque tag, le type et la recherche
+                    restreignent un peu plus. Retires-en un, ou{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchInput("");
+                        updateQuery({ tags: [], type: null, search: "" });
+                      }}
+                      className="border-b text-[var(--color-link)]"
+                      style={{ borderColor: "var(--color-amber)" }}
+                    >
+                      réinitialise les filtres
+                    </button>
+                    .
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-sans text-sm font-semibold">Le catalogue est encore vide.</p>
+                  <p className="mt-[6px] font-mono text-[10.5px] text-[var(--color-text-muted)]">
+                    Personne n&apos;a encore proposé de mod — à toi l&apos;honneur.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Page demandée au-delà de la dernière : un lien direct devenu caduc, ou une
+              fiche supprimée depuis. Le compteur dit qu'il y a des résultats, la grille
+              est vide — il faut expliquer pourquoi. */}
+          {data !== null && total > 0 && mods.length === 0 && (
+            <div className="rounded-sm border border-dashed border-[var(--color-border-dashed)] p-8 text-center">
+              <p className="font-sans text-sm font-semibold">Cette page n&apos;existe plus.</p>
+              <p className="mt-[6px] font-mono text-[10.5px] text-[var(--color-text-muted)]">
+                Le catalogue s&apos;arrête à la page {pageCount}.{" "}
                 <button
                   type="button"
-                  onClick={() => setActiveTags([])}
+                  onClick={() => updateQuery({ page: 1 }, { scroll: true })}
                   className="border-b text-[var(--color-link)]"
                   style={{ borderColor: "var(--color-amber)" }}
                 >
-                  réinitialise les filtres
+                  Revenir au début
                 </button>
                 .
               </p>
             </div>
+          )}
+
+          {pageCount > 1 && (
+            <nav
+              aria-label="Pages du catalogue"
+              className="mt-4 flex items-center justify-center gap-4 font-mono text-[11px]"
+            >
+              <button
+                type="button"
+                disabled={query.page <= 1}
+                onClick={() => updateQuery({ page: query.page - 1 }, { scroll: true })}
+                className="rounded-sm border border-[var(--color-border-strong)] px-[10px] py-[5px] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                ← précédent
+              </button>
+              <span className="text-[var(--color-text-muted)]">
+                page {query.page} sur {pageCount}
+              </span>
+              <button
+                type="button"
+                disabled={query.page >= pageCount}
+                onClick={() => updateQuery({ page: query.page + 1 }, { scroll: true })}
+                className="rounded-sm border border-[var(--color-border-strong)] px-[10px] py-[5px] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                suivant →
+              </button>
+            </nav>
           )}
         </div>
       </div>

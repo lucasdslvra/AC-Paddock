@@ -28,8 +28,9 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
     }),
   ]);
 
-  // Les fiches de démonstration (catalogue, soirée, historique) vivent encore en dur ;
-  // elles disparaîtront quand US-E1 branchera le catalogue sur GET /api/mods.
+  // Le catalogue ne sert plus que de vraies fiches (US-E1), mais la soirée, l'historique
+  // et l'admin vivent encore sur `lib/mock-data.ts` : un lien parti de ces pages tombe
+  // sur un id qui n'existe pas en base. Ce repli disparaîtra avec les Epics F et G.
   const mod = record ? toModView(record) : getModById(id);
 
   // Seules les fiches en base sont éditables (US-B3) et supprimables (US-B4).

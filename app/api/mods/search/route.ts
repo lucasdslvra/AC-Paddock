@@ -1,12 +1,8 @@
 import { auth } from "@/auth";
 import { MIN_NAME_QUERY_LENGTH, SIMILAR_MODS_LIMIT } from "@/lib/mods/duplicates";
+import { escapeLikeWildcards } from "@/lib/mods/like";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { prisma } from "@/lib/prisma";
-
-/** Échappe les jokers d'un `LIKE` pour que la saisie reste du texte littéral. */
-function likePattern(query: string): string {
-  return `%${query.replace(/[\\%_]/g, "\\$&")}%`;
-}
 
 /**
  * US-D1 — recherche floue sur le nom, pour repérer une fiche déjà existante avant d'en
@@ -48,7 +44,7 @@ export async function GET(request: Request) {
       SELECT "id"
       FROM "Mod"
       WHERE "name" OPERATOR(extensions.%) ${query}
-         OR "name" ILIKE ${likePattern(query)}
+         OR "name" ILIKE ${`%${escapeLikeWildcards(query)}%`}
       ORDER BY extensions.similarity("name", ${query}) DESC, "createdAt" DESC
       LIMIT ${SIMILAR_MODS_LIMIT}
     `;

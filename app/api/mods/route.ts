@@ -1,26 +1,71 @@
 import { auth } from "@/auth";
+import type { ModOrderByWithRelationInput, ModWhereInput } from "@/lib/generated/prisma/models";
+import { escapeLikeWildcards } from "@/lib/mods/like";
+import {
+  MODS_PER_PAGE,
+  parseModQuery,
+  type ModListResponse,
+  type ModQuery,
+  type ModSort,
+  type ModTypeCounts,
+} from "@/lib/mods/query";
 import { modInputSchema, toFieldErrors } from "@/lib/mods/schema";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
-import { parseTagsParam } from "@/lib/mods/tags";
 import { buildTagCreateWrite } from "@/lib/mods/tags-store";
 import { modUrlKey } from "@/lib/mods/url";
 import { isModImageUrl } from "@/lib/supabase/storage";
 import { prisma } from "@/lib/prisma";
 
 /**
- * US-C2 — liste des fiches, filtrable par tags.
+ * Ordre des fiches, par option de tri (US-E4).
+ *
+ * Le second critère n'est pas décoratif : deux fiches créées dans la même milliseconde
+ * s'échangeraient d'une page à l'autre, et la pagination par décalage en sauterait une
+ * tout en en montrant une autre deux fois.
+ */
+const MOD_ORDER_BY: Record<ModSort, ModOrderByWithRelationInput[]> = {
+  date: [{ createdAt: "desc" }, { id: "desc" }],
+  // `votes` est accepté dès maintenant, mais n'a rien à trier tant que le modèle Vote
+  // n'existe pas (Epic F) : toutes les fiches sont à zéro vote, donc ex æquo, et le
+  // classement retombe sur la date. Quand Epic F arrivera, cette entrée deviendra
+  // `[{ votes: { _count: "desc" } }, { createdAt: "desc" }, { id: "desc" }]`.
+  votes: [{ createdAt: "desc" }, { id: "desc" }],
+};
+
+/**
+ * Filtres portant sur le contenu des fiches — tags (US-C2) et recherche par nom
+ * (US-E3). Le type en est volontairement absent : les compteurs du filtre par type
+ * (US-E2) se comptent sur ces filtres-là seulement, la liste y ajoute le type choisi.
+ */
+function contentFilters(query: ModQuery): ModWhereInput[] {
+  // Les tags se **combinent** (ET, pas OU) : `drift + jdm` ne ramène que les fiches qui
+  // portent les deux, ce que demande le cahier §2.3. D'où un `some` par tag plutôt qu'un
+  // seul `in` — `{ tags: { some: { tag: { name: { in: [...] } } } } }` répondrait « au
+  // moins un des deux », ce qui n'est pas la même question.
+  const filters: ModWhereInput[] = query.tags.map((name) => ({ tags: { some: { tag: { name } } } }));
+
+  // US-E3 — `contains` + `insensitive` part en `ILIKE '%…%'`, servi par l'index GIN
+  // trigram posé sur `Mod.name` (migration `20260829200000_duplicate_detection`). La
+  // recherche floue de la détection de doublons (US-D1) répond à une autre question —
+  // « une fiche proche existe-t-elle déjà ? » — et garde sa route dédiée.
+  //
+  // Prisma insère la saisie telle quelle entre ses deux `%` : sans échappement, taper
+  // `%` ramènerait tout le catalogue au lieu de rien.
+  if (query.search) {
+    filters.push({ name: { contains: escapeLikeWildcards(query.search), mode: "insensitive" } });
+  }
+
+  return filters;
+}
+
+/**
+ * US-E1 à US-E4 — le catalogue : liste paginée, filtrable par tags et par type,
+ * cherchable par nom, triable.
  *
  * `?tags=drift,jdm` (la forme qu'écrit le catalogue) et `?tags=drift&tags=jdm` sont
- * acceptées indifféremment, `tags[]` aussi — c'est la notation du backlog, et celle que
- * produisent les clients HTTP qui suffixent les paramètres répétés.
- *
- * Les tags se **combinent** (ET, pas OU) : `drift + jdm` ne ramène que les fiches qui
- * portent les deux, ce que demande le cahier §2.3. D'où un `some` par tag plutôt qu'un
- * seul `in` — `{ tags: { some: { tag: { name: { in: [...] } } } } }` répondrait « au
- * moins un des deux », ce qui n'est pas la même question.
- *
- * Pagination et options de tri restent à US-E1 : le tri par défaut est la date de
- * création décroissante.
+ * acceptées indifféremment, `tags[]` aussi. Tous les paramètres sont lus par
+ * `parseModQuery`, le même analyseur que celui du catalogue : une valeur absente ou
+ * hors domaine retombe des deux côtés sur la même valeur par défaut.
  */
 export async function GET(request: Request) {
   const session = await auth();
@@ -28,17 +73,45 @@ export async function GET(request: Request) {
     return Response.json({ error: "Connexion requise." }, { status: 401 });
   }
 
-  const { searchParams } = new URL(request.url);
-  const tags = parseTagsParam([...searchParams.getAll("tags"), ...searchParams.getAll("tags[]")]);
+  const query = parseModQuery(new URL(request.url).searchParams);
+  const filters = contentFilters(query);
+  const contentWhere: ModWhereInput | undefined = filters.length > 0 ? { AND: filters } : undefined;
 
   try {
-    const mods = await prisma.mod.findMany({
-      where: tags.length > 0 ? { AND: tags.map((name) => ({ tags: { some: { tag: { name } } } })) } : undefined,
-      include: modInclude,
-      orderBy: { createdAt: "desc" },
-    });
+    const [byType, mods] = await Promise.all([
+      // Un `groupBy` plutôt qu'un `count` : il donne d'un seul aller-retour les
+      // compteurs du filtre par type *et* le total de la requête, qui n'est que leur
+      // somme — ou la ligne du type choisi.
+      prisma.mod.groupBy({ by: ["type"], where: contentWhere, _count: { _all: true } }),
+      prisma.mod.findMany({
+        where: query.type ? { ...contentWhere, type: query.type } : contentWhere,
+        include: modInclude,
+        orderBy: MOD_ORDER_BY[query.sort],
+        skip: (query.page - 1) * MODS_PER_PAGE,
+        take: MODS_PER_PAGE,
+      }),
+    ]);
 
-    return Response.json(mods.map(serializeMod));
+    // Un type sans aucune fiche est absent du `groupBy` : il doit quand même afficher
+    // son zéro, sinon le filtre perd une entrée dès que le catalogue se vide.
+    const counts: ModTypeCounts = { all: 0, CAR: 0, TRACK: 0 };
+    for (const row of byType) {
+      counts[row.type] = row._count._all;
+      counts.all += row._count._all;
+    }
+
+    const total = query.type ? counts[query.type] : counts.all;
+
+    const body: ModListResponse = {
+      mods: mods.map(serializeMod),
+      page: query.page,
+      perPage: MODS_PER_PAGE,
+      total,
+      pageCount: Math.max(1, Math.ceil(total / MODS_PER_PAGE)),
+      counts,
+    };
+
+    return Response.json(body);
   } catch (error) {
     console.error("GET /api/mods", error);
     return Response.json({ error: "Le catalogue n'a pas pu être chargé." }, { status: 500 });

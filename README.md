@@ -131,10 +131,9 @@ une pastille cliquée sur une fiche de mod y mène directement. `useSearchParams
 une frontière `Suspense`, d'où le découpage `page.tsx` (serveur) /
 `CatalogueView.tsx` (client).
 
-La grille du catalogue affiche encore les fiches de démonstration de `lib/mock-data.ts` :
-son branchement sur `GET /api/mods` appartient à US-E1. En attendant, la liste des tags
-du panneau latéral est l'union des vrais tags (API) et de ceux des fiches de démo ; la
-seconde moitié disparaîtra avec les mocks.
+La grille du catalogue est branchée sur `GET /api/mods` (voir la section suivante) : la
+liste des tags du panneau latéral vient donc entièrement de `GET /api/tags`, avec leur
+nombre réel de fiches.
 
 ## Détection de doublons (US-D1, US-D2, US-D3)
 
@@ -228,6 +227,95 @@ Le brouillon est effacé à la publication et sur « Annuler ». Il ne survit pa
 fermeture de l'onglet (`sessionStorage`, pas `localStorage`) — et comme il n'est écrit
 qu'au moment de partir voir une fiche, revenir par le bouton *retour* du navigateur
 retrouve la saisie aussi.
+
+## Catalogue (US-E1, US-E2, US-E3, US-E4)
+
+`GET /api/mods` sert la grille du catalogue. Tous ses paramètres sont optionnels et se
+combinent :
+
+| Paramètre | Valeurs | US |
+| --- | --- | --- |
+| `tags` | `drift,jdm` — combinés en **ET** | US-C2 |
+| `type` | `CAR` / `TRACK` (absent = tous) | US-E2 |
+| `search` | fragment du nom, insensible à la casse | US-E3 |
+| `sort` | `date` (défaut) / `votes` | US-E4 |
+| `page` | 1-indexée, 24 fiches par page | US-E1 |
+
+La réponse n'est plus un tableau nu mais un objet `ModListResponse` : `mods`, `page`,
+`perPage`, `total`, `pageCount` et `counts` (le nombre de fiches par type, pour les
+compteurs du filtre).
+
+### Un seul analyseur pour deux URL
+
+[lib/mods/query.ts](lib/mods/query.ts) définit la requête catalogue — les valeurs
+acceptées, celles par défaut, `parseModQuery` et sa réciproque
+`modQueryToSearchParams` — et les deux côtés s'en servent : la route API lit l'URL de
+la requête, le catalogue lit celle de la page. Un filtre écrit dans `/catalogue?…` part
+donc tel quel dans l'appel API, et une valeur inconnue ou bricolée à la main retombe des
+deux côtés sur la même valeur par défaut : une URL malformée affiche un catalogue, jamais
+une erreur.
+
+Comme pour les tags (US-C2), **l'URL est la seule source de vérité** des filtres : la
+sélection survit à un rechargement et se partage par lien. Tout changement de filtre
+ramène en page 1 — rester en page 4 après avoir coché un tag afficherait une page vide
+alors que des résultats existent.
+
+### Compteurs et total
+
+Un seul `groupBy` par type donne d'un coup les compteurs du filtre *et* le total de la
+requête, qui n'en est que la somme (ou la ligne du type choisi). Ces compteurs sont
+calculés en ignorant le type sélectionné mais en tenant compte de la recherche et des
+tags : « Circuits · 0 » doit rester lisible pendant qu'on regarde les véhicules, sinon
+le filtre annonce des résultats qu'il n'a pas.
+
+### Recherche (US-E3)
+
+`contains` + `mode: "insensitive"` part en `ILIKE '%…%'`, servi par l'index GIN trigram
+posé sur `Mod.name` par la migration `20260829200000_duplicate_detection`. La saisie
+passe d'abord par `escapeLikeWildcards` ([lib/mods/like.ts](lib/mods/like.ts)) : Prisma
+insère la valeur telle quelle entre ses deux `%`, donc sans échappement taper `%`
+ramènerait tout le catalogue, et `silvia_s15` ne trouverait pas la fiche qui porte
+exactement ce nom.
+
+C'est une recherche de **filtrage**, à ne pas confondre avec `GET /api/mods/search`
+(US-D1), qui répond à une autre question — « une fiche proche existe-t-elle déjà ? » —
+par une similarité trigram classée.
+
+Le champ est débouncé (`SEARCH_DEBOUNCE_MS`) et garde sa propre valeur pendant la
+frappe : passer par l'URL à chaque lettre lancerait une requête par caractère.
+
+### Tri (US-E4)
+
+`sort=votes` est accepté dès maintenant, mais n'a rien à trier tant que le modèle `Vote`
+n'existe pas (Epic F) : toutes les fiches sont à zéro vote, donc ex æquo, et le
+classement retombe légitimement sur la date. Quand Epic F arrivera, il suffira de faire
+précéder `MOD_ORDER_BY.votes` de `{ votes: { _count: "desc" } }`
+([app/api/mods/route.ts](app/api/mods/route.ts)).
+
+Les deux tris se terminent par `{ id: "desc" }`. Ce n'est pas décoratif : deux fiches
+créées dans la même milliseconde s'échangeraient d'une page à l'autre, et la pagination
+par décalage en sauterait une tout en en montrant une autre deux fois.
+
+### Côté interface
+
+[lib/mods/useCatalogue.ts](lib/mods/useCatalogue.ts) fait la requête, une par état de
+filtre, annulée dès que l'état change — sans quoi une réponse lente partie sur `drift`
+pourrait arriver après celle partie sur `drift + jdm` et réafficher la liste large
+par-dessus la liste étroite. `isLoading` n'y est pas un état à part : la réponse retenue
+porte la requête à laquelle elle répond, et charger, c'est « la dernière réponse ne
+répond pas à la requête courante ».
+
+La réponse précédente reste affichée, estompée, pendant que la suivante arrive : les
+cartes se périment un instant plutôt que de disparaître à chaque lettre tapée.
+
+Les fiches arrivent en JSON et passent par `apiModToView`
+([lib/mods/view.ts](lib/mods/view.ts)) pour prendre la forme attendue par `ModCard`.
+`toModView`, qui part d'une ligne Prisma (fiche détail), repasse désormais par cette même
+fonction : une fiche s'affiche pareil qu'elle vienne d'un `findUnique` ou d'un `fetch`.
+
+Les votes affichés sur les cartes (`totalVotes`, `voteHistory`) restent à zéro : ils
+appartiennent à Epic F. Les compteurs FICHES / VOTES de l'en-tête viennent encore de
+`lib/mock-data.ts`.
 
 ## Stockage des images (US-B2)
 

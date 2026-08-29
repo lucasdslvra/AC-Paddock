@@ -42,6 +42,10 @@ export function ModDetailView({
 }: ModDetailViewProps) {
   const { session, isLoading } = useRequireAuth();
   const [voted, setVoted] = useState(false);
+  // L'URL d'aperçu qui n'a rien ramené : `Mod.imageUrl` peut pointer vers un objet que
+  // le bucket n'a plus (fichier retiré à la main, bucket recréé). On retombe alors sur
+  // le motif rayé, comme une fiche sans image — même parti pris que `ModThumbnail`.
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
 
   if (isLoading) {
     return <p className="p-8">Chargement…</p>;
@@ -66,6 +70,7 @@ export function ModDetailView({
   const lastContribution = mod.contributions?.[0];
   // Mock authors have no avatar of their own; only the signed-in member does.
   const authorImage = session?.user?.name === mod.author ? session.user.image : null;
+  const previewUrl = mod.imageUrl && mod.imageUrl !== failedImageUrl ? mod.imageUrl : undefined;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -145,17 +150,18 @@ export function ModDetailView({
               className="relative flex items-end justify-between overflow-hidden border-y border-[var(--color-border)] px-[14px] py-[10px]"
               style={{
                 height: 250,
-                backgroundImage: mod.imageUrl
+                backgroundImage: previewUrl
                   ? undefined
                   : "repeating-linear-gradient(135deg, var(--color-placeholder-a) 0 7px, var(--color-placeholder-b) 7px 14px)",
               }}
             >
-              {mod.imageUrl ? (
+              {previewUrl ? (
                 <Image
-                  src={mod.imageUrl}
+                  src={previewUrl}
                   alt={`Aperçu de ${mod.name}`}
                   fill
                   sizes="(max-width: 1024px) 100vw, 700px"
+                  onError={() => setFailedImageUrl(previewUrl)}
                   className="object-cover"
                 />
               ) : (

@@ -17,5 +17,6 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
   // elles disparaîtront quand US-E1 branchera le catalogue sur GET /api/mods.
   const mod = record ? toModView(record) : getModById(id);
 
-  return <ModDetailView mod={mod} />;
+  // Seules les fiches en base sont éditables (US-B3).
+  return <ModDetailView mod={mod} editHref={record ? `/mods/${id}/modifier` : undefined} />;
 }

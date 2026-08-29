@@ -45,6 +45,21 @@ Les tables ont RLS activé sans aucune policy : l'API REST publique de Supabase 
 renvoie rien, et Prisma (rôle propriétaire) n'est pas concerné par RLS.
 
 
+## Édition des fiches (US-B3)
+
+Usage wiki : `PATCH /api/mods/[id]` n'exige qu'une session valide, aucune restriction
+d'auteur. `authorId` n'est jamais modifié, l'auteur d'origine reste affiché sur la fiche.
+
+La route suit une vraie sémantique PATCH : seules les clés présentes dans le corps sont
+modifiées, une clé absente laisse le champ intact, une clé présente à `""` ou `null`
+l'efface (`buildModUpdateData` dans [lib/mods/schema.ts](lib/mods/schema.ts)). Quand
+l'image change, l'ancienne est retirée du bucket dans la foulée.
+
+Le formulaire de création et celui d'édition sont le même composant,
+[components/ModForm.tsx](components/ModForm.tsx), paramétré par la présence d'une fiche
+existante. La détection de doublons est désactivée à l'édition, où la fiche se
+trouverait elle-même.
+
 ## Stockage des images (US-B2)
 
 Les images d'aperçu des mods vont dans un bucket Supabase Storage nommé `mod-images`,

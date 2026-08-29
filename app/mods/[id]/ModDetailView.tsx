@@ -17,11 +17,16 @@ import { useRequireAuth } from "@/lib/useRequireAuth";
 interface ModDetailViewProps {
   /** Chargé côté serveur : depuis la base, ou à défaut depuis les données mock. */
   mod: Mod | undefined;
+  /**
+   * Lien vers le formulaire d'édition (US-B3). Absent pour les fiches de
+   * démonstration, qui ne vivent qu'en dur et n'ont rien à éditer.
+   */
+  editHref?: string;
 }
 
 const TYPE_PLURAL = { vehicule: "Véhicules", circuit: "Circuits" } as const;
 
-export function ModDetailView({ mod }: ModDetailViewProps) {
+export function ModDetailView({ mod, editHref }: ModDetailViewProps) {
   const { session, isLoading } = useRequireAuth();
   const [voted, setVoted] = useState(false);
 
@@ -110,18 +115,25 @@ export function ModDetailView({ mod }: ModDetailViewProps) {
                   aperçu du mod — image déposée par un membre
                 </span>
               )}
-              <span className="relative ml-auto rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2 py-1 font-mono text-[10px] text-[var(--color-text-secondary)]">
-                remplacer l&apos;image
-              </span>
+              {editHref && (
+                <Link
+                  href={editHref}
+                  className="relative ml-auto rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2 py-1 font-mono text-[10px] text-[var(--color-text-secondary)]"
+                >
+                  remplacer l&apos;image
+                </Link>
+              )}
             </div>
             <div className="p-5">
               <div className="flex items-baseline justify-between">
                 <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
                   DESCRIPTION
                 </div>
-                <button type="button" className="border-b font-mono text-[10px] text-[var(--color-link)]" style={{ borderColor: "var(--color-amber)" }}>
-                  modifier
-                </button>
+                {editHref && (
+                  <Link href={editHref} className="border-b font-mono text-[10px] text-[var(--color-link)]" style={{ borderColor: "var(--color-amber)" }}>
+                    modifier
+                  </Link>
+                )}
               </div>
               <p className="mt-[9px] max-w-[640px] text-pretty font-sans text-sm leading-[1.65] text-[var(--color-text-secondary)]">
                 {mod.description ?? "Pas encore de description — n'importe quel membre peut en ajouter une."}
@@ -288,9 +300,14 @@ export function ModDetailView({ mod }: ModDetailViewProps) {
           <div className="rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-[15px]">
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">ACTIONS</div>
             <div className="mt-[10px] flex flex-col gap-[7px]">
-              <span className="rounded-sm border border-[var(--color-border-strong)] px-3 py-[9px] font-sans text-xs font-medium">
-                Modifier la fiche
-              </span>
+              {editHref && (
+                <Link
+                  href={editHref}
+                  className="rounded-sm border border-[var(--color-border-strong)] px-3 py-[9px] text-center font-sans text-xs font-medium"
+                >
+                  Modifier la fiche
+                </Link>
+              )}
               <span className="rounded-sm border border-[var(--color-border-strong)] px-3 py-[9px] font-sans text-xs font-medium">
                 Engager dans la soirée du {currentSession.dateLabel.split(" ").slice(-2).join(" ")}
               </span>

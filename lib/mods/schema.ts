@@ -5,7 +5,15 @@ import { MOD_TYPES } from "./type";
 // la route POST /api/mods pour la validation côté serveur (la seule qui fasse foi).
 
 const trimmed = (value: unknown) => (typeof value === "string" ? value.trim() : value);
-const emptyToUndefined = (value: unknown) => (trimmed(value) === "" ? undefined : trimmed(value));
+
+// « Pas de valeur » s'écrit aussi bien "" que null en JSON : les deux mènent à
+// undefined, que `.optional()` accepte. Côté PATCH, c'est la présence de la clé qui
+// dit « efface ce champ » — voir buildModUpdateData.
+const emptyToUndefined = (value: unknown) => {
+  if (value === null) return undefined;
+  const value_ = trimmed(value);
+  return value_ === "" ? undefined : value_;
+};
 
 export const modInputSchema = z.object({
   type: z.enum(MOD_TYPES, { error: "Choisis un type : véhicule ou circuit." }),
@@ -44,15 +52,53 @@ export const modInputSchema = z.object({
 
 export type ModInput = z.infer<typeof modInputSchema>;
 
+/** Version partielle, pour PATCH /api/mods/[id] (US-B3). */
+export const modPatchSchema = modInputSchema.partial();
+
+/** Champs modifiables, tels que Prisma les attend. */
+export interface ModUpdateData {
+  type?: ModInput["type"];
+  name?: string;
+  url?: string;
+  description?: string | null;
+  imageUrl?: string | null;
+}
+
+/**
+ * Traduit un PATCH en données Prisma. Seules les clés réellement présentes dans le
+ * corps de la requête sont modifiées : une clé absente laisse le champ intact, une clé
+ * présente mais vide l'efface. D'où le `?? null` sur les champs optionnels — sans lui,
+ * `undefined` signifierait « ne touche pas » pour Prisma et on ne pourrait jamais
+ * effacer une description.
+ */
+export function buildModUpdateData(
+  payload: Record<string, unknown>,
+  values: Partial<ModInput>,
+): ModUpdateData {
+  return {
+    ...("type" in payload && { type: values.type }),
+    ...("name" in payload && { name: values.name }),
+    ...("url" in payload && { url: values.url }),
+    ...("description" in payload && { description: values.description ?? null }),
+    ...("imageUrl" in payload && { imageUrl: values.imageUrl ?? null }),
+  };
+}
+
 /** Erreurs par champ, dans la forme attendue par le formulaire. */
 export type ModFieldErrors = Partial<Record<keyof ModInput, string>>;
 
-export function toFieldErrors(error: z.ZodError<ModInput>): ModFieldErrors {
-  const { fieldErrors } = z.flattenError(error);
+/**
+ * Premier message d'erreur par champ. On parcourt les issues plutôt que d'utiliser
+ * `z.flattenError`, pour accepter aussi bien le schéma complet (POST) que sa version
+ * partielle (PATCH).
+ */
+export function toFieldErrors(error: z.ZodError): ModFieldErrors {
   const result: ModFieldErrors = {};
-  for (const [field, messages] of Object.entries(fieldErrors)) {
-    const [first] = messages ?? [];
-    if (first) result[field as keyof ModInput] = first;
+  for (const issue of error.issues) {
+    const [field] = issue.path;
+    if (typeof field === "string" && !(field in result)) {
+      result[field as keyof ModInput] = issue.message;
+    }
   }
   return result;
 }

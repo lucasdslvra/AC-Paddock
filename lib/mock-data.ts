@@ -39,6 +39,8 @@ export interface Mod {
   author: string;
   ageLabel: string;
   createdAtLabel: string;
+  /** URL publique de l'image d'aperçu (US-B2), absente sur les fiches de démo. */
+  imageUrl?: string;
   description?: string;
   primaryLink?: ModLink;
   altLinks?: ModLink[];

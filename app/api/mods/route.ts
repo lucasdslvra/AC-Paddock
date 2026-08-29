@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { modInputSchema, toFieldErrors } from "@/lib/mods/schema";
 import { serializeMod } from "@/lib/mods/serialize";
+import { isModImageUrl } from "@/lib/supabase/storage";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -26,6 +27,15 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return Response.json(
       { error: "Formulaire invalide.", fieldErrors: toFieldErrors(parsed.error) },
+      { status: 400 },
+    );
+  }
+
+  // L'URL d'image ne peut venir que de notre propre route d'upload : on refuse
+  // qu'une fiche pointe vers une image hébergée ailleurs.
+  if (parsed.data.imageUrl && !isModImageUrl(parsed.data.imageUrl)) {
+    return Response.json(
+      { error: "Formulaire invalide.", fieldErrors: { imageUrl: "Image inconnue : dépose-la via le formulaire." } },
       { status: 400 },
     );
   }

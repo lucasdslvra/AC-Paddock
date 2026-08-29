@@ -45,6 +45,59 @@ Les tables ont RLS activé sans aucune policy : l'API REST publique de Supabase 
 renvoie rien, et Prisma (rôle propriétaire) n'est pas concerné par RLS.
 
 
+## Stockage des images (US-B2)
+
+Les images d'aperçu des mods vont dans un bucket Supabase Storage nommé `mod-images`,
+en **public** : `Mod.imageUrl` stocke une URL directement affichable, sans signature à
+renouveler. Le bucket doit exister (Storage → New bucket → `mod-images`, coché public).
+
+L'upload passe toujours par `POST /api/uploads/mod-image`, côté serveur, avec la clé
+secrète (`sb_secret_…`) — elle ne doit jamais être exposée au navigateur. La route vérifie la
+session, le type MIME et la taille, puis renvoie l'URL publique que le formulaire place
+dans `imageUrl`. `POST /api/mods` refuse toute `imageUrl` qui ne vient pas de ce bucket.
+
+Le host Supabase est ajouté aux `images.remotePatterns` de `next.config.ts` à partir de
+`SUPABASE_URL` — sans cette variable, `next/image` refusera d'afficher les vignettes.
+`next.config.ts` n'est évalué qu'au démarrage : après avoir ajouté ou changé
+`SUPABASE_URL`, **redémarre `next dev`**, un rechargement de `.env.local` ne suffit pas.
+
+### Compression à l'upload
+
+Formats acceptés en entrée : **JPG et PNG** uniquement (`image/jpeg`, `image/jpg`,
+`image/png`). Le bucket n'autorise en écriture que `image/webp`, `image/png` et
+`image/jpeg`.
+
+Les images sont ré-encodées côté serveur avant d'atteindre le bucket
+([lib/mods/image-processing.ts](lib/mods/image-processing.ts)) : réduction à 1600 px sur
+le plus grand côté, WebP qualité 80, métadonnées supprimées. Sur une photo de
+2048×2048, ça donne ~79 % d'octets en moins sans différence visible — les deux endroits
+où l'image s'affiche sont une vignette de 52 px et une bande d'aperçu de 700 px de
+large au plus, et `next/image` réduit encore derrière.
+
+L'orientation EXIF est appliquée avant que les métadonnées soient retirées, sinon les
+photos de téléphone ressortent couchées. Si le ré-encodage pèse plus lourd que
+l'original — possible sur un PNG déjà minuscule — l'original est conservé ; le JPEG fait
+exception et reste toujours normalisé, à cause de l'EXIF.
+
+## Nettoyage des images orphelines
+
+Une image est déposée dans le bucket *avant* que la fiche existe. Deux mécanismes
+évitent qu'elle y reste pour rien :
+
+1. **Suppression immédiate** — quand le formulaire remplace ou retire une image déjà
+   envoyée, il appelle `DELETE /api/uploads/mod-image`. La route refuse (409) toute
+   image déjà référencée par une fiche, pour qu'on ne puisse pas vider l'aperçu d'un
+   mod existant par ce chemin.
+2. **Balayage de rattrapage** — `GET /api/maintenance/orphan-images` liste le bucket,
+   soustrait les `Mod.imageUrl` connus, et supprime le reste au-delà d'un délai de
+   grâce de 6 h (`ORPHAN_GRACE_MS`). Ce délai protège les formulaires encore ouverts.
+   C'est ce qui rattrape l'onglet fermé sans publier, cas qu'aucun appel client ne peut
+   couvrir.
+
+La route de balayage exige `Authorization: Bearer $CRON_SECRET` et refuse de tourner
+si `CRON_SECRET` n'est pas défini. `vercel.json` la déclenche tous les jours à 4 h ;
+en local, on peut l'appeler à la main avec le même en-tête.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

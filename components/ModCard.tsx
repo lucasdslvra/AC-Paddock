@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useState } from "react";
 import type { Mod } from "@/lib/mock-data";
-import { AvatarPlaceholder } from "./AvatarPlaceholder";
 import { MiniBarChart } from "./MiniBarChart";
+import { ModThumbnail } from "./ModThumbnail";
 import { TagPill } from "./TagPill";
 import { TypeBadge } from "./TypeBadge";
 import { UserAvatar } from "./UserAvatar";
@@ -24,7 +24,7 @@ export function ModCard({ mod }: ModCardProps) {
   return (
     <article className="flex flex-col gap-[10px] rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[13px]">
       <Link href={`/mods/${mod.id}`} className="flex gap-[11px]">
-        <AvatarPlaceholder size={52} variant="thumb" />
+        <ModThumbnail src={mod.imageUrl} name={mod.name} size={52} />
         <div className="min-w-0">
           <TypeBadge type={mod.type} />
           <div className="mt-[2px] text-pretty text-sm font-semibold leading-tight">{mod.name}</div>

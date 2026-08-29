@@ -30,6 +30,16 @@ export const modInputSchema = z.object({
     emptyToUndefined,
     z.string().max(2000, "La description ne doit pas dépasser 2000 caractères.").optional(),
   ),
+  // Renseignée par la route d'upload (US-B2), jamais saisie à la main. Le contrôle
+  // « c'est bien une image de notre bucket » se fait côté serveur, où le préfixe
+  // Supabase est connu — ce schéma est aussi chargé par le navigateur.
+  imageUrl: z.preprocess(
+    emptyToUndefined,
+    z
+      .url({ protocol: /^https?$/, error: "Lien d'image invalide." })
+      .max(2048, "Ce lien d'image est trop long.")
+      .optional(),
+  ),
 });
 
 export type ModInput = z.infer<typeof modInputSchema>;

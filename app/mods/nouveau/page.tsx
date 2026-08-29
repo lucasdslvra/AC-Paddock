@@ -2,10 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { BreadcrumbHeader } from "@/components/BreadcrumbHeader";
 import { TagPill } from "@/components/TagPill";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
+import {
+  describeImageProblem,
+  IMAGE_ACCEPT_ATTRIBUTE,
+  MAX_IMAGE_LABEL,
+} from "@/lib/mods/image";
 import { modInputSchema, toFieldErrors, type ModFieldErrors } from "@/lib/mods/schema";
 import { toDbModType } from "@/lib/mods/type";
 import { currentSession, mods, type ModType } from "@/lib/mock-data";
@@ -22,6 +27,12 @@ export default function NouveauModPage() {
   const [description, setDescription] = useState("");
   const [tagInput, setTagInput] = useState("");
   const [addedTags, setAddedTags] = useState<string[]>([]);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageName, setImageName] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [fieldErrors, setFieldErrors] = useState<ModFieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -38,6 +49,85 @@ export default function NouveauModPage() {
     return mods.find((mod) => mod.primaryLink && query.includes(mod.primaryLink.url.toLowerCase()));
   }, [url]);
 
+  // L'aperçu local est un object URL : il faut le libérer, sinon le blob reste en
+  // mémoire tant que l'onglet est ouvert.
+  useEffect(() => {
+    return () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+    };
+  }, [imagePreview]);
+
+  function resetFileInput() {
+    // Sans ça, re-sélectionner le même fichier ne déclenche pas de nouvel événement.
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  }
+
+  /**
+   * L'image déjà déposée n'est rattachée à aucune fiche : on la retire du bucket tout
+   * de suite. Au pire l'appel échoue et le balayage périodique la ramassera plus tard,
+   * donc on n'attend pas la réponse et on ne remonte pas d'erreur à l'utilisateur.
+   */
+  function releaseUploadedImage(url: string | null) {
+    if (!url) return;
+    void fetch("/api/uploads/mod-image", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    }).catch(() => {});
+  }
+
+  function clearImage() {
+    releaseUploadedImage(imageUrl);
+    // L'object URL de l'aperçu est libéré par l'effet ci-dessus, au changement d'état.
+    setImagePreview(null);
+    setImageUrl(null);
+    setImageName(null);
+    resetFileInput();
+  }
+
+  async function handleImageFile(file: File) {
+    setImageError(null);
+
+    const problem = describeImageProblem(file);
+    if (problem) {
+      // On garde l'image déjà attachée : un mauvais choix de fichier ne doit pas la perdre.
+      setImageError(problem);
+      resetFileInput();
+      return;
+    }
+
+    // Aperçu immédiat, sans attendre l'aller-retour serveur.
+    clearImage();
+    setImagePreview(URL.createObjectURL(file));
+    setImageName(file.name);
+    setIsUploadingImage(true);
+
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const response = await fetch("/api/uploads/mod-image", { method: "POST", body });
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        clearImage();
+        setImageError(result?.error ?? "L'image n'a pas pu être envoyée.");
+        return;
+      }
+      setImageUrl(result.url);
+    } catch {
+      clearImage();
+      setImageError("Impossible d'envoyer l'image. Réessaie dans un instant.");
+    } finally {
+      setIsUploadingImage(false);
+    }
+  }
+
+  function handleImageDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const [file] = Array.from(event.dataTransfer.files);
+    if (file) void handleImageFile(file);
+  }
+
   const tagQuery = tagInput.trim().toLowerCase();
   const allTagNames = useMemo(() => Array.from(new Set(mods.flatMap((mod) => mod.tags))), []);
   const matchingTag = tagQuery ? allTagNames.find((tag) => tag.includes(tagQuery)) : undefined;
@@ -48,7 +138,13 @@ export default function NouveauModPage() {
 
     // Même schéma qu'en base : la validation client évite un aller-retour inutile,
     // celle de la route POST reste la seule qui fasse autorité.
-    const parsed = modInputSchema.safeParse({ type: toDbModType(type), name, url, description });
+    const parsed = modInputSchema.safeParse({
+      type: toDbModType(type),
+      name,
+      url,
+      description,
+      imageUrl: imageUrl ?? undefined,
+    });
     if (!parsed.success) {
       setFieldErrors(toFieldErrors(parsed.error));
       return;
@@ -96,7 +192,7 @@ export default function NouveauModPage() {
             <button
               type="submit"
               form={FORM_ID}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isUploadingImage}
               className="rounded-sm px-[14px] py-2 font-sans text-xs font-semibold disabled:opacity-60"
               style={{ background: "var(--color-amber)", color: "var(--color-ink)" }}
             >
@@ -328,18 +424,75 @@ export default function NouveauModPage() {
 
         <div className="flex flex-col gap-3">
           <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[15px]">
-            <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
-              IMAGE D&apos;APERÇU — OPTIONNELLE
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
+                IMAGE D&apos;APERÇU — OPTIONNELLE
+              </span>
+              <span className="font-mono text-[10px] text-[var(--color-text-muted)]">
+                max {MAX_IMAGE_LABEL}
+              </span>
             </div>
-            <div
-              className="mt-[9px] flex h-24 items-center justify-center rounded-sm border border-dashed border-[var(--color-border-dashed)] font-mono text-[10px] text-[var(--color-text-muted)]"
-              style={{
-                backgroundImage:
-                  "repeating-linear-gradient(135deg, var(--color-placeholder-a) 0 6px, var(--color-placeholder-b) 6px 12px)",
+
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept={IMAGE_ACCEPT_ATTRIBUTE}
+              className="hidden"
+              onChange={(event) => {
+                const [file] = Array.from(event.target.files ?? []);
+                if (file) void handleImageFile(file);
               }}
+            />
+
+            <div
+              onDrop={handleImageDrop}
+              onDragOver={(event) => event.preventDefault()}
+              onClick={() => imageInputRef.current?.click()}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  imageInputRef.current?.click();
+                }
+              }}
+              className="mt-[9px] flex h-24 cursor-pointer items-center justify-center rounded-sm border border-dashed border-[var(--color-border-dashed)] bg-cover bg-center font-mono text-[10px] text-[var(--color-text-muted)]"
+              style={
+                imagePreview
+                  ? { backgroundImage: `url(${imagePreview})` }
+                  : {
+                      backgroundImage:
+                        "repeating-linear-gradient(135deg, var(--color-placeholder-a) 0 6px, var(--color-placeholder-b) 6px 12px)",
+                    }
+              }
             >
-              glisse une image ici
+              {!imagePreview && <span>glisse une image ici</span>}
+              {isUploadingImage && (
+                <span className="rounded-sm bg-[var(--color-surface)] px-2 py-1">envoi…</span>
+              )}
             </div>
+
+            {imageError && (
+              <p className="mt-[7px] font-mono text-[10px] leading-[1.5]" style={{ color: "var(--color-danger-text)" }}>
+                {imageError}
+              </p>
+            )}
+
+            {imagePreview && !isUploadingImage && (
+              <div className="mt-[7px] flex items-center justify-between gap-2">
+                <span className="min-w-0 truncate font-mono text-[10px] text-[var(--color-text-muted)]">
+                  {imageUrl ? imageName : "envoi interrompu"}
+                </span>
+                <button
+                  type="button"
+                  onClick={clearImage}
+                  className="flex-none border-b font-sans text-[11px] font-medium text-[var(--color-link)]"
+                  style={{ borderColor: "var(--color-amber)" }}
+                >
+                  retirer
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[15px]">

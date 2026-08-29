@@ -20,6 +20,7 @@ export function toModView(mod: ModModel & { author: UserModel }): ModView {
     author: mod.author.username,
     ageLabel: formatAge(mod.createdAt),
     createdAtLabel: formatCreatedAt(mod.createdAt),
+    imageUrl: mod.imageUrl ?? undefined,
     description: mod.description ?? undefined,
     primaryLink: {
       label: formatLinkLabel(mod.url),

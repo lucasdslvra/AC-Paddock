@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/maintenance/orphan-images",
+      "schedule": "0 4 * * *"
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { AvatarPlaceholder } from "@/components/AvatarPlaceholder";
@@ -88,17 +89,28 @@ export function ModDetailView({ mod }: ModDetailViewProps) {
               </div>
             </div>
             <div
-              className="flex items-end justify-between border-y border-[var(--color-border)] px-[14px] py-[10px]"
+              className="relative flex items-end justify-between overflow-hidden border-y border-[var(--color-border)] px-[14px] py-[10px]"
               style={{
                 height: 250,
-                backgroundImage:
-                  "repeating-linear-gradient(135deg, var(--color-placeholder-a) 0 7px, var(--color-placeholder-b) 7px 14px)",
+                backgroundImage: mod.imageUrl
+                  ? undefined
+                  : "repeating-linear-gradient(135deg, var(--color-placeholder-a) 0 7px, var(--color-placeholder-b) 7px 14px)",
               }}
             >
-              <span className="font-mono text-[10px] text-[var(--color-text-muted)]">
-                aperçu du mod — image déposée par un membre
-              </span>
-              <span className="rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2 py-1 font-mono text-[10px] text-[var(--color-text-secondary)]">
+              {mod.imageUrl ? (
+                <Image
+                  src={mod.imageUrl}
+                  alt={`Aperçu de ${mod.name}`}
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 700px"
+                  className="object-cover"
+                />
+              ) : (
+                <span className="font-mono text-[10px] text-[var(--color-text-muted)]">
+                  aperçu du mod — image déposée par un membre
+                </span>
+              )}
+              <span className="relative ml-auto rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2 py-1 font-mono text-[10px] text-[var(--color-text-secondary)]">
                 remplacer l&apos;image
               </span>
             </div>

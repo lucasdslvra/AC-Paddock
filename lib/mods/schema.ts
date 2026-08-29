@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  MAX_TAGS_PER_MOD,
+  normalizeTagList,
+  TAG_MAX_LENGTH,
+  TAG_MIN_LENGTH,
+} from "./tags";
 import { MOD_TYPES } from "./type";
 
 // Ce schéma est partagé : le formulaire s'en sert pour la validation côté client,
@@ -48,6 +54,24 @@ export const modInputSchema = z.object({
       .max(2048, "Ce lien d'image est trop long.")
       .optional(),
   ),
+  // US-C1 — plusieurs tags par mod, créés à la volée. `normalizeTagList` ramène chaque
+  // saisie à sa forme canonique et fusionne les doublons *avant* la validation : sans
+  // ça, `Drift` et `drift` compteraient pour deux dans la limite ci-dessous.
+  //
+  // Absent du corps de la requête, ce champ vaut `[]` — sauf en PATCH, où `.partial()`
+  // court-circuite le preprocess et laisse `undefined`, ce qui veut dire « ne touche
+  // pas aux tags » (voir buildModUpdateData pour la même règle sur les autres champs).
+  tags: z.preprocess(
+    normalizeTagList,
+    z
+      .array(
+        z
+          .string()
+          .min(TAG_MIN_LENGTH, `Un tag doit faire au moins ${TAG_MIN_LENGTH} caractères.`)
+          .max(TAG_MAX_LENGTH, `Un tag ne doit pas dépasser ${TAG_MAX_LENGTH} caractères.`),
+      )
+      .max(MAX_TAGS_PER_MOD, `Pas plus de ${MAX_TAGS_PER_MOD} tags par fiche.`),
+  ),
 });
 
 export type ModInput = z.infer<typeof modInputSchema>;
@@ -55,7 +79,11 @@ export type ModInput = z.infer<typeof modInputSchema>;
 /** Version partielle, pour PATCH /api/mods/[id] (US-B3). */
 export const modPatchSchema = modInputSchema.partial();
 
-/** Champs modifiables, tels que Prisma les attend. */
+/**
+ * Champs scalaires modifiables, tels que Prisma les attend. Les tags n'y sont pas :
+ * ce sont des lignes `ModTag` à écrire, et il faut d'abord résoudre les noms en ids —
+ * une opération asynchrone, que la route compose à part (voir lib/mods/tags-store.ts).
+ */
 export interface ModUpdateData {
   type?: ModInput["type"];
   name?: string;

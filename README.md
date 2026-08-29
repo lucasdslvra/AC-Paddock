@@ -67,13 +67,73 @@ trouverait elle-même.
 relu en base à chaque requête plutôt que porté par la session : un changement de rôle
 prend effet tout de suite, sans attendre une reconnexion.
 
-L'image de la fiche est retirée du bucket dans la foulée. Les associations
-(`ModTag`, `Vote`, `SessionMod`) n'existent pas encore ; quand elles arriveront, leur
-relation vers `Mod` devra porter `onDelete: Cascade` — le rappel est dans
-`prisma/schema.prisma`.
+L'image de la fiche est retirée du bucket dans la foulée. Ses associations `ModTag`
+partent avec elle (`onDelete: Cascade`, US-C1) ; `Vote` et `SessionMod` suivront le même
+modèle quand ils arriveront — le rappel est dans `prisma/schema.prisma`.
 
 Aucun admin n'est désigné pour l'instant : `User.role` vaut `MEMBER` par défaut. Pour
 en promouvoir un, passer son rôle à `ADMIN` en base.
+
+## Tags (US-C1, US-C2)
+
+Modèle `Tag` + table d'association `ModTag` (`prisma/schema.prisma`). Les deux relations
+de `ModTag` portent `onDelete: Cascade` : supprimer une fiche ou un tag ne laisse jamais
+d'association orpheline. Un tag survit en revanche à la dernière fiche qui le portait —
+il appartient au vocabulaire commun.
+
+### Normalisation
+
+Tout tag passe par `normalizeTagName` ([lib/mods/tags.ts](lib/mods/tags.ts)) avant
+d'atteindre la base : minuscules, accents retirés, mots liés par des tirets. `Drift`,
+`drift` et `  DRIFT ` désignent donc la même ligne `Tag`, et le `@unique` sur
+`Tag.name` le fait respecter. C'est ce qui répond au « éviter les doublons/variantes »
+du cahier §2.2 — l'autocomplétion seule n'y suffit pas, rien n'empêche de taper à côté.
+
+Cette normalisation vaut aussi pour le terme cherché : `GET /api/tags?query=Drift`
+trouve `drift` sans comparaison insensible à la casse côté base.
+
+### Écriture
+
+`POST /api/mods` et `PATCH /api/mods/[id]` acceptent un tableau `tags` de noms. La
+logique « findOrCreate » est dans [lib/mods/tags-store.ts](lib/mods/tags-store.ts) :
+`createMany` + `skipDuplicates`, puis relecture. Passer par la contrainte d'unicité
+plutôt que par un `findMany` suivi d'un `create` évite qu'enregistrer deux fiches avec
+le même tag neuf au même instant fasse échouer la seconde.
+
+En PATCH, `tags` suit la même sémantique que les autres champs : clé absente = tags
+inchangés, clé présente = l'ensemble est **remplacé** (d'où le `deleteMany` préalable),
+tableau vide = tous retirés. Le formulaire renvoie toujours la liste complète.
+
+Un mod est plafonné à 8 tags (`MAX_TAGS_PER_MOD`).
+
+### Lecture et filtrage
+
+`GET /api/mods?tags=drift,jdm` filtre le catalogue. Les formes `?tags=drift&tags=jdm` et
+`?tags[]=…` sont acceptées aussi. Les tags se **combinent en ET** : la fiche doit porter
+tous les tags demandés, ce qui donne un `some` par tag dans le `where` — un seul `in`
+répondrait « au moins un », qui n'est pas la question posée par le cahier §2.3.
+
+Toutes les lectures de fiches partagent l'objet `modInclude`
+([lib/mods/serialize.ts](lib/mods/serialize.ts)), pour qu'aucune ne puisse oublier de
+charger les tags. Ils ressortent triés par nom.
+
+### Interface
+
+[components/TagInput.tsx](components/TagInput.tsx) — multi-select avec autocomplétion
+sur `GET /api/tags` (les plus utilisés d'abord, avec leur nombre de fiches), création à
+la volée, navigation clavier, virgule et entrée pour valider, retour arrière pour
+retirer la dernière pastille.
+
+Le filtre du catalogue vit dans les **query params de l'URL** (`/catalogue?tags=drift,jdm`),
+pas dans un état local : la sélection survit à un rechargement, se partage par lien, et
+une pastille cliquée sur une fiche de mod y mène directement. `useSearchParams` impose
+une frontière `Suspense`, d'où le découpage `page.tsx` (serveur) /
+`CatalogueView.tsx` (client).
+
+La grille du catalogue affiche encore les fiches de démonstration de `lib/mock-data.ts` :
+son branchement sur `GET /api/mods` appartient à US-E1. En attendant, la liste des tags
+du panneau latéral est l'union des vrais tags (API) et de ceux des fiches de démo ; la
+seconde moitié disparaîtra avec les mocks.
 
 ## Stockage des images (US-B2)
 

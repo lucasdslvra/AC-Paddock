@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { BreadcrumbHeader } from "@/components/BreadcrumbHeader";
-import { TagPill } from "@/components/TagPill";
+import { TagInput } from "@/components/TagInput";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
 import { describeImageProblem, IMAGE_ACCEPT_ATTRIBUTE, MAX_IMAGE_LABEL } from "@/lib/mods/image";
 import { modInputSchema, toFieldErrors, type ModFieldErrors } from "@/lib/mods/schema";
@@ -21,6 +21,7 @@ export interface ModFormValues {
   url: string;
   description: string;
   imageUrl: string | null;
+  tags: string[];
   author: string;
 }
 
@@ -38,8 +39,7 @@ export function ModForm({ mod }: ModFormProps) {
   const [name, setName] = useState(mod?.name ?? "");
   const [url, setUrl] = useState(mod?.url ?? "");
   const [description, setDescription] = useState(mod?.description ?? "");
-  const [tagInput, setTagInput] = useState("");
-  const [addedTags, setAddedTags] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>(mod?.tags ?? []);
   const [imageUrl, setImageUrl] = useState<string | null>(mod?.imageUrl ?? null);
   const [imagePreview, setImagePreview] = useState<string | null>(mod?.imageUrl ?? null);
   const [imageName, setImageName] = useState<string | null>(mod?.imageUrl ? "image actuelle" : null);
@@ -146,10 +146,6 @@ export function ModForm({ mod }: ModFormProps) {
     if (file) void handleImageFile(file);
   }
 
-  const tagQuery = tagInput.trim().toLowerCase();
-  const allTagNames = useMemo(() => Array.from(new Set(mods.flatMap((entry) => entry.tags))), []);
-  const matchingTag = tagQuery ? allTagNames.find((tag) => tag.includes(tagQuery)) : undefined;
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitError(null);
@@ -163,6 +159,7 @@ export function ModForm({ mod }: ModFormProps) {
       url,
       description,
       imageUrl: imageUrl ?? undefined,
+      tags,
     });
     if (!parsed.success) {
       setFieldErrors(toFieldErrors(parsed.error));
@@ -414,50 +411,7 @@ export function ModForm({ mod }: ModFormProps) {
             )}
           </div>
 
-          <div>
-            <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
-              TAGS — OPTIONNELS
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-[6px] rounded-t-sm border border-[var(--color-border-strong)] bg-white px-[11px] py-[9px]">
-              {addedTags.map((tag) => (
-                <TagPill
-                  key={tag}
-                  label={tag}
-                  active
-                  removable
-                  onClick={() => setAddedTags((current) => current.filter((t) => t !== tag))}
-                />
-              ))}
-              <input
-                value={tagInput}
-                onChange={(event) => setTagInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && tagInput.trim()) {
-                    event.preventDefault();
-                    const value = matchingTag ?? tagInput.trim();
-                    setAddedTags((current) => (current.includes(value) ? current : [...current, value]));
-                    setTagInput("");
-                  }
-                }}
-                placeholder="ajouter un tag"
-                className="min-w-[100px] flex-1 bg-transparent font-mono text-xs text-[#4b5158] outline-none placeholder:text-[var(--color-text-faint)]"
-              />
-            </div>
-            {tagQuery && (
-              <div className="rounded-b-sm border border-t-0 border-[var(--color-border-strong)] bg-white">
-                {matchingTag && (
-                  <div className="flex justify-between border-b border-[var(--color-border-hairline)] px-3 py-2">
-                    <span className="font-mono text-[11px]">{matchingTag}</span>
-                    <span className="font-mono text-[10px] text-[var(--color-text-muted)]">existant</span>
-                  </div>
-                )}
-                <div className="flex justify-between px-3 py-2">
-                  <span className="font-mono text-[11px]">« {tagInput.trim()} » — créer ce tag</span>
-                  <span className="font-mono text-[10px] text-[var(--color-link)]">entrée</span>
-                </div>
-              </div>
-            )}
-          </div>
+          <TagInput value={tags} onChange={setTags} error={fieldErrors.tags} />
         </div>
 
         <div className="flex flex-col gap-3">

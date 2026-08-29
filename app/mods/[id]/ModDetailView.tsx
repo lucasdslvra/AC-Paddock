@@ -91,9 +91,11 @@ export function ModDetailView({ mod, editHref, canDelete = false }: ModDetailVie
               </h1>
               <div className="mt-3 flex flex-wrap gap-[5px]">
                 {mod.tags.map((tag) => (
-                  <TagPill key={tag} label={tag} />
+                  <TagPill key={tag} label={tag} href={`/catalogue?tags=${tag}`} />
                 ))}
-                <DashedAddChip label="+ ajouter un tag" />
+                {/* Les tags s'ajoutent depuis le formulaire, qui porte déjà
+                    l'autocomplétion (US-C1) — inutile d'en avoir deux. */}
+                {editHref && <DashedAddChip label="+ ajouter un tag" href={editHref} />}
               </div>
             </div>
             <div

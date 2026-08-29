@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { getModById } from "@/lib/mock-data";
 import { canDeleteMod } from "@/lib/mods/permissions";
+import { modInclude } from "@/lib/mods/serialize";
 import { toModView } from "@/lib/mods/view";
 import { prisma } from "@/lib/prisma";
 import { ModDetailView } from "./ModDetailView";
@@ -13,7 +14,7 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
   if (!session?.user) redirect("/");
 
   const [record, actor] = await Promise.all([
-    prisma.mod.findUnique({ where: { id }, include: { author: true } }),
+    prisma.mod.findUnique({ where: { id }, include: modInclude }),
     // Pas de ligne User tant que le membre n'a rien créé : il n'est alors ni auteur
     // ni admin, et `canDeleteMod` répond non.
     prisma.user.findUnique({

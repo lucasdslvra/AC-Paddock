@@ -1,7 +1,8 @@
 import { auth } from "@/auth";
 import { canDeleteMod } from "@/lib/mods/permissions";
 import { buildModUpdateData, modPatchSchema, toFieldErrors } from "@/lib/mods/schema";
-import { serializeMod } from "@/lib/mods/serialize";
+import { modInclude, serializeMod } from "@/lib/mods/serialize";
+import { buildTagReplaceWrite } from "@/lib/mods/tags-store";
 import { prisma } from "@/lib/prisma";
 import { deleteModImages, isModImageUrl, modImagePath } from "@/lib/supabase/storage";
 
@@ -53,7 +54,22 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/mods/[id]"
       return Response.json({ error: "Cette fiche n'existe pas." }, { status: 404 });
     }
 
-    const mod = await prisma.mod.update({ where: { id }, data, include: { author: true } });
+    // Même sémantique PATCH que pour les champs scalaires : « tags » absent du corps
+    // laisse les tags en place, « tags » présent remplace l'ensemble — un tableau vide
+    // les retire donc tous. Le formulaire renvoie toujours la liste complète (US-C1).
+    //
+    // Résolu après le 404 : l'écriture crée les tags manquants, et une requête sur une
+    // fiche inexistante n'a pas à laisser de tags neufs derrière elle.
+    const tagWrite =
+      "tags" in payload && parsed.data.tags
+        ? await buildTagReplaceWrite(parsed.data.tags)
+        : undefined;
+
+    const mod = await prisma.mod.update({
+      where: { id },
+      data: { ...data, ...(tagWrite && { tags: tagWrite }) },
+      include: modInclude,
+    });
 
     // L'ancienne image n'est plus référencée : on la retire du bucket. Si ça échoue,
     // le balayage périodique la ramassera — pas de raison de faire échouer l'édition.
@@ -77,9 +93,9 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/mods/[id]"
 
 /**
  * US-B4 — suppression d'une fiche, réservée à son auteur ou à un admin.
- * La suppression en cascade des associations (ModTag, Vote, SessionMod) sera assurée
- * par les `onDelete: Cascade` posés sur leurs relations quand ces modèles arriveront
- * (Epics C, F et G) — voir prisma/schema.prisma.
+ * Ses associations `ModTag` partent avec elle, via le `onDelete: Cascade` posé sur la
+ * relation (US-C1). Les tags eux-mêmes survivent : ils appartiennent au vocabulaire
+ * commun, pas à la fiche. Vote et SessionMod suivront le même modèle (Epics F et G).
  */
 export async function DELETE(_request: Request, ctx: RouteContext<"/api/mods/[id]">) {
   const session = await auth();

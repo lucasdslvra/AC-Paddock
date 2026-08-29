@@ -1,0 +1,61 @@
+// Schéma Prisma — voir le cahier des charges §4 « Modèle de données ».
+// Périmètre actuel : US-A5 (User) et US-B1 (Mod). Les modèles Tag/ModTag (Epic C),
+// Vote (Epic F) et Session/SessionMod (Epic G) seront ajoutés par leurs US respectives.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  MEMBER
+  ADMIN
+}
+
+/// Vocabulaire du cahier des charges §4 : type (car/track).
+/// L'interface parle de « véhicule » / « circuit » — la conversion est faite
+/// à la frontière de l'API, dans lib/mods/type.ts.
+enum ModType {
+  CAR
+  TRACK
+}
+
+model User {
+  id        String   @id @default(cuid())
+  discordId String   @unique
+  username  String
+  avatarUrl String?
+  role      Role     @default(MEMBER)
+  createdAt DateTime @default(now())
+
+  mods Mod[]
+}
+
+model Mod {
+  id          String  @id @default(cuid())
+  type        ModType
+  name        String
+  /// Lien externe (RaceDepartment, Drive…) — champ principal du cahier §2.2.
+  url         String
+  description String?
+  imageUrl    String?
+
+  /// Fichier uploadé (Epic H) : encore vide tant que US-H1 n'est pas faite,
+  /// mais présent dès maintenant pour coller au modèle du cahier §4.
+  fileUrl        String?
+  fileUploadedAt DateTime?
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id])
+
+  createdAt DateTime @default(now())
+  /// Usage wiki : n'importe quel membre peut éditer la fiche (US-B3).
+  updatedAt DateTime @updatedAt
+
+  @@index([authorId])
+  @@index([createdAt])
+}

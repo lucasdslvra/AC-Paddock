@@ -2,7 +2,10 @@ export type ModType = "vehicule" | "circuit";
 
 export interface ModLink {
   label: string;
+  /** Version affichée du lien, sans protocole. */
   url: string;
+  /** Lien absolu réel. Absent sur les données mock, qui n'ont pas de protocole. */
+  href?: string;
   addedBy?: string;
 }
 

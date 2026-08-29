@@ -1,20 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useMemo, useState, type FormEvent } from "react";
 import { BreadcrumbHeader } from "@/components/BreadcrumbHeader";
 import { TagPill } from "@/components/TagPill";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
+import { modInputSchema, toFieldErrors, type ModFieldErrors } from "@/lib/mods/schema";
+import { toDbModType } from "@/lib/mods/type";
 import { currentSession, mods, type ModType } from "@/lib/mock-data";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 
+const FORM_ID = "nouveau-mod";
+
 export default function NouveauModPage() {
   const { session, isLoading } = useRequireAuth();
+  const router = useRouter();
   const [type, setType] = useState<ModType>("vehicule");
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
+  const [description, setDescription] = useState("");
   const [tagInput, setTagInput] = useState("");
   const [addedTags, setAddedTags] = useState<string[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<ModFieldErrors>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const similarMods = useMemo(() => {
     const query = name.trim().toLowerCase();
@@ -32,6 +42,44 @@ export default function NouveauModPage() {
   const allTagNames = useMemo(() => Array.from(new Set(mods.flatMap((mod) => mod.tags))), []);
   const matchingTag = tagQuery ? allTagNames.find((tag) => tag.includes(tagQuery)) : undefined;
 
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitError(null);
+
+    // Même schéma qu'en base : la validation client évite un aller-retour inutile,
+    // celle de la route POST reste la seule qui fasse autorité.
+    const parsed = modInputSchema.safeParse({ type: toDbModType(type), name, url, description });
+    if (!parsed.success) {
+      setFieldErrors(toFieldErrors(parsed.error));
+      return;
+    }
+
+    setFieldErrors({});
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch("/api/mods", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed.data),
+      });
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        if (body?.fieldErrors) setFieldErrors(body.fieldErrors);
+        setSubmitError(body?.error ?? "La fiche n'a pas pu être enregistrée.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // On garde le bouton désactivé pendant la navigation vers la fiche créée.
+      router.push(`/mods/${body.id}`);
+    } catch {
+      setSubmitError("Impossible de joindre le serveur. Réessaie dans un instant.");
+      setIsSubmitting(false);
+    }
+  }
+
   if (isLoading) {
     return <p className="p-8">Chargement…</p>;
   }
@@ -45,18 +93,31 @@ export default function NouveauModPage() {
             <Link href="/catalogue" className="rounded-sm border border-[var(--color-border-strong)] px-[13px] py-2 font-sans text-xs font-medium">
               Annuler
             </Link>
-            <span
-              className="rounded-sm px-[14px] py-2 font-sans text-xs font-semibold"
+            <button
+              type="submit"
+              form={FORM_ID}
+              disabled={isSubmitting}
+              className="rounded-sm px-[14px] py-2 font-sans text-xs font-semibold disabled:opacity-60"
               style={{ background: "var(--color-amber)", color: "var(--color-ink)" }}
             >
-              Publier la fiche
-            </span>
+              {isSubmitting ? "Publication…" : "Publier la fiche"}
+            </button>
           </>
         }
       />
 
-      <div className="grid grid-cols-1 gap-[18px] p-5 lg:grid-cols-[1fr_320px]">
+      <form id={FORM_ID} onSubmit={handleSubmit} noValidate className="grid grid-cols-1 gap-[18px] p-5 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-[18px] rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+          {submitError && (
+            <div
+              className="rounded-sm border px-3 py-[10px] font-sans text-xs"
+              style={{ borderColor: "var(--color-danger)", color: "var(--color-danger-text)" }}
+              role="alert"
+            >
+              {submitError}
+            </div>
+          )}
+
           <div>
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
               TYPE — OBLIGATOIRE
@@ -67,6 +128,7 @@ export default function NouveauModPage() {
                   key={option}
                   type="button"
                   onClick={() => setType(option)}
+                  aria-pressed={type === option}
                   className="rounded-sm px-[18px] py-[10px] font-sans text-[13px] font-semibold"
                   style={
                     type === option
@@ -92,12 +154,25 @@ export default function NouveauModPage() {
               )}
             </div>
             <input
+              name="name"
               value={name}
               onChange={(event) => setName(event.target.value)}
+              aria-invalid={Boolean(fieldErrors.name)}
               placeholder="ex. Silvia S15 Rocket Bunny"
               className="mt-2 w-full rounded-sm border bg-white px-[13px] py-[11px] font-sans text-sm text-[#17181c] outline-none"
-              style={{ borderColor: similarMods.length > 0 ? "var(--color-ink)" : "var(--color-border-strong)" }}
+              style={{
+                borderColor: fieldErrors.name
+                  ? "var(--color-danger)"
+                  : similarMods.length > 0
+                    ? "var(--color-ink)"
+                    : "var(--color-border-strong)",
+              }}
             />
+            {fieldErrors.name && (
+              <p className="mt-[6px] font-mono text-[10.5px]" style={{ color: "var(--color-danger-text)" }}>
+                {fieldErrors.name}
+              </p>
+            )}
             {similarMods.length > 0 && (
               <div className="rounded-b-sm border border-t-0 border-[var(--color-border-strong)] bg-white">
                 <div className="border-b border-[var(--color-border-hairline)] px-[13px] py-[7px] font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
@@ -132,12 +207,22 @@ export default function NouveauModPage() {
               LIEN EXTERNE — CHAMP PRINCIPAL
             </div>
             <input
+              name="url"
               value={url}
               onChange={(event) => setUrl(event.target.value)}
+              aria-invalid={Boolean(fieldErrors.url)}
               placeholder="https://www.racedepartment.com/downloads/…"
               className="mt-2 w-full rounded-sm border bg-white px-[13px] py-[11px] font-mono text-xs text-[#17181c] outline-none"
-              style={{ borderColor: matchingUrlMod ? "var(--color-danger)" : "var(--color-border-strong)" }}
+              style={{
+                borderColor:
+                  fieldErrors.url || matchingUrlMod ? "var(--color-danger)" : "var(--color-border-strong)",
+              }}
             />
+            {fieldErrors.url && (
+              <p className="mt-[6px] font-mono text-[10.5px]" style={{ color: "var(--color-danger-text)" }}>
+                {fieldErrors.url}
+              </p>
+            )}
             {matchingUrlMod && (
               <div
                 className="mt-2 flex gap-[11px] rounded-sm border p-3"
@@ -178,9 +263,21 @@ export default function NouveauModPage() {
               DESCRIPTION — OPTIONNELLE
             </div>
             <textarea
+              name="description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              aria-invalid={Boolean(fieldErrors.description)}
               placeholder="Ce qu'il faut savoir avant de l'installer : version, pack de textures requis, physique…"
-              className="mt-2 h-[62px] w-full rounded-sm border border-[var(--color-border-strong)] bg-white px-[13px] py-[11px] font-sans text-xs text-[#17181c] outline-none placeholder:text-[var(--color-text-faint)]"
+              className="mt-2 h-[62px] w-full rounded-sm border bg-white px-[13px] py-[11px] font-sans text-xs text-[#17181c] outline-none placeholder:text-[var(--color-text-faint)]"
+              style={{
+                borderColor: fieldErrors.description ? "var(--color-danger)" : "var(--color-border-strong)",
+              }}
             />
+            {fieldErrors.description && (
+              <p className="mt-[6px] font-mono text-[10.5px]" style={{ color: "var(--color-danger-text)" }}>
+                {fieldErrors.description}
+              </p>
+            )}
           </div>
 
           <div>
@@ -287,7 +384,7 @@ export default function NouveauModPage() {
             pourra ensuite compléter la fiche ; seuls toi et les admins pourrez la supprimer.
           </div>
         </div>
-      </div>
+      </form>
     </div>
   );
 }

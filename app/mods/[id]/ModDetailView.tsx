@@ -10,18 +10,18 @@ import { ProgressBar } from "@/components/ProgressBar";
 import { TagPill } from "@/components/TagPill";
 import { TypeBadge } from "@/components/TypeBadge";
 import { UserAvatar } from "@/components/UserAvatar";
-import { currentSession, getModById } from "@/lib/mock-data";
+import { currentSession, type Mod } from "@/lib/mock-data";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 
 interface ModDetailViewProps {
-  id: string;
+  /** Chargé côté serveur : depuis la base, ou à défaut depuis les données mock. */
+  mod: Mod | undefined;
 }
 
 const TYPE_PLURAL = { vehicule: "Véhicules", circuit: "Circuits" } as const;
 
-export function ModDetailView({ id }: ModDetailViewProps) {
+export function ModDetailView({ mod }: ModDetailViewProps) {
   const { session, isLoading } = useRequireAuth();
-  const mod = getModById(id);
   const [voted, setVoted] = useState(false);
 
   if (isLoading) {
@@ -220,7 +220,10 @@ export function ModDetailView({ id }: ModDetailViewProps) {
 
           {mod.primaryLink && (
             <a
-              href={`https://${mod.primaryLink.url}`}
+              href={mod.primaryLink.href ?? `https://${mod.primaryLink.url}`}
+              target="_blank"
+              rel="noreferrer noopener"
+
               className="flex items-center justify-between rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-[15px] py-[13px]"
             >
               <span>

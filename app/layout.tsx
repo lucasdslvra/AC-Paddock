@@ -40,7 +40,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${spaceGrotesk.variable} ${ibmPlexMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-grid">
+      {/* Les extensions de navigateur (ColorZilla & co.) ajoutent leurs attributs
+          sur <body> avant l'hydratation : on ignore l'écart sur cet élément. */}
+      <body className="min-h-full flex flex-col bg-grid" suppressHydrationWarning>
         <Script id="no-flash-theme" strategy="beforeInteractive">
           {NO_FLASH_THEME_SCRIPT}
         </Script>

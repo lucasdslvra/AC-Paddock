@@ -20,6 +20,31 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Base de données
+
+Postgres hébergé sur Supabase, accédé via Prisma (driver adapter `pg`).
+
+1. Renseigne dans `.env.local` (Supabase → Project Settings → Database → Connection string) :
+   - `DATABASE_URL` : transaction pooler, port 6543 — utilisé par l'app.
+   - `DIRECT_URL` : session pooler, port 5432 — utilisé par le CLI Prisma, le transaction
+     pooler ne supporte pas le DDL.
+
+   Le host direct `db.<ref>.supabase.co` est en IPv6 uniquement sur le plan gratuit :
+   passe par le pooler. Pense à percent-encoder les caractères spéciaux du mot de passe
+   (`$` → `%24`…) : Next.js fait de l'expansion de variables en lisant `.env.local` et
+   tronquerait silencieusement un mot de passe contenant un `$`.
+2. `npx prisma generate` (lancé automatiquement au `npm install` via `postinstall`) —
+   le client est généré dans `lib/generated/prisma`, non versionné.
+
+La migration initiale (`prisma/migrations/20260829000000_init`) a été appliquée
+directement sur la base Supabase puis enregistrée dans l'historique Prisma
+(`prisma migrate resolve --applied`) : `npx prisma migrate status` doit répondre
+« Database schema is up to date ».
+
+Les tables ont RLS activé sans aucune policy : l'API REST publique de Supabase ne
+renvoie rien, et Prisma (rôle propriétaire) n'est pas concerné par RLS.
+
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

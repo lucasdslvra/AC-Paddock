@@ -6,6 +6,7 @@ import { useState } from "react";
 import { AvatarPlaceholder } from "@/components/AvatarPlaceholder";
 import { BreadcrumbHeader } from "@/components/BreadcrumbHeader";
 import { DashedAddChip } from "@/components/DashedAddChip";
+import { DeleteModButton } from "@/components/DeleteModButton";
 import { MiniBarChart } from "@/components/MiniBarChart";
 import { ProgressBar } from "@/components/ProgressBar";
 import { TagPill } from "@/components/TagPill";
@@ -22,11 +23,13 @@ interface ModDetailViewProps {
    * démonstration, qui ne vivent qu'en dur et n'ont rien à éditer.
    */
   editHref?: string;
+  /** Vrai si le membre connecté est l'auteur de la fiche, ou un admin (US-B4). */
+  canDelete?: boolean;
 }
 
 const TYPE_PLURAL = { vehicule: "Véhicules", circuit: "Circuits" } as const;
 
-export function ModDetailView({ mod, editHref }: ModDetailViewProps) {
+export function ModDetailView({ mod, editHref, canDelete = false }: ModDetailViewProps) {
   const { session, isLoading } = useRequireAuth();
   const [voted, setVoted] = useState(false);
 
@@ -311,12 +314,16 @@ export function ModDetailView({ mod, editHref }: ModDetailViewProps) {
               <span className="rounded-sm border border-[var(--color-border-strong)] px-3 py-[9px] font-sans text-xs font-medium">
                 Engager dans la soirée du {currentSession.dateLabel.split(" ").slice(-2).join(" ")}
               </span>
-              <span
-                className="rounded-sm px-3 py-[9px] font-sans text-xs font-medium"
-                style={{ border: "1px solid var(--color-danger)", color: "var(--color-danger-text)" }}
-              >
-                Supprimer — réservé à {mod.author} &amp; admins
-              </span>
+              {canDelete ? (
+                <DeleteModButton modId={mod.id} modName={mod.name} />
+              ) : (
+                <span
+                  className="rounded-sm px-3 py-[9px] font-sans text-xs font-medium opacity-60"
+                  style={{ border: "1px solid var(--color-danger)", color: "var(--color-danger-text)" }}
+                >
+                  Supprimer — réservé à {mod.author} &amp; admins
+                </span>
+              )}
             </div>
           </div>
           <div className="flex items-start gap-2 px-1 font-mono text-[10px] leading-[1.6] text-[var(--color-text-muted)]">

@@ -60,6 +60,21 @@ Le formulaire de création et celui d'édition sont le même composant,
 existante. La détection de doublons est désactivée à l'édition, où la fiche se
 trouverait elle-même.
 
+## Suppression des fiches (US-B4)
+
+`DELETE /api/mods/[id]` est réservé à l'auteur de la fiche ou à un admin
+(`canDeleteMod` dans [lib/mods/permissions.ts](lib/mods/permissions.ts)). Le rôle est
+relu en base à chaque requête plutôt que porté par la session : un changement de rôle
+prend effet tout de suite, sans attendre une reconnexion.
+
+L'image de la fiche est retirée du bucket dans la foulée. Les associations
+(`ModTag`, `Vote`, `SessionMod`) n'existent pas encore ; quand elles arriveront, leur
+relation vers `Mod` devra porter `onDelete: Cascade` — le rappel est dans
+`prisma/schema.prisma`.
+
+Aucun admin n'est désigné pour l'instant : `User.role` vaut `MEMBER` par défaut. Pour
+en promouvoir un, passer son rôle à `ADMIN` en base.
+
 ## Stockage des images (US-B2)
 
 Les images d'aperçu des mods vont dans un bucket Supabase Storage nommé `mod-images`,

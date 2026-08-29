@@ -2,14 +2,18 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { BreadcrumbHeader } from "@/components/BreadcrumbHeader";
+import { ModThumbnail } from "@/components/ModThumbnail";
 import { TagInput } from "@/components/TagInput";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
+import { TypeBadge } from "@/components/TypeBadge";
+import { clearModDraft, readModDraft, saveModDraft } from "@/lib/mods/draft";
 import { describeImageProblem, IMAGE_ACCEPT_ATTRIBUTE, MAX_IMAGE_LABEL } from "@/lib/mods/image";
 import { modInputSchema, toFieldErrors, type ModFieldErrors } from "@/lib/mods/schema";
-import { toDbModType } from "@/lib/mods/type";
-import { currentSession, mods, type ModType } from "@/lib/mock-data";
+import { MOD_TYPES_UI, toDbModType, toUiModType } from "@/lib/mods/type";
+import { useSimilarMods, useUrlDuplicate } from "@/lib/mods/useDuplicates";
+import { currentSession, type ModType } from "@/lib/mock-data";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 
 const FORM_ID = "fiche-mod";
@@ -35,35 +39,46 @@ export function ModForm({ mod }: ModFormProps) {
   const { session, isLoading } = useRequireAuth();
   const router = useRouter();
 
-  const [type, setType] = useState<ModType>(mod?.type ?? "vehicule");
-  const [name, setName] = useState(mod?.name ?? "");
-  const [url, setUrl] = useState(mod?.url ?? "");
-  const [description, setDescription] = useState(mod?.description ?? "");
-  const [tags, setTags] = useState<string[]>(mod?.tags ?? []);
-  const [imageUrl, setImageUrl] = useState<string | null>(mod?.imageUrl ?? null);
-  const [imagePreview, setImagePreview] = useState<string | null>(mod?.imageUrl ?? null);
-  const [imageName, setImageName] = useState<string | null>(mod?.imageUrl ? "image actuelle" : null);
+  // Saisie mise de côté avant d'aller voir une fiche suspectée d'être la même (US-D3).
+  // Lue à l'initialisation, pas dans un effet : les champs sont peuplés dès le premier
+  // rendu, sans passer par un formulaire vide qui se remplirait sous les yeux. Rien
+  // n'est lu pendant le rendu serveur (`readModDraft` s'en garde), et le formulaire
+  // n'est de toute façon affiché qu'une fois la session connue.
+  const [draft] = useState(() => (mod ? null : readModDraft()));
+  const [isDraftRestored, setIsDraftRestored] = useState(draft !== null);
+
+  const [type, setType] = useState<ModType>(mod?.type ?? draft?.type ?? "vehicule");
+  const [name, setName] = useState(mod?.name ?? draft?.name ?? "");
+  const [url, setUrl] = useState(mod?.url ?? draft?.url ?? "");
+  const [description, setDescription] = useState(mod?.description ?? draft?.description ?? "");
+  const [tags, setTags] = useState<string[]>(mod?.tags ?? draft?.tags ?? []);
+  const initialImageUrl = mod?.imageUrl ?? draft?.imageUrl ?? null;
+  const [imageUrl, setImageUrl] = useState<string | null>(initialImageUrl);
+  const [imagePreview, setImagePreview] = useState<string | null>(initialImageUrl);
+  const [imageName, setImageName] = useState<string | null>(
+    mod?.imageUrl ? "image actuelle" : (draft?.imageName ?? null),
+  );
   const [imageError, setImageError] = useState<string | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const urlInputRef = useRef<HTMLInputElement>(null);
   const [fieldErrors, setFieldErrors] = useState<ModFieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Détection de doublons : sans objet à l'édition, où la fiche se trouverait elle-même.
-  const similarMods = useMemo(() => {
-    if (isEditing) return [];
-    const query = name.trim().toLowerCase();
-    if (query.length < 3) return [];
-    return mods.filter((entry) => entry.name.toLowerCase().includes(query)).slice(0, 3);
-  }, [isEditing, name]);
+  // Détection de doublons (US-D1/D2) : sans objet à l'édition, où la fiche se
+  // trouverait elle-même. Les deux vérifications interrogent l'API — le catalogue vit
+  // en base, le formulaire n'en a aucune copie.
+  const similarMods = useSimilarMods(name, !isEditing);
+  const urlDuplicate = useUrlDuplicate(!isEditing);
 
-  const matchingUrlMod = useMemo(() => {
-    if (isEditing) return undefined;
-    const query = url.trim().toLowerCase();
-    if (query.length < 6) return undefined;
-    return mods.find((entry) => entry.primaryLink && query.includes(entry.primaryLink.url.toLowerCase()));
-  }, [isEditing, url]);
+  // Un brouillon repris porte peut-être le lien qui avait justement déclenché
+  // l'aller-retour : on relance la vérification pour que l'avertissement soit exact
+  // dès l'affichage, sans attendre que le champ reprenne le focus.
+  const { check: checkUrlDuplicate } = urlDuplicate;
+  useEffect(() => {
+    if (draft?.url) checkUrlDuplicate(draft.url);
+  }, [draft, checkUrlDuplicate]);
 
   // L'aperçu local est un object URL : il faut le libérer, sinon le blob reste en
   // mémoire tant que l'onglet est ouvert. L'image déjà en ligne (édition) est une URL
@@ -101,6 +116,31 @@ export function ModForm({ mod }: ModFormProps) {
     setImageUrl(null);
     setImageName(null);
     resetFileInput();
+  }
+
+  /**
+   * Met la saisie de côté avant d'ouvrir une fiche existante (US-D3) : au retour, le
+   * formulaire la retrouve telle quelle, et « Voir la fiche » cesse d'être un choix
+   * qui coûte la saisie. L'image déjà envoyée est référencée par son URL — elle reste
+   * dans le bucket, il n'y a rien à renvoyer.
+   */
+  function keepDraft() {
+    saveModDraft({ type, name, url, description, tags, imageUrl, imageName });
+  }
+
+  /** « Repartir de zéro » : la saisie retrouvée n'a plus lieu d'être, on vide tout. */
+  function discardDraft() {
+    clearModDraft();
+    // Libère aussi l'image envoyée avec cette saisie : plus rien ne la référencera.
+    clearImage();
+    setType("vehicule");
+    setName("");
+    setUrl("");
+    setDescription("");
+    setTags([]);
+    setFieldErrors({});
+    urlDuplicate.reset();
+    setIsDraftRestored(false);
   }
 
   async function handleImageFile(file: File) {
@@ -188,6 +228,9 @@ export function ModForm({ mod }: ModFormProps) {
         return;
       }
 
+      // La fiche est publiée : le brouillon n'a plus rien à retenir.
+      if (!isEditing) clearModDraft();
+
       // On garde le bouton désactivé pendant la navigation vers la fiche.
       router.push(`/mods/${body.id}`);
       router.refresh();
@@ -220,6 +263,11 @@ export function ModForm({ mod }: ModFormProps) {
           <>
             <Link
               href={isEditing ? `/mods/${mod.id}` : "/catalogue"}
+              // Renoncer, c'est renoncer aussi à la saisie mise de côté : sans ça, elle
+              // réapparaîtrait à la prochaine ouverture du formulaire.
+              onClick={() => {
+                if (!isEditing) clearModDraft();
+              }}
               className="rounded-sm border border-[var(--color-border-strong)] px-[13px] py-2 font-sans text-xs font-medium"
             >
               Annuler
@@ -239,6 +287,30 @@ export function ModForm({ mod }: ModFormProps) {
 
       <form id={FORM_ID} onSubmit={handleSubmit} noValidate className="grid grid-cols-1 gap-[18px] p-5 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-[18px] rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+          {/* US-D3 — retour depuis une fiche existante : la saisie est là, intacte. */}
+          {isDraftRestored && (
+            <div
+              className="flex items-center justify-between gap-3 rounded-sm border px-3 py-[10px]"
+              style={{
+                borderColor: "var(--color-border-strong)",
+                borderLeft: "3px solid var(--color-amber)",
+              }}
+              role="status"
+            >
+              <span className="font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-secondary)]">
+                Ta saisie a été retrouvée telle que tu l&apos;avais laissée.
+              </span>
+              <button
+                type="button"
+                onClick={discardDraft}
+                className="flex-none border-b font-sans text-[11px] font-medium text-[var(--color-link)]"
+                style={{ borderColor: "var(--color-amber)" }}
+              >
+                repartir de zéro
+              </button>
+            </div>
+          )}
+
           {submitError && (
             <div
               className="rounded-sm border px-3 py-[10px] font-sans text-xs"
@@ -254,7 +326,7 @@ export function ModForm({ mod }: ModFormProps) {
               TYPE — OBLIGATOIRE
             </div>
             <div className="mt-2 flex gap-[7px]">
-              {(["vehicule", "circuit"] as const).map((option) => (
+              {MOD_TYPES_UI.map((option) => (
                 <button
                   key={option}
                   type="button"
@@ -310,21 +382,29 @@ export function ModForm({ mod }: ModFormProps) {
                   DÉJÀ DANS LE CATALOGUE ?
                 </div>
                 {similarMods.map((entry) => (
-                  <div key={entry.id} className="flex items-center gap-[11px] border-b border-[var(--color-border-hairline)] px-[13px] py-[9px] last:border-b-0">
-                    <div
-                      className="h-[34px] w-[34px] flex-none rounded-sm"
-                      style={{
-                        backgroundImage:
-                          "repeating-linear-gradient(135deg, var(--color-placeholder-a) 0 4px, var(--color-placeholder-b) 4px 8px)",
-                      }}
-                    />
-                    <div className="flex-1">
-                      <div className="font-sans text-[13px] font-semibold text-[#17181c]">{entry.name}</div>
-                      <div className="font-mono text-[10px] text-[var(--color-text-muted)]">
-                        {entry.type === "vehicule" ? "véhicule" : "circuit"} · {entry.tags.join(", ")} · {entry.totalVotes} votes
+                  <div
+                    key={entry.id}
+                    className="flex items-center gap-[11px] border-b border-[var(--color-border-hairline)] px-[13px] py-[9px] last:border-b-0"
+                  >
+                    <ModThumbnail src={entry.imageUrl ?? undefined} name={entry.name} size={34} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-sans text-[13px] font-semibold text-[#17181c]">
+                        {entry.name}
+                      </div>
+                      <div className="truncate font-mono text-[10px] text-[var(--color-text-muted)]">
+                        <TypeBadge type={toUiModType(entry.type)} />
+                        {entry.tags.length > 0 && <> · {entry.tags.join(", ")}</>} · par{" "}
+                        {entry.author.username}
                       </div>
                     </div>
-                    <Link href={`/mods/${entry.id}`} className="rounded-sm bg-[var(--color-ink)] px-[10px] py-[6px] font-sans text-[11px] font-medium text-[var(--color-surface)]">
+                    {/* US-D3 — « Voir la fiche existante » : compléter plutôt que
+                        dupliquer. La saisie part avec, et `?brouillon=1` dit à la fiche
+                        d'afficher le retour au formulaire. */}
+                    <Link
+                      href={`/mods/${entry.id}?brouillon=1`}
+                      onClick={keepDraft}
+                      className="flex-none rounded-sm bg-[var(--color-ink)] px-[10px] py-[6px] font-sans text-[11px] font-medium text-[var(--color-surface)]"
+                    >
                       Voir la fiche
                     </Link>
                   </div>
@@ -338,15 +418,31 @@ export function ModForm({ mod }: ModFormProps) {
               LIEN EXTERNE — CHAMP PRINCIPAL
             </div>
             <input
+              ref={urlInputRef}
               name="url"
               value={url}
-              onChange={(event) => setUrl(event.target.value)}
+              onChange={(event) => {
+                setUrl(event.target.value);
+                // Le lien a changé : l'avertissement affiché ne le concerne plus.
+                urlDuplicate.reset();
+              }}
+              // Une URL ne veut rien dire à moitié saisie : on vérifie quand le champ
+              // est quitté, et au collage — la façon dont un lien arrive presque
+              // toujours dans ce champ.
+              onBlur={(event) => urlDuplicate.check(event.target.value)}
+              // L'événement de collage précède l'insertion du texte : on relit le champ
+              // au tour suivant, une fois la valeur à jour.
+              onPaste={() => {
+                setTimeout(() => urlDuplicate.check(urlInputRef.current?.value ?? ""), 0);
+              }}
               aria-invalid={Boolean(fieldErrors.url)}
               placeholder="https://www.racedepartment.com/downloads/…"
               className="mt-2 w-full rounded-sm border bg-white px-[13px] py-[11px] font-mono text-xs text-[#17181c] outline-none"
               style={{
                 borderColor:
-                  fieldErrors.url || matchingUrlMod ? "var(--color-danger)" : "var(--color-border-strong)",
+                  fieldErrors.url || urlDuplicate.match
+                    ? "var(--color-danger)"
+                    : "var(--color-border-strong)",
               }}
             />
             {fieldErrors.url && (
@@ -354,32 +450,37 @@ export function ModForm({ mod }: ModFormProps) {
                 {fieldErrors.url}
               </p>
             )}
-            {matchingUrlMod && (
+            {/* US-D2/D3 — le lien est déjà enregistré : on avertit, on ne bloque pas. */}
+            {urlDuplicate.match && (
               <div
                 className="mt-2 flex gap-[11px] rounded-sm border p-3"
                 style={{ borderColor: "var(--color-border-strong)", borderLeft: "3px solid var(--color-danger)", background: "rgba(255,255,255,.6)" }}
+                role="alert"
               >
                 <div className="flex-1">
                   <div className="font-sans text-[13px] font-semibold text-[#17181c]">
-                    Ce lien est déjà sur une fiche
+                    Ce mod existe peut-être déjà
                   </div>
                   <div className="mt-1 font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-secondary)]">
                     Après nettoyage des paramètres de suivi, l&apos;URL correspond à{" "}
-                    <span className="text-[#17181c]">{matchingUrlMod.name}</span>. Si c&apos;est bien le
-                    même mod, complète la fiche existante plutôt que d&apos;en créer une seconde : les
-                    votes et les tags resteront regroupés.
+                    <span className="text-[#17181c]">{urlDuplicate.match.name}</span>. Si c&apos;est
+                    bien le même mod, complète la fiche existante plutôt que d&apos;en créer une
+                    seconde : les votes et les tags resteront regroupés.
                   </div>
                 </div>
                 <div className="flex flex-none flex-col justify-center gap-[6px]">
                   <Link
-                    href={`/mods/${matchingUrlMod.id}`}
+                    href={`/mods/${urlDuplicate.match.id}?brouillon=1`}
+                    onClick={keepDraft}
                     className="whitespace-nowrap rounded-sm bg-[var(--color-ink)] px-[11px] py-[7px] text-center font-sans text-[11px] font-semibold text-[var(--color-surface)]"
                   >
                     Voir la fiche existante
                   </Link>
+                  {/* Variante, version alternative… : le lien saisi est conservé tel
+                      quel, seul l'avertissement disparaît. */}
                   <button
                     type="button"
-                    onClick={() => setUrl("")}
+                    onClick={urlDuplicate.dismiss}
                     className="whitespace-nowrap rounded-sm border border-[var(--color-border-strong)] px-[11px] py-[7px] font-sans text-[11px] font-medium"
                   >
                     Créer quand même

@@ -25,11 +25,21 @@ interface ModDetailViewProps {
   editHref?: string;
   /** Vrai si le membre connecté est l'auteur de la fiche, ou un admin (US-B4). */
   canDelete?: boolean;
+  /**
+   * Vrai quand on arrive ici depuis la détection de doublons du formulaire (US-D3) :
+   * une saisie attend dans l'onglet, la fiche propose de la reprendre.
+   */
+  hasPendingDraft?: boolean;
 }
 
 const TYPE_PLURAL = { vehicule: "Véhicules", circuit: "Circuits" } as const;
 
-export function ModDetailView({ mod, editHref, canDelete = false }: ModDetailViewProps) {
+export function ModDetailView({
+  mod,
+  editHref,
+  canDelete = false,
+  hasPendingDraft = false,
+}: ModDetailViewProps) {
   const { session, isLoading } = useRequireAuth();
   const [voted, setVoted] = useState(false);
 
@@ -75,6 +85,39 @@ export function ModDetailView({ mod, editHref, canDelete = false }: ModDetailVie
           </Link>
         }
       />
+
+      {/* US-D3 — la sortie « Créer quand même », vue depuis la fiche suspecte : soit ce
+          mod est bien le même et il suffit de le compléter, soit c'en est un autre et
+          la saisie repart d'où elle s'était arrêtée. */}
+      {hasPendingDraft && (
+        <div
+          className="mx-[20px] mt-[20px] flex flex-wrap items-center justify-between gap-3 rounded-sm border bg-[var(--color-surface)] p-3"
+          style={{
+            borderColor: "var(--color-border-strong)",
+            borderLeft: "3px solid var(--color-amber)",
+          }}
+          role="status"
+        >
+          <div className="min-w-[240px] flex-1">
+            <div className="font-sans text-[13px] font-semibold">
+              Ta fiche en cours t&apos;attend
+            </div>
+            <div className="mt-1 font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-secondary)]">
+              Tu es venu vérifier si ce mod existait déjà. Si c&apos;est bien le même,
+              complète cette fiche plutôt que d&apos;en créer une seconde — les votes et
+              les tags resteront regroupés. Sinon, reprends ta saisie là où tu
+              l&apos;as laissée.
+            </div>
+          </div>
+          <Link
+            href="/mods/nouveau"
+            className="flex-none rounded-sm px-[14px] py-2 font-sans text-xs font-semibold"
+            style={{ background: "var(--color-amber)", color: "var(--color-ink)" }}
+          >
+            Reprendre ma fiche
+          </Link>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-[18px] p-[20px] lg:grid-cols-[1fr_336px]">
         <div className="flex flex-col gap-[14px]">

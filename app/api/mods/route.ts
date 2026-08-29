@@ -3,6 +3,7 @@ import { modInputSchema, toFieldErrors } from "@/lib/mods/schema";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { parseTagsParam } from "@/lib/mods/tags";
 import { buildTagCreateWrite } from "@/lib/mods/tags-store";
+import { modUrlKey } from "@/lib/mods/url";
 import { isModImageUrl } from "@/lib/supabase/storage";
 import { prisma } from "@/lib/prisma";
 
@@ -101,7 +102,14 @@ export async function POST(request: Request) {
     const { tags, ...fields } = parsed.data;
 
     const mod = await prisma.mod.create({
-      data: { ...fields, authorId: author.id, tags: await buildTagCreateWrite(tags) },
+      // `urlKey` n'est pas saisi : c'est la forme normalisée du lien, ce que compare
+      // GET /api/mods/check-url pour repérer un doublon (US-D2).
+      data: {
+        ...fields,
+        urlKey: modUrlKey(fields.url),
+        authorId: author.id,
+        tags: await buildTagCreateWrite(tags),
+      },
       include: modInclude,
     });
 

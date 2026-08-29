@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { modUrlKey } from "./url";
 import {
   MAX_TAGS_PER_MOD,
   normalizeTagList,
@@ -88,6 +89,8 @@ export interface ModUpdateData {
   type?: ModInput["type"];
   name?: string;
   url?: string;
+  /** Jamais saisi : dérivé de `url` (US-D2), et donc toujours écrit avec lui. */
+  urlKey?: string;
   description?: string | null;
   imageUrl?: string | null;
 }
@@ -106,7 +109,11 @@ export function buildModUpdateData(
   return {
     ...("type" in payload && { type: values.type }),
     ...("name" in payload && { name: values.name }),
-    ...("url" in payload && { url: values.url }),
+    // `urlKey` suit `url` : la clé de comparaison des doublons (US-D2) ne doit jamais
+    // désigner l'ancien lien. Le schéma a déjà refusé une valeur vide, la garde sur
+    // `undefined` n'est là que pour le typage.
+    ...("url" in payload &&
+      values.url !== undefined && { url: values.url, urlKey: modUrlKey(values.url) }),
     ...("description" in payload && { description: values.description ?? null }),
     ...("imageUrl" in payload && { imageUrl: values.imageUrl ?? null }),
   };

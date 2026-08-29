@@ -39,7 +39,8 @@ Postgres hébergé sur Supabase, accédé via Prisma (driver adapter `pg`).
 La migration initiale (`prisma/migrations/20260829000000_init`) a été appliquée
 directement sur la base Supabase puis enregistrée dans l'historique Prisma
 (`prisma migrate resolve --applied`) : `npx prisma migrate status` doit répondre
-« Database schema is up to date ».
+« Database schema is up to date ». Les suivantes s'appliquent normalement, avec
+`npx prisma migrate deploy`.
 
 Les tables ont RLS activé sans aucune policy : l'API REST publique de Supabase ne
 renvoie rien, et Prisma (rôle propriétaire) n'est pas concerné par RLS.
@@ -134,6 +135,99 @@ La grille du catalogue affiche encore les fiches de démonstration de `lib/mock-
 son branchement sur `GET /api/mods` appartient à US-E1. En attendant, la liste des tags
 du panneau latéral est l'union des vrais tags (API) et de ceux des fiches de démo ; la
 seconde moitié disparaîtra avec les mocks.
+
+## Détection de doublons (US-D1, US-D2, US-D3)
+
+Une fiche par mod, enrichie par tout le monde : le cahier §2.4 demande de repérer une
+fiche existante *avant* d'en créer une seconde, sans jamais bloquer la création — le
+membre garde toujours « Créer quand même ».
+
+### Recherche floue sur le nom (US-D1)
+
+`GET /api/mods/search?name=silvia` renvoie jusqu'à 5 fiches proches, la plus probable
+d'abord. La migration `20260829200000_duplicate_detection` installe l'extension
+`pg_trgm` (schéma `extensions`, celui de Supabase) et pose un index GIN trigram sur
+`Mod.name`.
+
+Deux façons d'être « proche », réunies par un OU, toutes deux servies par cet index :
+
+- `%`, l'opérateur de similarité trigram — il rattrape fautes de frappe et variantes
+  d'orthographe (`silvia s15` ↔ `Silvia S-15`) ;
+- `ILIKE '%…%'` — il rattrape le cas inverse, un terme court contenu dans un nom long,
+  où la similarité globale reste sous le seuil.
+
+L'opérateur et `similarity()` sont **qualifiés par leur schéma**
+(`OPERATOR(extensions.%)`) : le `search_path` du rôle de connexion n'entre pas en jeu.
+Prisma ne sachant pas décrire un index GIN trigram, celui-ci est créé à la main dans la
+migration — le rappel est dans `prisma/schema.prisma`.
+
+### Vérification du lien (US-D2)
+
+`GET /api/mods/check-url?url=…` répond `{ "match": <fiche> | null }`.
+
+La comparaison porte sur une forme normalisée du lien, `normalizeModUrl`
+([lib/mods/url.ts](lib/mods/url.ts)) : protocole et `www.` retirés, ancre supprimée,
+paramètres de suivi (`utm_*`, `fbclid`, `ref`, le `usp` des partages Drive…) écartés,
+paramètres restants triés, slash final coupé, le tout en minuscules.
+
+    https://WWW.RaceDepartment.com/downloads/silvia.1234/?utm_source=discord#reviews
+    → racedepartment.com/downloads/silvia.1234
+
+Ce résultat est stocké dans la colonne indexée `Mod.urlKey`, écrite à chaque création
+et à chaque édition du lien : la vérification est une lecture par index, pas un
+balayage du catalogue. La colonne n'est **pas** `@unique` — le doublon doit rester
+possible.
+
+Un lien illisible n'est pas une erreur ici (le champ est en cours de saisie) : la route
+répond simplement « aucune correspondance », et c'est la validation du formulaire qui
+refusera l'enregistrement.
+
+Le passage en minuscules suit le cahier (« casse ») et rend théoriquement égales deux
+adresses qui ne différeraient que par la casse de leur chemin — un identifiant Drive,
+par exemple. C'est assumé : la détection avertit, elle ne bloque pas.
+
+### Dans le formulaire (US-D3)
+
+Les deux vérifications vivent dans [lib/mods/useDuplicates.ts](lib/mods/useDuplicates.ts)
+et ne sont actives qu'à la **création** : à l'édition, la fiche se trouverait elle-même.
+
+- `useSimilarMods` — appel debounce (250 ms) pendant la saisie du nom, à partir de 3
+  caractères ; les fiches proches s'affichent sous le champ, chacune avec un « Voir la
+  fiche ». Comme pour l'autocomplétion des tags, la requête précédente est annulée pour
+  qu'une réponse lente n'écrase pas une plus récente.
+- `useUrlDuplicate` — appel **au blur et au collage** du champ lien, pas à la frappe :
+  une URL n'a de sens qu'entière. Le collage précède la mise à jour de la valeur du
+  champ, d'où la relecture au tour de boucle suivant. Un même lien n'est interrogé
+  qu'une fois.
+
+En cas de correspondance, un bandeau « Ce mod existe peut-être déjà » propose les deux
+sorties du cahier : **Voir la fiche existante** (lien vers la fiche) ou **Créer quand
+même**, qui écarte l'avertissement pour ce lien précis — il ne réapparaît pas au blur
+suivant, et le lien saisi est conservé tel quel.
+
+### L'aller-retour ne coûte pas la saisie
+
+« Voir la fiche existante » n'a d'intérêt que si y aller ne fait pas perdre ce qui est
+déjà tapé — sinon personne ne clique, et la détection ne sert à rien.
+
+Avant de quitter le formulaire, la saisie complète (type, nom, lien, description, tags,
+et l'URL de l'image déjà déposée) est mise de côté dans le `sessionStorage` de l'onglet
+— [lib/mods/draft.ts](lib/mods/draft.ts), relue avec un schéma Zod parce que rien ne
+garantit ce qu'on retrouve dans un stockage navigateur. Le lien porte en plus
+`?brouillon=1`, ce que la page de la fiche lit côté serveur pour afficher un bandeau
+**Reprendre ma fiche**.
+
+Au retour, `ModForm` repeuple ses champs depuis le brouillon **dès l'initialisation de
+son état**, pas dans un effet : pas de formulaire vide qui se remplirait après coup.
+Rien n'est lu pendant le rendu serveur, et le formulaire n'est de toute façon affiché
+qu'une fois la session connue. Un bandeau discret signale la reprise et offre
+« repartir de zéro » (qui libère au passage l'image envoyée). Le lien du brouillon est
+re-vérifié à l'affichage, pour que l'avertissement de doublon soit exact.
+
+Le brouillon est effacé à la publication et sur « Annuler ». Il ne survit pas à la
+fermeture de l'onglet (`sessionStorage`, pas `localStorage`) — et comme il n'est écrit
+qu'au moment de partir voir une fiche, revenir par le bouton *retour* du navigateur
+retrouve la saisie aussi.
 
 ## Stockage des images (US-B2)
 

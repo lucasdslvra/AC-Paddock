@@ -6,6 +6,12 @@ import type { ModType as DbModType } from "@/lib/generated/prisma/enums";
 // et nulle part ailleurs : l'API expose les valeurs de l'enum Prisma (CAR / TRACK).
 export const MOD_TYPES = ["CAR", "TRACK"] as const satisfies readonly DbModType[];
 
+/**
+ * Les mêmes valeurs côté interface. Sert à afficher le sélecteur de type du formulaire
+ * et à relire une saisie mise de côté (lib/mods/draft.ts).
+ */
+export const MOD_TYPES_UI = ["vehicule", "circuit"] as const satisfies readonly UiModType[];
+
 const UI_BY_DB: Record<DbModType, UiModType> = {
   CAR: "vehicule",
   TRACK: "circuit",

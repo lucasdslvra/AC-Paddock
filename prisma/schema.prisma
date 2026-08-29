@@ -43,6 +43,11 @@ model Mod {
   name        String
   /// Lien externe (RaceDepartment, Drive…) — champ principal du cahier §2.2.
   url         String
+  /// Forme normalisée de `url` (`modUrlKey`, lib/mods/url.ts) : c'est la colonne que
+  /// compare GET /api/mods/check-url (US-D2). Recalculée à chaque écriture de `url`.
+  /// Volontairement sans `@unique` : le cahier §2.4 veut un avertissement, pas un
+  /// blocage — « Créer quand même » doit rester possible.
+  urlKey      String
   description String?
   imageUrl    String?
 
@@ -62,6 +67,10 @@ model Mod {
 
   @@index([authorId])
   @@index([createdAt])
+  @@index([urlKey])
+  /// US-D1 — recherche floue sur le nom, via un index GIN trigram (pg_trgm). Prisma ne
+  /// sait pas décrire cet index : il est créé à la main dans la migration
+  /// `20260829200000_duplicate_detection`, et `prisma migrate diff` ne le voit pas.
 }
 
 /// Vocabulaire libre, alimenté par les membres (cahier §2.2). Les noms sont normalisés

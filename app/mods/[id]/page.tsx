@@ -8,7 +8,12 @@ import { prisma } from "@/lib/prisma";
 import { ModDetailView } from "./ModDetailView";
 
 export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
-  const { id } = await props.params;
+  const [{ id }, searchParams] = await Promise.all([props.params, props.searchParams]);
+
+  // US-D3 — le membre arrive du formulaire de création, pour vérifier si ce mod n'est
+  // pas déjà celui qu'il s'apprêtait à proposer. Sa saisie l'attend dans l'onglet
+  // (lib/mods/draft.ts) : la fiche lui propose d'y retourner.
+  const hasPendingDraft = searchParams.brouillon === "1";
 
   const session = await auth();
   if (!session?.user) redirect("/");
@@ -33,6 +38,7 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
       mod={mod}
       editHref={record ? `/mods/${id}/modifier` : undefined}
       canDelete={record ? canDeleteMod(actor, record) : false}
+      hasPendingDraft={hasPendingDraft}
     />
   );
 }

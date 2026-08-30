@@ -173,7 +173,10 @@ export function CatalogueView() {
                     className="flex justify-between rounded-sm px-[10px] py-[7px] font-sans text-xs font-medium"
                     style={
                       isActive
-                        ? { background: "var(--color-ink)", color: "var(--color-surface)" }
+                        ? {
+                            background: "var(--color-emphasis-bg)",
+                            color: "var(--color-emphasis-text)",
+                          }
                         : { color: "var(--color-text-secondary)" }
                     }
                   >

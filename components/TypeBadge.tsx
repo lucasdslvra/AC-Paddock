@@ -15,7 +15,7 @@ export function TypeBadge({ type, as = "label" }: TypeBadgeProps) {
 
   if (as === "pill") {
     return (
-      <span className="inline-flex items-center gap-2 rounded-sm bg-[var(--color-ink)] px-[7px] py-[3px] font-mono text-[10px] tracking-[0.08em] text-[var(--color-surface)]">
+      <span className="inline-flex items-center gap-2 rounded-sm bg-[var(--color-emphasis-bg)] px-[7px] py-[3px] font-mono text-[10px] tracking-[0.08em] text-[var(--color-emphasis-text)]">
         {label}
       </span>
     );

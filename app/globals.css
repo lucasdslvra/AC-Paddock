@@ -32,6 +32,15 @@
   --color-emphasis-bg: var(--color-ink);
   --color-emphasis-icon: var(--color-amber);
   --color-emphasis-text: var(--color-surface);
+
+  /* Fond des champs de saisie et des listes qui leur sont accrochées : au-dessus de la
+     surface sur fond clair, en retrait dessous sur fond sombre. */
+  --color-field: #ffffff;
+
+  /* Panneau inversé (le bloc de vote d'une fiche) : sombre sur clair. En sombre il ne
+     peut pas s'inverser une seconde fois — il s'élève alors d'un cran sur le fond. */
+  --color-invert-bg: var(--color-ink);
+  --color-invert-text: var(--color-surface);
 }
 
 @theme inline {
@@ -61,6 +70,13 @@
   --color-grid-line: rgba(255, 255, 255, 0.045);
 
   --color-text-muted: #7d838a;
+  /* Les gris de texte s'inversent avec le fond : sans ces reprises, le secondaire
+     et l'estompé gardent leurs valeurs claires (gris foncé) et deviennent illisibles.
+     La hiérarchie reste la même, à l'envers : secondaire > sourdine > estompé. */
+  --color-text-secondary: #b6bcc3;
+  --color-text-faint: #62686f;
+  /* Le panneau inversé est moins sombre ici : son gris secondaire s'éclaircit d'autant. */
+  --color-text-on-ink: #9aa1a9;
 
   --color-border-hairline: rgba(255, 255, 255, 0.09);
   --color-border: rgba(255, 255, 255, 0.1);
@@ -72,9 +88,19 @@
   --color-bar-dimmed: rgba(255, 255, 255, 0.2);
   --color-track: rgba(255, 255, 255, 0.12);
 
+  /* Lien et texte d'erreur sont posés sur le fond, pas dessous : leurs teintes
+     claires (assombries pour ressortir sur du papier) doivent s'éclaircir ici. */
+  --color-link: oklch(0.78 0.13 70);
+  --color-danger-text: oklch(0.72 0.16 25);
+
   --color-emphasis-bg: var(--color-amber);
   --color-emphasis-icon: var(--color-ink);
   --color-emphasis-text: var(--color-ink);
+
+  --color-field: #0d0f13;
+
+  --color-invert-bg: #1e232a;
+  --color-invert-text: var(--foreground);
 }
 
 .bg-grid {

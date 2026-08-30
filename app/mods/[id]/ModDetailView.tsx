@@ -55,7 +55,10 @@ function VotePanel({ mod, viewer }: { mod: Mod; viewer?: { name?: string | null;
   const others = votes - (hasVoted ? 1 : 0);
 
   return (
-    <div className="rounded-sm p-[18px]" style={{ background: "var(--color-ink)", color: "var(--color-surface)" }}>
+    <div
+      className="rounded-sm p-[18px]"
+      style={{ background: "var(--color-invert-bg)", color: "var(--color-invert-text)" }}
+    >
       <div className="flex items-end justify-between">
         <div>
           <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-on-ink)]">
@@ -73,7 +76,7 @@ function VotePanel({ mod, viewer }: { mod: Mod; viewer?: { name?: string | null;
         className="mt-4 flex w-full items-center justify-center gap-2 rounded-sm p-3 font-sans text-sm font-semibold"
         style={{
           background: hasVoted ? "var(--color-amber)" : "transparent",
-          color: hasVoted ? "var(--color-ink)" : "var(--color-surface)",
+          color: hasVoted ? "var(--color-ink)" : "var(--color-invert-text)",
           border: hasVoted ? "none" : "1px solid rgba(255,255,255,.2)",
           opacity: isPending ? 0.7 : 1,
         }}
@@ -368,7 +371,7 @@ export function ModDetailView({
               <div className="mt-3 flex gap-[7px]">
                 <span
                   className="flex-1 rounded-sm py-[9px] text-center font-sans text-xs font-semibold"
-                  style={{ background: "var(--color-ink)", color: "var(--color-surface)" }}
+                  style={{ background: "var(--color-emphasis-bg)", color: "var(--color-emphasis-text)" }}
                 >
                   Télécharger
                 </span>

@@ -76,7 +76,10 @@ export function AppHeader({ active = null, variant = "default", subtitle, stats,
               className="rounded-sm px-3 py-[6px] font-sans text-xs font-medium"
               style={
                 active === item.key
-                  ? { background: "var(--foreground)", color: "var(--background)" }
+                  ? {
+                      background: "var(--color-emphasis-bg)",
+                      color: "var(--color-emphasis-text)",
+                    }
                   : { color: "var(--color-text-secondary)" }
               }
             >

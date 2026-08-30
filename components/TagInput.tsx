@@ -153,7 +153,7 @@ export function TagInput({ value, onChange, error }: TagInputProps) {
 
       <div
         onClick={() => inputRef.current?.focus()}
-        className="mt-2 flex flex-wrap items-center gap-[6px] border bg-white px-[11px] py-[9px]"
+        className="mt-2 flex flex-wrap items-center gap-[6px] border bg-[var(--color-field)] px-[11px] py-[9px]"
         style={{
           borderColor: error ? "var(--color-danger)" : "var(--color-border-strong)",
           borderRadius: showList ? "2px 2px 0 0" : "2px",
@@ -177,7 +177,7 @@ export function TagInput({ value, onChange, error }: TagInputProps) {
           aria-controls={listId}
           aria-autocomplete="list"
           placeholder={isFull ? `maximum ${MAX_TAGS_PER_MOD} tags` : "ajouter un tag"}
-          className="min-w-[110px] flex-1 bg-transparent font-mono text-xs text-[#4b5158] outline-none placeholder:text-[var(--color-text-faint)]"
+          className="min-w-[110px] flex-1 bg-transparent font-mono text-xs text-[var(--color-foreground)] outline-none placeholder:text-[var(--color-text-faint)]"
         />
       </div>
 
@@ -188,7 +188,7 @@ export function TagInput({ value, onChange, error }: TagInputProps) {
           // Sans ça, le champ perd le focus avant que le clic n'aboutisse et la liste
           // disparaît sous le curseur.
           onMouseDown={(event) => event.preventDefault()}
-          className="rounded-b-sm border border-t-0 border-[var(--color-border-strong)] bg-white"
+          className="rounded-b-sm border border-t-0 border-[var(--color-border-strong)] bg-[var(--color-field)]"
         >
           {options.map((option, index) => (
             <button
@@ -201,7 +201,7 @@ export function TagInput({ value, onChange, error }: TagInputProps) {
               className="flex w-full items-center justify-between border-b border-[var(--color-border-hairline)] px-3 py-2 text-left last:border-b-0"
               style={{ background: index === highlight ? "var(--color-border-hairline)" : "transparent" }}
             >
-              <span className="font-mono text-[11px] text-[#17181c]">
+              <span className="font-mono text-[11px] text-[var(--color-foreground)]">
                 {option.modCount === null ? `« ${option.name} » — créer ce tag` : option.name}
               </span>
               <span

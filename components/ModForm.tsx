@@ -335,7 +335,7 @@ export function ModForm({ mod }: ModFormProps) {
                   className="rounded-sm px-[18px] py-[10px] font-sans text-[13px] font-semibold"
                   style={
                     type === option
-                      ? { background: "var(--color-ink)", color: "var(--color-surface)" }
+                      ? { background: "var(--color-emphasis-bg)", color: "var(--color-emphasis-text)" }
                       : { border: "1px solid var(--color-border-strong)", color: "var(--color-text-secondary)" }
                   }
                 >
@@ -362,12 +362,12 @@ export function ModForm({ mod }: ModFormProps) {
               onChange={(event) => setName(event.target.value)}
               aria-invalid={Boolean(fieldErrors.name)}
               placeholder="ex. Silvia S15 Rocket Bunny"
-              className="mt-2 w-full rounded-sm border bg-white px-[13px] py-[11px] font-sans text-sm text-[#17181c] outline-none"
+              className="mt-2 w-full rounded-sm border bg-[var(--color-field)] px-[13px] py-[11px] font-sans text-sm text-[var(--color-foreground)] outline-none"
               style={{
                 borderColor: fieldErrors.name
                   ? "var(--color-danger)"
                   : similarMods.length > 0
-                    ? "var(--color-ink)"
+                    ? "var(--color-emphasis-bg)"
                     : "var(--color-border-strong)",
               }}
             />
@@ -377,7 +377,7 @@ export function ModForm({ mod }: ModFormProps) {
               </p>
             )}
             {similarMods.length > 0 && (
-              <div className="rounded-b-sm border border-t-0 border-[var(--color-border-strong)] bg-white">
+              <div className="rounded-b-sm border border-t-0 border-[var(--color-border-strong)] bg-[var(--color-field)]">
                 <div className="border-b border-[var(--color-border-hairline)] px-[13px] py-[7px] font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
                   DÉJÀ DANS LE CATALOGUE ?
                 </div>
@@ -388,7 +388,7 @@ export function ModForm({ mod }: ModFormProps) {
                   >
                     <ModThumbnail src={entry.imageUrl ?? undefined} name={entry.name} size={34} />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-sans text-[13px] font-semibold text-[#17181c]">
+                      <div className="truncate font-sans text-[13px] font-semibold text-[var(--color-foreground)]">
                         {entry.name}
                       </div>
                       <div className="truncate font-mono text-[10px] text-[var(--color-text-muted)]">
@@ -403,7 +403,7 @@ export function ModForm({ mod }: ModFormProps) {
                     <Link
                       href={`/mods/${entry.id}?brouillon=1`}
                       onClick={keepDraft}
-                      className="flex-none rounded-sm bg-[var(--color-ink)] px-[10px] py-[6px] font-sans text-[11px] font-medium text-[var(--color-surface)]"
+                      className="flex-none rounded-sm bg-[var(--color-emphasis-bg)] px-[10px] py-[6px] font-sans text-[11px] font-medium text-[var(--color-emphasis-text)]"
                     >
                       Voir la fiche
                     </Link>
@@ -437,7 +437,7 @@ export function ModForm({ mod }: ModFormProps) {
               }}
               aria-invalid={Boolean(fieldErrors.url)}
               placeholder="https://www.racedepartment.com/downloads/…"
-              className="mt-2 w-full rounded-sm border bg-white px-[13px] py-[11px] font-mono text-xs text-[#17181c] outline-none"
+              className="mt-2 w-full rounded-sm border bg-[var(--color-field)] px-[13px] py-[11px] font-mono text-xs text-[var(--color-foreground)] outline-none"
               style={{
                 borderColor:
                   fieldErrors.url || urlDuplicate.match
@@ -454,16 +454,16 @@ export function ModForm({ mod }: ModFormProps) {
             {urlDuplicate.match && (
               <div
                 className="mt-2 flex gap-[11px] rounded-sm border p-3"
-                style={{ borderColor: "var(--color-border-strong)", borderLeft: "3px solid var(--color-danger)", background: "rgba(255,255,255,.6)" }}
+                style={{ borderColor: "var(--color-border-strong)", borderLeft: "3px solid var(--color-danger)", background: "var(--color-field)" }}
                 role="alert"
               >
                 <div className="flex-1">
-                  <div className="font-sans text-[13px] font-semibold text-[#17181c]">
+                  <div className="font-sans text-[13px] font-semibold text-[var(--color-foreground)]">
                     Ce mod existe peut-être déjà
                   </div>
                   <div className="mt-1 font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-secondary)]">
                     Après nettoyage des paramètres de suivi, l&apos;URL correspond à{" "}
-                    <span className="text-[#17181c]">{urlDuplicate.match.name}</span>. Si c&apos;est
+                    <span className="text-[var(--color-foreground)]">{urlDuplicate.match.name}</span>. Si c&apos;est
                     bien le même mod, complète la fiche existante plutôt que d&apos;en créer une
                     seconde : les votes et les tags resteront regroupés.
                   </div>
@@ -472,7 +472,7 @@ export function ModForm({ mod }: ModFormProps) {
                   <Link
                     href={`/mods/${urlDuplicate.match.id}?brouillon=1`}
                     onClick={keepDraft}
-                    className="whitespace-nowrap rounded-sm bg-[var(--color-ink)] px-[11px] py-[7px] text-center font-sans text-[11px] font-semibold text-[var(--color-surface)]"
+                    className="whitespace-nowrap rounded-sm bg-[var(--color-emphasis-bg)] px-[11px] py-[7px] text-center font-sans text-[11px] font-semibold text-[var(--color-emphasis-text)]"
                   >
                     Voir la fiche existante
                   </Link>
@@ -500,7 +500,7 @@ export function ModForm({ mod }: ModFormProps) {
               onChange={(event) => setDescription(event.target.value)}
               aria-invalid={Boolean(fieldErrors.description)}
               placeholder="Ce qu'il faut savoir avant de l'installer : version, pack de textures requis, physique…"
-              className="mt-2 h-[62px] w-full rounded-sm border bg-white px-[13px] py-[11px] font-sans text-xs text-[#17181c] outline-none placeholder:text-[var(--color-text-faint)]"
+              className="mt-2 h-[62px] w-full rounded-sm border bg-[var(--color-field)] px-[13px] py-[11px] font-sans text-xs text-[var(--color-foreground)] outline-none placeholder:text-[var(--color-text-faint)]"
               style={{
                 borderColor: fieldErrors.description ? "var(--color-danger)" : "var(--color-border-strong)",
               }}

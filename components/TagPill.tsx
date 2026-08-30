@@ -13,7 +13,7 @@ interface TagPillProps {
 }
 
 const ACTIVE_CLASS_NAME =
-  "inline-flex items-center gap-1 rounded-full bg-[var(--color-ink)] px-2 py-1 font-mono text-[10px] text-[var(--color-surface)]";
+  "inline-flex items-center gap-1 rounded-full bg-[var(--color-emphasis-bg)] px-2 py-1 font-mono text-[10px] text-[var(--color-emphasis-text)]";
 
 const IDLE_CLASS_NAME =
   "inline-flex items-center gap-1 rounded-full border border-[var(--color-border-strong)] px-2 py-1 font-mono text-[10px] text-[var(--color-text-secondary)]";

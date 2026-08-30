@@ -56,8 +56,8 @@ export function ModCard({ mod }: ModCardProps) {
           }
           className="flex items-center gap-[6px] rounded-sm px-[9px] py-[5px] font-mono text-xs"
           style={{
-            background: hasVoted ? "var(--color-ink)" : "transparent",
-            color: hasVoted ? "var(--color-surface)" : "var(--color-foreground)",
+            background: hasVoted ? "var(--color-emphasis-bg)" : "transparent",
+            color: hasVoted ? "var(--color-emphasis-text)" : "var(--color-foreground)",
             border: hasVoted ? "none" : "1px solid var(--color-border-strong)",
             opacity: isPending ? 0.6 : 1,
           }}

@@ -12,6 +12,11 @@ const SOIREE_DAY_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
   year: "numeric",
 });
 
+const SOIREE_MONTH_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
+  month: "long",
+  year: "numeric",
+});
+
 /** « vendredi 4 septembre 21:00 » — le titre d'une soirée, date et heure comprises. */
 export function formatSoireeDate(date: Date): string {
   return SOIREE_DATE_FORMATTER.format(date);
@@ -20,6 +25,11 @@ export function formatSoireeDate(date: Date): string {
 /** « 4 septembre 2026 » — pour l'historique, où l'heure n'apprend plus rien. */
 export function formatSoireeDay(date: Date): string {
   return SOIREE_DAY_FORMATTER.format(date);
+}
+
+/** « février 2026 » — l'origine de l'archive, en tête de l'historique (US-I1). */
+export function formatSoireeMonth(date: Date): string {
+  return SOIREE_MONTH_FORMATTER.format(date);
 }
 
 /**

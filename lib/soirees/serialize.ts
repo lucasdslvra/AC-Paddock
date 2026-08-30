@@ -136,3 +136,86 @@ export interface ApiSoireeSummary {
   /** Nombre de mods engagés (US-G2). */
   modCount: number;
 }
+
+/**
+ * Combien de mods engagés une soirée passée montre dans la liste de l'historique.
+ *
+ * L'historique (US-I1) tient sur une ligne par soirée : le podium en occupe trois, les
+ * vignettes quelques-unes de plus, et le reste se résume en « +N » à partir de
+ * `modCount`. Charger le classement complet de chaque soirée pour n'en afficher que le
+ * haut coûterait d'autant plus cher que l'archive grossit — et c'est justement le seul
+ * endroit qui grossit tout seul.
+ */
+export const PAST_SOIREE_PREVIEW_MODS = 8;
+
+/** Le haut du classement d'une soirée passée, tel que `listPastSoirees` le charge. */
+export const pastSoireeInclude = {
+  createdBy: true,
+  _count: { select: { mods: true } },
+  mods: {
+    take: PAST_SOIREE_PREVIEW_MODS,
+    orderBy: RANKING_ORDER,
+    // Pas de `modInclude` ici : la ligne n'affiche qu'un nom et une vignette. Charger
+    // les tags, l'auteur et l'historique de votes de chaque mod de chaque soirée
+    // remplirait la page de données que personne ne regarde.
+    include: {
+      mod: { select: { id: true, name: true, imageUrl: true } },
+      _count: { select: { votes: true } },
+    },
+  },
+} as const;
+
+/** Une soirée passée telle que `pastSoireeInclude` la ramène. */
+export type PastSoireeWithRelations = SoireeModel & {
+  createdBy: UserModel;
+  _count: { mods: number };
+  mods: (SoireeModModel & {
+    mod: { id: string; name: string; imageUrl: string | null };
+    _count: { votes: number };
+  })[];
+};
+
+/** Un mod du haut de classement d'une soirée passée. */
+export interface ApiPastSoireeMod {
+  /** L'identifiant de la **fiche**, pour lier vers elle — l'engagement ne sert plus. */
+  modId: string;
+  name: string;
+  imageUrl: string | null;
+  /** Votes reçus dans cette soirée-là. */
+  votes: number;
+}
+
+/**
+ * US-I1 — une soirée passée dans la liste de l'historique : le résumé commun, plus le
+ * haut du classement et le nombre de votants. Les votes sont clos : ce qui compte n'est
+ * plus « qui peut encore voter » mais « qu'est-ce qui est sorti ».
+ */
+export interface ApiPastSoiree extends ApiSoireeSummary {
+  /** Au plus `PAST_SOIREE_PREVIEW_MODS` entrées, déjà classées. */
+  mods: ApiPastSoireeMod[];
+  /** Membres distincts ayant voté ce soir-là. */
+  voterCount: number;
+}
+
+export function serializePastSoiree(
+  soiree: PastSoireeWithRelations,
+  voterCount: number,
+): ApiPastSoiree {
+  return {
+    id: soiree.id,
+    name: soiree.name,
+    date: soiree.date.toISOString(),
+    createdBy: serializeMember(soiree.createdBy),
+    // Une soirée passée ne peut pas être celle en cours : `currentSoiree` ne regarde
+    // que l'avenir. Le champ est là pour que la forme reste celle du résumé.
+    isCurrent: false,
+    modCount: soiree._count.mods,
+    mods: soiree.mods.map((entry) => ({
+      modId: entry.mod.id,
+      name: entry.mod.name,
+      imageUrl: entry.mod.imageUrl,
+      votes: entry._count.votes,
+    })),
+    voterCount,
+  };
+}

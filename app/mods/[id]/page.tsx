@@ -33,9 +33,9 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
     }),
   ]);
 
-  // Le catalogue et la soirée ne servent plus que de vraies fiches, mais l'historique et
-  // l'admin vivent encore sur `lib/mock-data.ts` : un lien parti de ces pages tombe sur
-  // un id qui n'existe pas en base. Ce repli disparaîtra avec l'Epic I.
+  // Le catalogue, la soirée et l'historique ne servent plus que de vraies fiches ; seul
+  // l'espace admin vit encore sur `lib/mock-data.ts` : un lien parti de ses tableaux
+  // tombe sur un id qui n'existe pas en base. Ce repli disparaîtra avec l'Epic J.
   const mod = record ? toModView(record, soiree?.id ?? null) : getModById(id);
 
   // Seules les fiches en base sont éditables (US-B3) et supprimables (US-B4).

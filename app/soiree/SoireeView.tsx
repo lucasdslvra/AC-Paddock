@@ -29,6 +29,15 @@ interface SoireeViewProps {
    * `DELETE /api/soirees/[id]/mods/[modId]` revérifie de son côté.
    */
   isAdmin?: boolean;
+  /**
+   * US-I2 — la soirée a déjà eu lieu. Calculé côté serveur (`startOfToday`) et non ici :
+   * comparer à `new Date()` dans le rendu ferait diverger le HTML du serveur de celui du
+   * navigateur au passage de minuit.
+   *
+   * Distinct de la lecture seule, qui découle de `soiree.isCurrent` : une soirée
+   * programmée plus loin que la prochaine n'est ni passée ni ouverte au vote.
+   */
+  isPast?: boolean;
 }
 
 /**
@@ -43,14 +52,20 @@ function RankingRow({
   rank,
   soireeId,
   canRemove,
+  readOnly,
   onChanged,
 }: {
   entry: ApiSoireeMod;
   rank: number;
   soireeId: string;
   canRemove: boolean;
+  /** US-I2 — la soirée n'est plus celle en cours : la ligne devient un résultat. */
+  readOnly: boolean;
   onChanged: () => void;
 }) {
+  // `useVote` est appelé même en lecture seule — un hook ne peut pas l'être sous
+  // condition. Il ne coûte alors qu'un état local jamais touché : rien ne l'appelle,
+  // puisque le bouton n'est pas peint.
   const { soireeVotes, hasVoted, isPending, error, toggle } = useVote(entry.mod.id, {
     votes: entry.mod.votes,
     soireeVotes: entry.votes,
@@ -136,29 +151,46 @@ function RankingRow({
           </button>
         )}
         <span className="font-mono text-xl">{soireeVotes}</span>
-        <button
-          type="button"
-          onClick={toggle}
-          aria-pressed={hasVoted}
-          aria-busy={isPending}
-          aria-label={
-            hasVoted ? `Retirer mon vote pour ${entry.mod.name}` : `Voter pour ${entry.mod.name}`
-          }
-          className={`rounded-sm px-[11px] py-[7px] font-sans text-xs font-semibold ${
-            hasVoted
-              ? "btn-solid bg-[var(--color-amber)] text-[var(--color-ink)]"
-              : "btn-outline border border-[var(--color-border-strong)]"
-          }`}
-          style={{ opacity: isPending ? 0.7 : 1 }}
-        >
-          {hasVoted ? "✓ voté" : "+1"}
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={toggle}
+            aria-pressed={hasVoted}
+            aria-busy={isPending}
+            aria-label={
+              hasVoted ? `Retirer mon vote pour ${entry.mod.name}` : `Voter pour ${entry.mod.name}`
+            }
+            className={`rounded-sm px-[11px] py-[7px] font-sans text-xs font-semibold ${
+              hasVoted
+                ? "btn-solid bg-[var(--color-amber)] text-[var(--color-ink)]"
+                : "btn-outline border border-[var(--color-border-strong)]"
+            }`}
+            style={{ opacity: isPending ? 0.7 : 1 }}
+          >
+            {hasVoted ? "✓ voté" : "+1"}
+          </button>
+        )}
+        {/* Le vote du membre reste lisible une fois les votes clos : c'est le seul
+            repère qui distingue « je n'ai pas aimé » de « je n'étais pas là ». */}
+        {readOnly && entry.hasVoted && (
+          <span
+            className="font-mono text-[10px] text-[var(--color-text-muted)]"
+            title="Tu avais voté pour ce mod."
+          >
+            ✓ voté
+          </span>
+        )}
       </div>
     </article>
   );
 }
 
-export function SoireeView({ soiree: initialSoiree, memberCount, isAdmin = false }: SoireeViewProps) {
+export function SoireeView({
+  soiree: initialSoiree,
+  memberCount,
+  isAdmin = false,
+  isPast = false,
+}: SoireeViewProps) {
   const { isLoading } = useRequireAuth();
   const { data: session } = useSession();
   const [soiree, setSoiree] = useState(initialSoiree);
@@ -224,14 +256,34 @@ export function SoireeView({ soiree: initialSoiree, memberCount, isAdmin = false
   const date = new Date(soiree.date);
   const myVoteCount = soiree.mods.filter((entry) => entry.hasVoted).length;
 
+  /**
+   * US-I2 — hors de la soirée en cours, la page est un compte rendu : ni vote, ni
+   * engagement, ni retrait. La condition est `isCurrent` et non `isPast`, parce que le
+   * serveur refuse déjà d'écrire ailleurs que dans la soirée en cours — une soirée
+   * programmée plus loin est donc à lire, elle aussi, même si elle n'a pas encore eu
+   * lieu.
+   */
+  const isReadOnly = !soiree.isCurrent;
+  // Le classement arrive trié par la base (US-G4) : le premier est le mod retenu.
+  const winner = soiree.mods[0];
+  const eyebrow = soiree.isCurrent
+    ? "SOIRÉE EN COURS"
+    : isPast
+      ? "SOIRÉE PASSÉE"
+      : "SOIRÉE À VENIR";
+
   return (
     <div className="flex min-h-screen flex-col">
-      <AppHeader active="soiree" cta={{ label: "Proposer un mod", href: "/mods/nouveau" }} />
+      <AppHeader
+        active={isPast ? "historique" : "soiree"}
+        cta={isReadOnly ? undefined : { label: "Proposer un mod", href: "/mods/nouveau" }}
+      />
 
       <div className="flex flex-wrap items-end gap-7 border-b border-[var(--color-border)] px-[22px] py-[18px]">
         <div>
           <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
-            SOIRÉE EN COURS{soiree.name && ` · THÈME ${soiree.name.toUpperCase()}`}
+            {eyebrow}
+            {soiree.name && ` · THÈME ${soiree.name.toUpperCase()}`}
           </div>
           <h1 className="mt-2 font-sans text-[38px] font-bold leading-none tracking-[-0.035em]">
             {formatSoireeDate(date)}
@@ -242,7 +294,11 @@ export function SoireeView({ soiree: initialSoiree, memberCount, isAdmin = false
           </div>
         </div>
         <div className="ml-auto flex items-end gap-[26px]">
-          <StatBlock label="IL RESTE" value={formatSoireeCountdown(date)} valueSize={22} />
+          <StatBlock
+            label={isPast ? "STATUT" : "IL RESTE"}
+            value={isPast ? "terminée" : formatSoireeCountdown(date)}
+            valueSize={22}
+          />
           <StatBlock
             label="ONT VOTÉ"
             value={`${soiree.voterCount} / ${memberCount}`}
@@ -255,19 +311,24 @@ export function SoireeView({ soiree: initialSoiree, memberCount, isAdmin = false
         <div>
           <div className="mb-[10px] flex items-baseline justify-between">
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
-              CLASSEMENT EN DIRECT
+              {isReadOnly ? "CLASSEMENT FINAL" : "CLASSEMENT EN DIRECT"}
             </div>
             <div className="font-mono text-[10px] text-[var(--color-text-muted)]">
-              mise à jour à chaque vote
+              {isReadOnly ? "les votes sont clos" : "mise à jour à chaque vote"}
             </div>
           </div>
 
           {soiree.mods.length === 0 ? (
             <div className="rounded-sm border border-dashed border-[var(--color-border-dashed)] p-8 text-center">
-              <p className="font-sans text-sm font-semibold">Personne n&apos;a encore engagé de mod.</p>
+              <p className="font-sans text-sm font-semibold">
+                {isReadOnly
+                  ? "Aucun mod n'a été engagé pour cette soirée."
+                  : "Personne n'a encore engagé de mod."}
+              </p>
               <p className="mt-[6px] font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-muted)]">
-                Seuls les mods engagés ici sont votables. Prends-en un dans le catalogue,
-                à droite.
+                {isReadOnly
+                  ? "Elle s'est jouée sans passer par le vote, ou personne n'a rien proposé à temps."
+                  : "Seuls les mods engagés ici sont votables. Prends-en un dans le catalogue, à droite."}
               </p>
             </div>
           ) : (
@@ -281,9 +342,12 @@ export function SoireeView({ soiree: initialSoiree, memberCount, isAdmin = false
                   // Cahier §2.6, même règle que la suppression d'une fiche : celui qui a
                   // engagé le mod, ou un admin. Sinon n'importe qui effacerait les votes
                   // des autres d'un clic.
+                  // Rien ne se retire d'une soirée qu'on ne fait plus que lire : le
+                  // retrait emporte les votes reçus, et ceux-là sont le compte rendu.
                   canRemove={
-                    isAdmin || entry.engagedBy.discordId === session?.user?.id
+                    !isReadOnly && (isAdmin || entry.engagedBy.discordId === session?.user?.id)
                   }
+                  readOnly={isReadOnly}
                   onChanged={refresh}
                 />
               ))}
@@ -292,15 +356,47 @@ export function SoireeView({ soiree: initialSoiree, memberCount, isAdmin = false
         </div>
 
         <div className="flex flex-col gap-3">
-          <EngageModPicker soireeId={soiree.id} onEngaged={refresh} />
+          {/* US-I2 — une soirée qu'on ne fait que lire n'a rien à garnir. */}
+          {!isReadOnly && <EngageModPicker soireeId={soiree.id} onEngaged={refresh} />}
+
+          {/* Le haut du classement, sorti de la liste : c'est la réponse à « qu'est-ce
+              qui a été retenu ce soir-là ? », et elle ne doit pas se chercher. */}
+          {isReadOnly && winner && (
+            <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[15px]">
+              <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
+                MOD RETENU
+              </div>
+              <Link
+                href={`/mods/${winner.mod.id}`}
+                className="link-title mt-2 block font-sans text-[15px] font-semibold leading-tight"
+              >
+                {winner.mod.name}
+              </Link>
+              <div className="mt-[6px] font-mono text-[11px] text-[var(--color-text-secondary)]">
+                {winner.votes} vote{winner.votes > 1 ? "s" : ""} sur {soiree.voterCount}{" "}
+                votant{soiree.voterCount > 1 ? "s" : ""} · engagé par{" "}
+                {winner.engagedBy.username}
+              </div>
+            </div>
+          )}
 
           <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[15px]">
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
               TON VOTE
             </div>
             <div className="mt-2 font-mono text-[11.5px] leading-[1.7] text-[var(--color-text-secondary)]">
-              Tu as voté pour {myVoteCount} mod{myVoteCount > 1 ? "s" : ""} sur{" "}
-              {soiree.mods.length}. Un vote par mod, tu peux le retirer à tout moment.
+              {isReadOnly ? (
+                <>
+                  Tu avais voté pour {myVoteCount} mod{myVoteCount > 1 ? "s" : ""} sur{" "}
+                  {soiree.mods.length}. Les votes de cette soirée sont clos : elle ne se
+                  modifie plus.
+                </>
+              ) : (
+                <>
+                  Tu as voté pour {myVoteCount} mod{myVoteCount > 1 ? "s" : ""} sur{" "}
+                  {soiree.mods.length}. Un vote par mod, tu peux le retirer à tout moment.
+                </>
+              )}
             </div>
             <div className="mt-[10px]">
               <ProgressBar
@@ -310,6 +406,23 @@ export function SoireeView({ soiree: initialSoiree, memberCount, isAdmin = false
               />
             </div>
           </div>
+
+          {isReadOnly && (
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/historique"
+                className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-[14px] py-2 font-sans text-xs font-medium"
+              >
+                ← Historique
+              </Link>
+              <Link
+                href="/soiree"
+                className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-[14px] py-2 font-sans text-xs font-medium"
+              >
+                Soirée en cours
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </div>

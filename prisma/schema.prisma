@@ -1,8 +1,11 @@
 // Schéma Prisma — voir le cahier des charges §4 « Modèle de données ».
-// Périmètre actuel : US-A5 (User), US-B1 (Mod), US-C1 (Tag/ModTag) et US-F1 (Vote).
-// Les modèles Session/SessionMod (Epic G) seront ajoutés par leurs US respectives.
-// Quand ils arriveront, leur relation vers Mod devra porter `onDelete: Cascade` :
-// DELETE /api/mods/[id] (US-B4) compte dessus pour nettoyer les associations.
+// Périmètre actuel : US-A5 (User), US-B1 (Mod), US-C1 (Tag/ModTag), US-F1 (Vote) et
+// US-G1/G2 (Soiree/SoireeMod).
+//
+// Le cahier §4 appelle la soirée `Session`. Le modèle s'appelle ici `Soiree` : `Session`
+// est déjà le type de next-auth, présent dans presque toutes les routes sous la forme
+// `const session = await auth()`, et `prisma.session` juste à côté se lirait comme
+// l'une ou l'autre chose. C'est le mot de l'interface, et celui du cahier §2.5.
 
 generator client {
   provider = "prisma-client"
@@ -36,6 +39,11 @@ model User {
 
   mods  Mod[]
   votes Vote[]
+
+  /// Soirées créées par ce membre (US-G1, réservé aux admins) et mods qu'il a engagés
+  /// dans une soirée (US-G2).
+  soirees     Soiree[]
+  engagedMods SoireeMod[]
 }
 
 model Mod {
@@ -60,19 +68,21 @@ model Mod {
   authorId String
   author   User   @relation(fields: [authorId], references: [id])
 
-  tags  ModTag[]
-  votes Vote[]
+  tags    ModTag[]
+  votes   Vote[]
+  /// Engagements de cette fiche dans des soirées (US-G2).
+  soirees SoireeMod[]
 
   createdAt DateTime @default(now())
   /// Usage wiki : n'importe quel membre peut éditer la fiche (US-B3).
   updatedAt DateTime @updatedAt
+  /// US-D1 — recherche floue sur le nom, via un index GIN trigram (pg_trgm). Prisma ne
+  /// sait pas décrire cet index : il est créé à la main dans la migration
+  /// `20260829200000_duplicate_detection`, et `prisma migrate diff` ne le voit pas.
 
   @@index([authorId])
   @@index([createdAt])
   @@index([urlKey])
-  /// US-D1 — recherche floue sur le nom, via un index GIN trigram (pg_trgm). Prisma ne
-  /// sait pas décrire cet index : il est créé à la main dans la migration
-  /// `20260829200000_duplicate_detection`, et `prisma migrate diff` ne le voit pas.
 }
 
 /// Vocabulaire libre, alimenté par les membres (cahier §2.2). Les noms sont normalisés
@@ -103,26 +113,101 @@ model ModTag {
   @@index([tagId])
 }
 
-/// US-F1 — un vote d'un membre pour un mod (cahier §2.5).
+/// US-F1 / US-G3 — un vote d'un membre pour un mod, dans le cadre d'une soirée.
 ///
-/// Le cahier §4 rattache le vote à un `SessionMod` : c'est la cible de l'Epic G, quand
-/// la soirée existera comme objet. Le MVP vote « sans notion formelle de soirée »
-/// (cahier §6), donc le vote pointe pour l'instant directement sur la fiche. La reprise
-/// se fera en ajoutant `sessionModId` à côté, pas en réécrivant cette table.
+/// Le cahier §4 rattache le vote à un `SessionMod`, et c'est la règle depuis US-G3 :
+/// seuls les mods engagés dans la soirée en cours sont votables, et le même vote
+/// s'écrit qu'on clique depuis le catalogue, depuis la fiche ou depuis la soirée.
+///
+/// `soireeModId` reste pourtant nullable, pour une seule raison : les votes écrits par
+/// le MVP (« vote basique sans notion formelle de soirée », cahier §6) n'ont aucune
+/// soirée à quoi se rattacher. Les rendre obligatoires les aurait effacés. Ils restent
+/// donc en base avec `soireeModId` à NULL, comptent toujours dans le total d'une fiche,
+/// et plus rien n'en crée : toute écriture passe désormais par une soirée.
 model Vote {
-  id        String   @id @default(cuid())
-  userId    String
-  modId     String
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  /// Redondant avec `soireeMod.modId` pour les votes de soirée, et c'est voulu : le
+  /// catalogue trie sur `_count` des votes d'une fiche (US-E4) et compte sa popularité
+  /// toutes soirées confondues. Sans cette colonne, chaque comptage passerait par une
+  /// jointure — et les votes hérités du MVP n'auraient plus de mod du tout.
+  modId       String
+  /// NULL = vote hérité du MVP, antérieur à l'Epic G. Renseigné pour tout vote récent.
+  soireeModId String?
+  createdAt   DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// `Cascade` comme pour `ModTag` (US-C1) : DELETE /api/mods/[id] (US-B4) compte
   /// dessus pour ne pas laisser de votes orphelins derrière une fiche supprimée.
-  mod  Mod  @relation(fields: [modId], references: [id], onDelete: Cascade)
+  mod       Mod        @relation(fields: [modId], references: [id], onDelete: Cascade)
+  /// Désengager un mod d'une soirée emporte les votes qu'il y avait reçus : ils ne
+  /// veulent plus rien dire une fois l'association défaite.
+  soireeMod SoireeMod? @relation(fields: [soireeModId], references: [id], onDelete: Cascade)
 
-  /// Un membre, un vote par fiche — l'unicité demandée par US-F1. C'est aussi l'index
-  /// qui sert à retrouver le vote du membre connecté pour allumer son bouton.
-  @@unique([userId, modId])
+  /// US-G3 — un membre, un vote par mod engagé, par soirée. Un même mod reproposé à
+  /// une soirée suivante est donc revotable, ce que `@@unique([userId, modId])` (la
+  /// contrainte du MVP, retirée par la migration `20260830180000_soirees`) interdisait.
+  ///
+  /// Postgres considère deux NULL comme distincts : cette contrainte ne dit donc rien
+  /// des votes hérités. C'est un index unique partiel, posé à la main dans la même
+  /// migration, qui garde leur unicité — Prisma ne sait pas le décrire.
+  @@unique([userId, soireeModId])
   /// Le comptage part du mod (US-F2), l'unicité ne sert que dans l'autre sens.
   @@index([modId])
+}
+
+/// US-G1 — une soirée (cahier §2.5 : « date + éventuellement thème »).
+///
+/// Il n'y a pas de colonne « en cours » : l'état se déduit de la date, et une colonne
+/// à maintenir se serait désynchronisée dès la première soirée passée sans que
+/// personne ne la bascule. La soirée en cours est la prochaine à venir — voir
+/// `currentSoiree` (lib/soirees/current.ts), qui fait foi.
+model Soiree {
+  id   String   @id @default(cuid())
+  /// Le thème, tel que l'interface l'appelle (« touge only », « rallye »…). Facultatif :
+  /// le cahier ne rend obligatoire que la date.
+  name String?
+  date DateTime
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  mods SoireeMod[]
+
+  createdAt DateTime @default(now())
+
+  /// L'historique (Epic I) et la résolution de la soirée en cours lisent tous deux dans
+  /// cet ordre.
+  @@index([date])
+  @@index([createdById])
+}
+
+/// US-G2 — un mod du catalogue engagé dans une soirée. C'est cette ligne, et non le mod,
+/// que les votes de la soirée désignent.
+model SoireeMod {
+  id       String @id @default(cuid())
+  soireeId String
+  modId    String
+
+  /// Le membre qui a engagé ce mod — la soirée affiche « engagé par … ». N'importe quel
+  /// membre le peut (cahier §2.5), pas seulement l'auteur de la fiche ni un admin.
+  engagedById String
+
+  soiree    Soiree @relation(fields: [soireeId], references: [id], onDelete: Cascade)
+  /// `Cascade` comme partout ailleurs : DELETE /api/mods/[id] (US-B4) compte dessus
+  /// pour ne pas laisser d'engagement derrière une fiche supprimée — c'est ce
+  /// qu'annonçait l'en-tête de ce fichier avant l'Epic G.
+  mod       Mod    @relation(fields: [modId], references: [id], onDelete: Cascade)
+  engagedBy User   @relation(fields: [engagedById], references: [id])
+
+  votes Vote[]
+
+  createdAt DateTime @default(now())
+
+  /// US-G2 — un mod ne peut être engagé qu'une fois dans une même soirée.
+  @@unique([soireeId, modId])
+  /// Le classement part de la soirée (US-G4) ; l'unicité sert dans ce sens-là aussi,
+  /// mais la fiche a besoin de l'autre pour savoir où elle est engagée.
+  @@index([modId])
+  @@index([engagedById])
 }

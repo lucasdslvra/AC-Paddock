@@ -1,6 +1,11 @@
 import type { Mod as ModView } from "@/lib/mock-data";
 import { formatAge, formatCreatedAt, formatLinkLabel, stripProtocol } from "./format";
-import { serializeMod, type ApiMod, type ModWithRelations } from "./serialize";
+import {
+  MOD_VOTE_HISTORY_LENGTH,
+  serializeMod,
+  type ApiMod,
+  type ModWithRelations,
+} from "./serialize";
 import { toUiModType } from "./type";
 
 /**
@@ -8,11 +13,38 @@ import { toUiModType } from "./type";
  * (celle décrite dans lib/mock-data.ts). C'est par ici que passe le catalogue (US-E1),
  * qui reçoit ses fiches en JSON et n'a donc que des dates ISO sous la main.
  *
- * Les champs encore non implémentés — contributions et soirées (Epic G) — restent
- * vides tant que leurs US ne sont pas faites. `voteHistory` en fait partie : il ne
- * décore que les fiches de démonstration, le vote réel (US-F1) n'a pas d'historique
- * jour par jour à en tirer.
+ * Les champs encore non implémentés — les contributions — restent vides tant que leurs
+ * US ne sont pas faites. `voteHistory`, lui, est désormais réel : une barre par soirée
+ * où la fiche a été engagée (US-G4), et non plus un ornement des fiches de démonstration.
  */
+/**
+ * Hauteur, en pourcentage, d'une soirée où la fiche était engagée sans recevoir un
+ * seul vote. Zéro la rendrait invisible, donc indistinguable d'une soirée où la fiche
+ * n'était pas là — or ce n'est pas la même chose.
+ */
+const EMPTY_SOIREE_BAR = 6;
+
+/**
+ * US-G4 — les comptes de votes des dernières soirées, en hauteurs de barres.
+ *
+ * Chaque fiche est rapportée à son propre maximum, pas à celui du catalogue : les
+ * barres racontent l'histoire d'un mod — « il monte », « il retombe » — et pas son rang.
+ * Deux cartes côte à côte ne se comparent donc pas barre à barre, ce que leur taille
+ * de vignette n'invite de toute façon pas à faire.
+ *
+ * La série est complétée à gauche jusqu'à sept colonnes pour que toutes les cartes
+ * s'alignent. Ce remplissage est à zéro, donc littéralement vide : une fiche engagée
+ * deux fois montre deux barres et cinq blancs, ce qui se lit comme peu d'historique.
+ */
+function toBarHeights(history: number[]): number[] {
+  const peak = Math.max(...history, 1);
+  const bars = history.map((count) =>
+    count === 0 ? EMPTY_SOIREE_BAR : Math.max(EMPTY_SOIREE_BAR, Math.round((count / peak) * 100)),
+  );
+  const padding = Array.from({ length: Math.max(0, MOD_VOTE_HISTORY_LENGTH - bars.length) }, () => 0);
+  return [...padding, ...bars];
+}
+
 export function apiModToView(mod: ApiMod): ModView {
   const createdAt = new Date(mod.createdAt);
 
@@ -23,7 +55,8 @@ export function apiModToView(mod: ApiMod): ModView {
     tags: mod.tags,
     totalVotes: mod.votes,
     hasVoted: mod.hasVoted,
-    voteHistory: [],
+    engagement: mod.engagement,
+    voteHistory: toBarHeights(mod.voteHistory),
     author: mod.author.username,
     ageLabel: formatAge(createdAt),
     createdAtLabel: formatCreatedAt(createdAt),
@@ -43,6 +76,6 @@ export function apiModToView(mod: ApiMod): ModView {
  * plutôt que de dupliquer la conversion : une fiche s'affiche pareil, qu'elle vienne
  * d'un `findUnique` ou d'un `fetch`.
  */
-export function toModView(mod: ModWithRelations): ModView {
-  return apiModToView(serializeMod(mod));
+export function toModView(mod: ModWithRelations, currentSoireeId: string | null): ModView {
+  return apiModToView(serializeMod(mod, currentSoireeId));
 }

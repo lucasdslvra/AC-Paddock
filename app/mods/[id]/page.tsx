@@ -5,6 +5,7 @@ import { canDeleteMod } from "@/lib/mods/permissions";
 import { modInclude } from "@/lib/mods/serialize";
 import { toModView } from "@/lib/mods/view";
 import { prisma } from "@/lib/prisma";
+import { currentSoiree } from "@/lib/soirees/current";
 import { ModDetailView } from "./ModDetailView";
 
 export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
@@ -18,8 +19,12 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
   const session = await auth();
   if (!session?.user) redirect("/");
 
+  // US-G3 — c'est la soirée en cours qui décide si cette fiche est votable, et le
+  // panneau de vote doit pouvoir dire *pourquoi* elle ne l'est pas.
+  const soiree = await currentSoiree();
+
   const [record, actor] = await Promise.all([
-    prisma.mod.findUnique({ where: { id }, include: modInclude(session.user.id) }),
+    prisma.mod.findUnique({ where: { id }, include: modInclude(session.user.id, soiree) }),
     // Pas de ligne User tant que le membre n'a rien créé : il n'est alors ni auteur
     // ni admin, et `canDeleteMod` répond non.
     prisma.user.findUnique({
@@ -28,10 +33,10 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
     }),
   ]);
 
-  // Le catalogue ne sert plus que de vraies fiches (US-E1), mais la soirée, l'historique
-  // et l'admin vivent encore sur `lib/mock-data.ts` : un lien parti de ces pages tombe
-  // sur un id qui n'existe pas en base. Ce repli disparaîtra avec les Epics F et G.
-  const mod = record ? toModView(record) : getModById(id);
+  // Le catalogue et la soirée ne servent plus que de vraies fiches, mais l'historique et
+  // l'admin vivent encore sur `lib/mock-data.ts` : un lien parti de ces pages tombe sur
+  // un id qui n'existe pas en base. Ce repli disparaîtra avec l'Epic I.
+  const mod = record ? toModView(record, soiree?.id ?? null) : getModById(id);
 
   // Seules les fiches en base sont éditables (US-B3) et supprimables (US-B4).
   return (
@@ -40,6 +45,7 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
       editHref={record ? `/mods/${id}/modifier` : undefined}
       canDelete={record ? canDeleteMod(actor, record) : false}
       hasPendingDraft={hasPendingDraft}
+      hasCurrentSoiree={soiree !== null}
     />
   );
 }

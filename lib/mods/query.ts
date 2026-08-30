@@ -4,6 +4,7 @@
 // API, et une valeur inconnue retombe des deux côtés sur la même valeur par défaut.
 
 import type { ModType } from "@/lib/generated/prisma/enums";
+import type { ApiSoireeSummary } from "@/lib/soirees/serialize";
 import type { ApiMod } from "./serialize";
 import { parseTagsParam, serializeTagsParam } from "./tags";
 import { MOD_TYPES } from "./type";
@@ -122,4 +123,11 @@ export interface ModListResponse {
   /** Au moins 1, même sans résultat : « page 1 sur 1 » se lit, « page 1 sur 0 » non. */
   pageCount: number;
   counts: ModTypeCounts;
+  /**
+   * US-G3 — la soirée en cours, ou `null` s'il n'y en a aucune de programmée. Le
+   * catalogue en a besoin deux fois : son panneau latéral l'annonce, et c'est elle qui
+   * décide si un bouton de vote peut s'allumer. La renvoyer avec la liste évite au
+   * catalogue une seconde requête pour une réponse que la première connaissait déjà.
+   */
+  currentSoiree: ApiSoireeSummary | null;
 }

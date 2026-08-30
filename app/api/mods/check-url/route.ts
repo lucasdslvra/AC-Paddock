@@ -3,6 +3,7 @@ import type { UrlCheckResult } from "@/lib/mods/duplicates";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { normalizeModUrl } from "@/lib/mods/url";
 import { prisma } from "@/lib/prisma";
+import { currentSoiree } from "@/lib/soirees/current";
 
 /**
  * US-D2 — le lien saisi est-il déjà sur une fiche ?
@@ -32,17 +33,21 @@ export async function GET(request: Request) {
     return Response.json({ match: null } satisfies UrlCheckResult);
   }
 
+  const soiree = await currentSoiree();
+
   try {
     // Aucune fiche à écarter du résultat : le formulaire n'interroge cette route qu'à
     // la création (US-D3). Le jour où l'édition la sollicitera, il faudra exclure la
     // fiche modifiée, qui se trouverait elle-même.
     const mod = await prisma.mod.findFirst({
       where: { urlKey },
-      include: modInclude(session.user.id),
+      include: modInclude(session.user.id, soiree),
       orderBy: { createdAt: "asc" },
     });
 
-    return Response.json({ match: mod ? serializeMod(mod) : null } satisfies UrlCheckResult);
+    return Response.json({
+      match: mod ? serializeMod(mod, soiree?.id ?? null) : null,
+    } satisfies UrlCheckResult);
   } catch (error) {
     console.error("GET /api/mods/check-url", error);
     return Response.json({ error: "La vérification du lien a échoué." }, { status: 500 });

@@ -15,6 +15,7 @@ import { buildTagCreateWrite } from "@/lib/mods/tags-store";
 import { modUrlKey } from "@/lib/mods/url";
 import { prisma } from "@/lib/prisma";
 import { upsertSessionUser } from "@/lib/session-user";
+import { currentSoiree } from "@/lib/soirees/current";
 import { isModImageUrl } from "@/lib/supabase/storage";
 
 /**
@@ -77,18 +78,30 @@ export async function GET(request: Request) {
   const contentWhere: ModWhereInput | undefined = filters.length > 0 ? { AND: filters } : undefined;
 
   try {
-    const [byType, mods] = await Promise.all([
+    // La soirée en cours d'abord : c'est elle qui décide quelles fiches sont votables
+    // (US-G3), et `modInclude` en a besoin pour construire sa jointure.
+    const soiree = await currentSoiree();
+
+    const [byType, mods, soireeRecord] = await Promise.all([
       // Un `groupBy` plutôt qu'un `count` : il donne d'un seul aller-retour les
       // compteurs du filtre par type *et* le total de la requête, qui n'est que leur
       // somme — ou la ligne du type choisi.
       prisma.mod.groupBy({ by: ["type"], where: contentWhere, _count: { _all: true } }),
       prisma.mod.findMany({
         where: query.type ? { ...contentWhere, type: query.type } : contentWhere,
-        include: modInclude(session.user.id),
+        include: modInclude(session.user.id, soiree),
         orderBy: MOD_ORDER_BY[query.sort],
         skip: (query.page - 1) * MODS_PER_PAGE,
         take: MODS_PER_PAGE,
       }),
+      // Le panneau « prochaine soirée » du catalogue, et de quoi expliquer un bouton
+      // de vote éteint. `null` tant qu'aucune soirée n'est programmée.
+      soiree
+        ? prisma.soiree.findUnique({
+            where: { id: soiree.id },
+            include: { createdBy: true, _count: { select: { mods: true } } },
+          })
+        : null,
     ]);
 
     // Un type sans aucune fiche est absent du `groupBy` : il doit quand même afficher
@@ -102,12 +115,26 @@ export async function GET(request: Request) {
     const total = query.type ? counts[query.type] : counts.all;
 
     const body: ModListResponse = {
-      mods: mods.map(serializeMod),
+      mods: mods.map((mod) => serializeMod(mod, soiree?.id ?? null)),
       page: query.page,
       perPage: MODS_PER_PAGE,
       total,
       pageCount: Math.max(1, Math.ceil(total / MODS_PER_PAGE)),
       counts,
+      currentSoiree: soireeRecord
+        ? {
+            id: soireeRecord.id,
+            name: soireeRecord.name,
+            date: soireeRecord.date.toISOString(),
+            createdBy: {
+              discordId: soireeRecord.createdBy.discordId,
+              username: soireeRecord.createdBy.username,
+              avatarUrl: soireeRecord.createdBy.avatarUrl,
+            },
+            isCurrent: true,
+            modCount: soireeRecord._count.mods,
+          }
+        : null,
     };
 
     return Response.json(body);
@@ -157,6 +184,7 @@ export async function POST(request: Request) {
     // La session porte l'identité Discord, pas un id de ligne User : on
     // crée/rafraîchit l'auteur avant de poser la clé étrangère.
     const author = await upsertSessionUser(session.user);
+    const soiree = await currentSoiree();
 
     // Les tags ne sont pas une colonne de `Mod` : on les sort du lot pour les écrire
     // comme des lignes `ModTag`, en créant au passage ceux qui n'existent pas encore.
@@ -171,10 +199,10 @@ export async function POST(request: Request) {
         authorId: author.id,
         tags: await buildTagCreateWrite(tags),
       },
-      include: modInclude(session.user.id),
+      include: modInclude(session.user.id, soiree),
     });
 
-    return Response.json(serializeMod(mod), { status: 201 });
+    return Response.json(serializeMod(mod, soiree?.id ?? null), { status: 201 });
   } catch (error) {
     console.error("POST /api/mods", error);
     return Response.json({ error: "La fiche n'a pas pu être enregistrée." }, { status: 500 });

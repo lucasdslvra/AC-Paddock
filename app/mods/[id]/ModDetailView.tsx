@@ -14,6 +14,7 @@ import { TypeBadge } from "@/components/TypeBadge";
 import { UserAvatar } from "@/components/UserAvatar";
 import { currentSession, type Mod } from "@/lib/mock-data";
 import { useVote } from "@/lib/mods/useVote";
+import { voteDisabledReason } from "@/lib/mods/vote";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 
 interface ModDetailViewProps {
@@ -31,6 +32,8 @@ interface ModDetailViewProps {
    * une saisie attend dans l'onglet, la fiche propose de la reprendre.
    */
   hasPendingDraft?: boolean;
+  /** US-G3 — distingue « pas engagé » de « aucune soirée programmée » (cf. VotePanel). */
+  hasCurrentSoiree?: boolean;
 }
 
 const TYPE_PLURAL = { vehicule: "Véhicules", circuit: "Circuits" } as const;
@@ -46,13 +49,23 @@ const TYPE_PLURAL = { vehicule: "Véhicules", circuit: "Circuits" } as const;
  * nombre : ils restent en pastilles neutres, le seul visage affiché est celui du
  * membre connecté quand il a voté.
  */
-function VotePanel({ mod, viewer }: { mod: Mod; viewer?: { name?: string | null; image?: string | null } }) {
-  const { votes, hasVoted, isPending, error, toggle } = useVote(
-    mod.id,
-    mod.totalVotes,
-    mod.hasVoted ?? false,
-  );
-  const others = votes - (hasVoted ? 1 : 0);
+function VotePanel({
+  mod,
+  viewer,
+  hasCurrentSoiree,
+}: {
+  mod: Mod;
+  viewer?: { name?: string | null; image?: string | null };
+  hasCurrentSoiree: boolean;
+}) {
+  const { soireeVotes, hasVoted, isPending, error, toggle } = useVote(mod.id, {
+    votes: mod.totalVotes,
+    soireeVotes: mod.engagement?.votes ?? 0,
+    hasVoted: mod.hasVoted ?? false,
+  });
+  // US-G3 — seuls les mods engagés dans la soirée en cours sont votables.
+  const isEngaged = mod.engagement != null;
+  const others = soireeVotes - (hasVoted ? 1 : 0);
 
   return (
     <div
@@ -61,28 +74,40 @@ function VotePanel({ mod, viewer }: { mod: Mod; viewer?: { name?: string | null;
     >
       <div className="flex items-end justify-between">
         <div>
+          {/* US-G3 — le compteur est celui de la soirée en cours, et il repart de zéro
+              à chaque nouvelle. L'historique, lui, est dans les barres à droite. */}
           <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-on-ink)]">
-            VOTES POUR CE MOD
+            {isEngaged ? "VOTES CE SOIR" : "SOIRÉES PRÉCÉDENTES"}
           </div>
-          <div className="mt-1 font-mono text-4xl leading-none">{votes}</div>
+          <div className="mt-1 font-mono text-4xl leading-none">
+            {isEngaged ? soireeVotes : "—"}
+          </div>
         </div>
-        <MiniBarChart values={mod.voteHistory} height={36} />
+        <MiniBarChart values={mod.voteHistory} height={36} dimmed={mod.totalVotes === 0} />
       </div>
-      <button
-        type="button"
-        onClick={toggle}
-        aria-pressed={hasVoted}
-        aria-busy={isPending}
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-sm p-3 font-sans text-sm font-semibold"
-        style={{
-          background: hasVoted ? "var(--color-amber)" : "transparent",
-          color: hasVoted ? "var(--color-ink)" : "var(--color-invert-text)",
-          border: hasVoted ? "none" : "1px solid rgba(255,255,255,.2)",
-          opacity: isPending ? 0.7 : 1,
-        }}
-      >
-        {hasVoted ? "✓ Tu as voté — retirer" : "+1 Voter pour ce mod"}
-      </button>
+      {isEngaged ? (
+        <button
+          type="button"
+          onClick={toggle}
+          aria-pressed={hasVoted}
+          aria-busy={isPending}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-sm p-3 font-sans text-sm font-semibold"
+          style={{
+            background: hasVoted ? "var(--color-amber)" : "transparent",
+            color: hasVoted ? "var(--color-ink)" : "var(--color-invert-text)",
+            border: hasVoted ? "none" : "1px solid rgba(255,255,255,.2)",
+            opacity: isPending ? 0.7 : 1,
+          }}
+        >
+          {hasVoted ? "✓ Tu as voté — retirer" : "+1 Voter pour ce mod"}
+        </button>
+      ) : (
+        /* Pas de bouton éteint : il annoncerait un score qui n'existe pas. À la place,
+           la raison — elle n'est pas la même selon qu'une soirée est ouverte ou non. */
+        <p className="mt-4 rounded-sm p-3 text-center font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-on-ink)]" style={{ border: "1px dashed rgba(255,255,255,.2)" }}>
+          {voteDisabledReason(hasCurrentSoiree)}
+        </p>
+      )}
       {error && (
         <p role="alert" className="mt-2 font-mono text-[10px] leading-[1.5] text-[var(--color-amber)]">
           {error}
@@ -95,7 +120,9 @@ function VotePanel({ mod, viewer }: { mod: Mod; viewer?: { name?: string | null;
           <AvatarPlaceholder key={index} size={20} />
         ))}
         <span className="ml-1 font-mono text-[10px] text-[var(--color-text-on-ink)]">
-          {votes === 0
+          {!isEngaged
+            ? "pas engagé dans la soirée en cours"
+            : soireeVotes === 0
             ? "personne n'a encore voté"
             : others === 0
               ? "toi seul pour l'instant"
@@ -111,6 +138,7 @@ export function ModDetailView({
   editHref,
   canDelete = false,
   hasPendingDraft = false,
+  hasCurrentSoiree = false,
 }: ModDetailViewProps) {
   const { session, isLoading } = useRequireAuth();
   // L'URL d'aperçu qui n'a rien ramené : `Mod.imageUrl` peut pointer vers un objet que
@@ -329,7 +357,7 @@ export function ModDetailView({
         </div>
 
         <div className="flex flex-col gap-3">
-          <VotePanel mod={mod} viewer={session?.user} />
+          <VotePanel mod={mod} viewer={session?.user} hasCurrentSoiree={hasCurrentSoiree} />
 
           {mod.primaryLink && (
             <a

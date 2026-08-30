@@ -1,3 +1,5 @@
+import type { ApiModEngagement } from "@/lib/mods/serialize";
+
 export type ModType = "vehicule" | "circuit";
 
 export interface ModLink {
@@ -34,9 +36,16 @@ export interface Mod {
   type: ModType;
   name: string;
   tags: string[];
+  /** Total des votes de la fiche, toutes soirées confondues (US-F2). */
   totalVotes: number;
-  /** Vrai si le membre connecté a voté pour cette fiche (US-F1). */
+  /** Vrai si le membre connecté a voté pour cette fiche dans la soirée en cours. */
   hasVoted?: boolean;
+  /**
+   * US-G3 — l'engagement de la fiche dans la soirée en cours. `null` si elle n'y est
+   * pas engagée, `undefined` sur les fiches de démonstration : dans les deux cas elle
+   * n'est pas votable, et le bouton le dit.
+   */
+  engagement?: ApiModEngagement | null;
   voteHistory: number[];
   author: string;
   ageLabel: string;

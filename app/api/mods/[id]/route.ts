@@ -4,6 +4,7 @@ import { buildModUpdateData, modPatchSchema, toFieldErrors } from "@/lib/mods/sc
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { buildTagReplaceWrite } from "@/lib/mods/tags-store";
 import { prisma } from "@/lib/prisma";
+import { currentSoiree } from "@/lib/soirees/current";
 import { deleteModImages, isModImageUrl, modImagePath } from "@/lib/supabase/storage";
 
 /**
@@ -48,6 +49,8 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/mods/[id]"
 
   const data = buildModUpdateData(payload as Record<string, unknown>, parsed.data);
 
+  const soiree = await currentSoiree();
+
   try {
     const existing = await prisma.mod.findUnique({ where: { id }, select: { imageUrl: true } });
     if (!existing) {
@@ -68,7 +71,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/mods/[id]"
     const mod = await prisma.mod.update({
       where: { id },
       data: { ...data, ...(tagWrite && { tags: tagWrite }) },
-      include: modInclude(session.user.id),
+      include: modInclude(session.user.id, soiree),
     });
 
     // L'ancienne image n'est plus référencée : on la retire du bucket. Si ça échoue,
@@ -84,7 +87,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/mods/[id]"
       }
     }
 
-    return Response.json(serializeMod(mod));
+    return Response.json(serializeMod(mod, soiree?.id ?? null));
   } catch (error) {
     console.error(`PATCH /api/mods/${id}`, error);
     return Response.json({ error: "La fiche n'a pas pu être enregistrée." }, { status: 500 });

@@ -1,4 +1,11 @@
-import type { ModModel, ModTagModel, TagModel, UserModel } from "@/lib/generated/prisma/models";
+import type {
+  ModModel,
+  ModTagModel,
+  SoireeModModel,
+  TagModel,
+  UserModel,
+} from "@/lib/generated/prisma/models";
+import type { CurrentSoiree } from "@/lib/soirees/current";
 
 /**
  * Relations à charger avec une fiche pour pouvoir la sérialiser ou l'afficher.
@@ -15,13 +22,37 @@ import type { ModModel, ModTagModel, TagModel, UserModel } from "@/lib/generated
  * passe donc par la relation : une jointure de plus, mais aucun aller-retour
  * supplémentaire pour savoir si ce membre a déjà voté (US-F1).
  */
-export function modInclude(viewerDiscordId: string) {
+export const MOD_VOTE_HISTORY_LENGTH = 7;
+
+export function modInclude(viewerDiscordId: string, currentSoiree: CurrentSoiree | null) {
   return {
     author: true,
     tags: { include: { tag: true }, orderBy: { tag: { name: "asc" } } },
-    // US-F2 — le compteur affiché sur chaque carte, agrégé par la base.
+    // Le total des votes de la fiche, toutes soirées confondues. Il n'est plus affiché
+    // — le compteur d'une carte est celui de la soirée en cours, et il repart de zéro à
+    // chaque nouvelle — mais c'est lui que trie `MOD_ORDER_BY.votes` (US-E4) : un tri
+    // sur le score du soir mettrait tout le catalogue à égalité hors soirée.
     _count: { select: { votes: true } },
-    votes: { where: { user: { discordId: viewerDiscordId } }, select: { userId: true } },
+    // US-G2/G3/G4 — les dernières soirées où la fiche a été engagée, la plus récente
+    // d'abord. Elles servent deux fois :
+    //
+    //   · la première est l'engagement dans la soirée en cours, s'il y en a un — c'est
+    //     ce qui rend la fiche votable, et rien d'autre ;
+    //   · les sept forment l'historique que dessinent les barres de la carte, seul
+    //     endroit où se lit encore la popularité d'une fiche.
+    //
+    // La borne haute est la date de la soirée en cours, pas « les plus récentes » :
+    // une soirée programmée dans trois semaines n'a pas eu lieu, ses zéros ne diraient
+    // rien. Sans soirée en cours, la borne est maintenant — donc les soirées passées.
+    soirees: {
+      where: { soiree: { date: { lte: currentSoiree?.date ?? new Date() } } },
+      orderBy: { soiree: { date: "desc" } },
+      take: MOD_VOTE_HISTORY_LENGTH,
+      include: {
+        _count: { select: { votes: true } },
+        votes: { where: { user: { discordId: viewerDiscordId } }, select: { id: true } },
+      },
+    },
   } as const;
 }
 
@@ -30,9 +61,28 @@ export type ModWithRelations = ModModel & {
   author: UserModel;
   tags: (ModTagModel & { tag: TagModel })[];
   _count: { votes: number };
-  /** Le vote du membre connecté, s'il en a un : zéro ou une ligne, jamais plus. */
-  votes: { userId: string }[];
+  /**
+   * Les `MOD_VOTE_HISTORY_LENGTH` dernières soirées où la fiche a été engagée, la plus
+   * récente d'abord. La soirée en cours y figure en tête si la fiche y est engagée.
+   */
+  soirees: (SoireeModModel & {
+    _count: { votes: number };
+    /** Le vote du membre connecté dans cette soirée, s'il en a un. */
+    votes: { id: string }[];
+  })[];
 };
+
+/**
+ * US-G3 — ce qu'il faut savoir pour voter depuis une carte ou une fiche : sur quelle
+ * ligne le vote s'écrit, et où en est le compte dans la soirée. `null` quand la fiche
+ * n'est pas engagée dans la soirée en cours, ou qu'aucune soirée n'est ouverte — le
+ * bouton est alors désactivé, avec la raison.
+ */
+export interface ApiModEngagement {
+  soireeModId: string;
+  /** Votes de cette fiche **dans la soirée en cours** — pas son total (voir `votes`). */
+  votes: number;
+}
 
 /** Forme d'un mod telle qu'exposée par l'API (dates sérialisées en ISO). */
 export interface ApiMod {
@@ -44,16 +94,37 @@ export interface ApiMod {
   imageUrl: string | null;
   /** Noms des tags, sous leur forme normalisée (US-C1). */
   tags: string[];
-  /** Nombre total de votes, tous membres confondus (US-F2). */
+  /**
+   * Nombre total de votes de la fiche, tous membres et toutes soirées confondus.
+   * Plus affiché nulle part comme un score — le compteur visible est celui de la
+   * soirée en cours — mais c'est la clé du tri « par votes » du catalogue (US-E4).
+   */
   votes: number;
-  /** Vrai si le membre qui a demandé la fiche a voté pour elle (US-F1). */
+  /**
+   * US-G4 — les votes reçus lors des dernières soirées où la fiche a été engagée, de
+   * la plus ancienne à la plus récente. Ce sont des comptes bruts : c'est l'interface
+   * qui en fait des hauteurs de barres, elle seule sait sur quoi les rapporter.
+   *
+   * Au plus `MOD_VOTE_HISTORY_LENGTH` valeurs, et souvent moins : une fiche jamais
+   * engagée n'en a aucune.
+   */
+  voteHistory: number[];
+  /** Vrai si le membre qui a demandé la fiche a voté pour elle dans la soirée en cours. */
   hasVoted: boolean;
+  /** US-G3 — `null` si la fiche n'est pas engagée dans la soirée en cours. */
+  engagement: ApiModEngagement | null;
   author: { discordId: string; username: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
 }
 
-export function serializeMod(mod: ModWithRelations): ApiMod {
+export function serializeMod(mod: ModWithRelations, currentSoireeId: string | null): ApiMod {
+  // `soirees` arrive de la plus récente à la plus ancienne, bornée à la soirée en
+  // cours : celle-ci ne peut donc être qu'en tête. On compare quand même l'identifiant
+  // plutôt que de prendre `[0]` de confiance — une fiche non engagée ce soir a bien une
+  // première entrée, mais c'est celle d'une soirée passée.
+  const engagement = mod.soirees.find((entry) => entry.soireeId === currentSoireeId);
+
   return {
     id: mod.id,
     type: mod.type,
@@ -64,9 +135,11 @@ export function serializeMod(mod: ModWithRelations): ApiMod {
     // La table d'association ne sert qu'au stockage : l'API n'expose que les noms.
     tags: mod.tags.map(({ tag }) => tag.name),
     votes: mod._count.votes,
-    // `votes` est filtré sur le seul membre connecté (`modInclude`) : sa présence
-    // suffit, il n'y a personne d'autre à y chercher.
-    hasVoted: mod.votes.length > 0,
+    // Les barres se lisent de gauche à droite dans l'ordre du temps : on retourne
+    // l'ordre de la base, qui sert d'abord à trouver la soirée en cours.
+    voteHistory: mod.soirees.map((entry) => entry._count.votes).reverse(),
+    hasVoted: engagement !== undefined && engagement.votes.length > 0,
+    engagement: engagement ? { soireeModId: engagement.id, votes: engagement._count.votes } : null,
     author: {
       discordId: mod.author.discordId,
       username: mod.author.username,

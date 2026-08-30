@@ -3,8 +3,18 @@
 import { useCallback, useState } from "react";
 import type { VoteState } from "./vote";
 
+/** L'état de départ, tel que le serveur l'a rendu avec la fiche. */
+export interface VoteInitial {
+  /** Total des votes de la fiche, toutes soirées confondues. */
+  votes: number;
+  /** Votes de la fiche dans la soirée en cours — `0` si elle n'y est pas engagée. */
+  soireeVotes: number;
+  hasVoted: boolean;
+}
+
 export interface VoteControl {
   votes: number;
+  soireeVotes: number;
   hasVoted: boolean;
   /** Une requête est en vol : le bouton l'annonce et refuse un second clic. */
   isPending: boolean;
@@ -26,14 +36,23 @@ export interface VoteControl {
  * L'état local, une fois posé, l'emporte sur les valeurs venues du serveur : la carte
  * survit à un re-rendu du catalogue (changement de tri, de page) sans que le bouton
  * ne retombe une seconde sur l'ancien compte.
+ *
+ * Depuis US-G3 le hook suit deux compteurs, parce qu'un même clic répond à deux
+ * questions : la popularité de la fiche (`votes`, ce qu'affichent la carte et la fiche)
+ * et le score du soir (`soireeVotes`, ce qu'affiche le classement). Les deux bougent de
+ * 1 ensemble — c'est le même vote — mais ils ne partent pas du même endroit.
+ *
+ * Le hook ne sait pas si le mod est votable : c'est à l'appelant de ne pas peindre un
+ * bouton actif quand `ApiMod.engagement` est nul. Le serveur refuse de toute façon.
  */
-export function useVote(modId: string, initialVotes: number, initialHasVoted: boolean): VoteControl {
+export function useVote(modId: string, initial: VoteInitial): VoteControl {
   const [local, setLocal] = useState<VoteState | null>(null);
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const votes = local?.votes ?? initialVotes;
-  const hasVoted = local?.hasVoted ?? initialHasVoted;
+  const votes = local?.votes ?? initial.votes;
+  const soireeVotes = local?.soireeVotes ?? initial.soireeVotes;
+  const hasVoted = local?.hasVoted ?? initial.hasVoted;
 
   const toggle = useCallback(() => {
     if (isPending) return;
@@ -43,7 +62,13 @@ export function useVote(modId: string, initialVotes: number, initialHasVoted: bo
 
     setIsPending(true);
     setError(null);
-    setLocal({ modId, votes: Math.max(0, votes + (next ? 1 : -1)), hasVoted: next });
+    const step = next ? 1 : -1;
+    setLocal({
+      modId,
+      votes: Math.max(0, votes + step),
+      soireeVotes: Math.max(0, soireeVotes + step),
+      hasVoted: next,
+    });
 
     void (async () => {
       try {
@@ -68,7 +93,7 @@ export function useVote(modId: string, initialVotes: number, initialHasVoted: bo
         setIsPending(false);
       }
     })();
-  }, [hasVoted, isPending, local, modId, votes]);
+  }, [hasVoted, isPending, local, modId, soireeVotes, votes]);
 
-  return { votes, hasVoted, isPending, error, toggle };
+  return { votes, soireeVotes, hasVoted, isPending, error, toggle };
 }

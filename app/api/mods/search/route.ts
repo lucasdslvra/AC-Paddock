@@ -3,6 +3,7 @@ import { MIN_NAME_QUERY_LENGTH, SIMILAR_MODS_LIMIT } from "@/lib/mods/duplicates
 import { escapeLikeWildcards } from "@/lib/mods/like";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { prisma } from "@/lib/prisma";
+import { currentSoiree } from "@/lib/soirees/current";
 
 /**
  * US-D1 — recherche floue sur le nom, pour repérer une fiche déjà existante avant d'en
@@ -36,6 +37,8 @@ export async function GET(request: Request) {
     return Response.json([]);
   }
 
+  const soiree = await currentSoiree();
+
   try {
     // Deux requêtes plutôt qu'une : le SQL brut classe les fiches, `findMany` les
     // recharge avec leurs relations pour que la réponse ait la forme d'un mod d'API
@@ -55,7 +58,7 @@ export async function GET(request: Request) {
 
     const mods = await prisma.mod.findMany({
       where: { id: { in: ranked.map(({ id }) => id) } },
-      include: modInclude(session.user.id),
+      include: modInclude(session.user.id, soiree),
     });
 
     // `findMany` ne garantit aucun ordre : on rétablit celui du classement.
@@ -64,7 +67,7 @@ export async function GET(request: Request) {
       ranked
         .map(({ id }) => byId.get(id))
         .filter((mod) => mod !== undefined)
-        .map(serializeMod),
+        .map((mod) => serializeMod(mod, soiree?.id ?? null)),
     );
   } catch (error) {
     console.error("GET /api/mods/search", error);

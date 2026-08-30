@@ -4,6 +4,7 @@ import { ModForm } from "@/components/ModForm";
 import { modInclude } from "@/lib/mods/serialize";
 import { toUiModType } from "@/lib/mods/type";
 import { prisma } from "@/lib/prisma";
+import { currentSoiree } from "@/lib/soirees/current";
 
 export default async function ModifierModPage(props: PageProps<"/mods/[id]/modifier">) {
   const { id } = await props.params;
@@ -11,7 +12,10 @@ export default async function ModifierModPage(props: PageProps<"/mods/[id]/modif
   const session = await auth();
   if (!session?.user) redirect("/");
 
-  const mod = await prisma.mod.findUnique({ where: { id }, include: modInclude(session.user.id) });
+  const mod = await prisma.mod.findUnique({
+    where: { id },
+    include: modInclude(session.user.id, await currentSoiree()),
+  });
   // Les fiches de démonstration ne vivent qu'en dur dans lib/mock-data.ts : rien à éditer.
   if (!mod) notFound();
 

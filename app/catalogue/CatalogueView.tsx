@@ -1,10 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { ModCard } from "@/components/ModCard";
-import { ProgressBar } from "@/components/ProgressBar";
 import { TagPill } from "@/components/TagPill";
 import type { ModType } from "@/lib/generated/prisma/enums";
 import {
@@ -18,7 +18,8 @@ import {
 } from "@/lib/mods/query";
 import { useModCatalogue } from "@/lib/mods/useCatalogue";
 import { apiModToView } from "@/lib/mods/view";
-import { currentSession, siteStats } from "@/lib/mock-data";
+import { siteStats } from "@/lib/mock-data";
+import { formatSoireeDate } from "@/lib/soirees/format";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 
 interface AvailableTag {
@@ -128,14 +129,15 @@ export function CatalogueView() {
   const pageCount = data?.pageCount ?? 1;
   const hasFilters = query.tags.length > 0 || query.type !== null || query.search !== "";
 
-  const engagedCount = currentSession.engagedMods.length + currentSession.extraEngagedCount;
-  const sessionProgress = Math.round((currentSession.membersVoted / currentSession.membersTotal) * 100);
+  // US-G1/G3 — la soirée en cours vient avec la liste (`ModListResponse`) : c'est elle
+  // qui rend les fiches votables, et le panneau ci-dessous l'annonce.
+  const currentSoiree = data?.currentSoiree ?? null;
 
   return (
     <div className="flex min-h-screen flex-col">
       <AppHeader
         active="catalogue"
-        subtitle={`${session?.guildName ?? "serveur"} · ${currentSession.membersTotal} membres`}
+        subtitle={session?.guildName ?? "serveur"}
         stats={[
           { label: "FICHES", value: siteStats.fiches },
           { label: "VOTES", value: siteStats.votes },
@@ -220,22 +222,37 @@ export function CatalogueView() {
             )}
           </div>
 
+          {/* US-G1 — la prochaine soirée, telle qu'elle est en base. Tant qu'aucune n'est
+              programmée, le panneau dit pourquoi les boutons de vote sont éteints
+              plutôt que de disparaître sans un mot. */}
           <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
               PROCHAINE SOIRÉE
             </div>
-            <div className="mt-1 font-sans text-sm font-semibold leading-[1.3]">
-              {currentSession.dateLabel} · {currentSession.timeLabel}
-            </div>
-            <div className="font-mono text-[10px] leading-[1.5] text-[var(--color-text-secondary)]">
-              thème : {currentSession.theme}
-            </div>
-            <div className="mt-[9px]">
-              <ProgressBar percent={sessionProgress} height={3} />
-            </div>
-            <div className="mt-[5px] font-mono text-[10px] text-[var(--color-text-muted)]">
-              {engagedCount} mods engagés · {currentSession.membersVoted} votants
-            </div>
+            {currentSoiree ? (
+              <>
+                <Link
+                  href="/soiree"
+                  className="mt-1 block font-sans text-sm font-semibold leading-[1.3]"
+                >
+                  {formatSoireeDate(new Date(currentSoiree.date))}
+                </Link>
+                {currentSoiree.name && (
+                  <div className="font-mono text-[10px] leading-[1.5] text-[var(--color-text-secondary)]">
+                    thème : {currentSoiree.name}
+                  </div>
+                )}
+                <div className="mt-[9px] font-mono text-[10px] text-[var(--color-text-muted)]">
+                  {currentSoiree.modCount} mod{currentSoiree.modCount > 1 ? "s" : ""} engagé
+                  {currentSoiree.modCount > 1 ? "s" : ""} · seuls ceux-là sont votables
+                </div>
+              </>
+            ) : (
+              <div className="mt-1 font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-secondary)]">
+                Aucune soirée programmée. Le vote rouvrira avec la prochaine — un admin
+                la crée depuis l&apos;espace admin.
+              </div>
+            )}
           </div>
         </aside>
 

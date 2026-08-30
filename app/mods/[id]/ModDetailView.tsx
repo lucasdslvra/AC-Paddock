@@ -13,6 +13,7 @@ import { TagPill } from "@/components/TagPill";
 import { TypeBadge } from "@/components/TypeBadge";
 import { UserAvatar } from "@/components/UserAvatar";
 import { currentSession, type Mod } from "@/lib/mock-data";
+import { useVote } from "@/lib/mods/useVote";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 
 interface ModDetailViewProps {
@@ -34,6 +35,74 @@ interface ModDetailViewProps {
 
 const TYPE_PLURAL = { vehicule: "Véhicules", circuit: "Circuits" } as const;
 
+/**
+ * US-F1 / US-F2 — le vote depuis la fiche, et le compte de ceux qui ont déjà voté.
+ *
+ * Le MVP vote « sans notion formelle de soirée » (cahier §6) : le compteur porte donc
+ * sur la fiche elle-même, pas sur une soirée. Le panneau reprendra le titre d'une
+ * soirée quand l'Epic G lui en donnera une.
+ *
+ * Les avatars des autres votants ne sont pas chargés — la fiche ne connaît que leur
+ * nombre : ils restent en pastilles neutres, le seul visage affiché est celui du
+ * membre connecté quand il a voté.
+ */
+function VotePanel({ mod, viewer }: { mod: Mod; viewer?: { name?: string | null; image?: string | null } }) {
+  const { votes, hasVoted, isPending, error, toggle } = useVote(
+    mod.id,
+    mod.totalVotes,
+    mod.hasVoted ?? false,
+  );
+  const others = votes - (hasVoted ? 1 : 0);
+
+  return (
+    <div className="rounded-sm p-[18px]" style={{ background: "var(--color-ink)", color: "var(--color-surface)" }}>
+      <div className="flex items-end justify-between">
+        <div>
+          <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-on-ink)]">
+            VOTES POUR CE MOD
+          </div>
+          <div className="mt-1 font-mono text-4xl leading-none">{votes}</div>
+        </div>
+        <MiniBarChart values={mod.voteHistory} height={36} />
+      </div>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-pressed={hasVoted}
+        aria-busy={isPending}
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-sm p-3 font-sans text-sm font-semibold"
+        style={{
+          background: hasVoted ? "var(--color-amber)" : "transparent",
+          color: hasVoted ? "var(--color-ink)" : "var(--color-surface)",
+          border: hasVoted ? "none" : "1px solid rgba(255,255,255,.2)",
+          opacity: isPending ? 0.7 : 1,
+        }}
+      >
+        {hasVoted ? "✓ Tu as voté — retirer" : "+1 Voter pour ce mod"}
+      </button>
+      {error && (
+        <p role="alert" className="mt-2 font-mono text-[10px] leading-[1.5] text-[var(--color-amber)]">
+          {error}
+        </p>
+      )}
+      <div className="mt-3 flex items-center gap-[5px]">
+        {hasVoted && <UserAvatar src={viewer?.image} name={viewer?.name} size={20} ring />}
+        {/* Au-delà de quatre pastilles, la ligne déborde — le compte, lui, est écrit. */}
+        {Array.from({ length: Math.min(others, 4) }, (_, index) => (
+          <AvatarPlaceholder key={index} size={20} />
+        ))}
+        <span className="ml-1 font-mono text-[10px] text-[var(--color-text-on-ink)]">
+          {votes === 0
+            ? "personne n'a encore voté"
+            : others === 0
+              ? "toi seul pour l'instant"
+              : `${hasVoted ? "+ " : ""}${others} autre${others > 1 ? "s" : ""} membre${others > 1 ? "s" : ""}`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function ModDetailView({
   mod,
   editHref,
@@ -41,7 +110,6 @@ export function ModDetailView({
   hasPendingDraft = false,
 }: ModDetailViewProps) {
   const { session, isLoading } = useRequireAuth();
-  const [voted, setVoted] = useState(false);
   // L'URL d'aperçu qui n'a rien ramené : `Mod.imageUrl` peut pointer vers un objet que
   // le bucket n'a plus (fichier retiré à la main, bucket recréé). On retombe alors sur
   // le motif rayé, comme une fiche sans image — même parti pris que `ModThumbnail`.
@@ -65,8 +133,6 @@ export function ModDetailView({
     );
   }
 
-  const engaged = currentSession.engagedMods.find((entry) => entry.modId === mod.id);
-  const sessionVotes = (engaged?.sessionVotes ?? 0) + (voted ? 1 : 0);
   const lastContribution = mod.contributions?.[0];
   // Mock authors have no avatar of their own; only the signed-in member does.
   const authorImage = session?.user?.name === mod.author ? session.user.image : null;
@@ -260,41 +326,7 @@ export function ModDetailView({
         </div>
 
         <div className="flex flex-col gap-3">
-          <div className="rounded-sm p-[18px]" style={{ background: "var(--color-ink)", color: "var(--color-surface)" }}>
-            <div className="flex items-end justify-between">
-              <div>
-                <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-on-ink)]">
-                  VOTES POUR LA SOIRÉE DU 4 SEPT
-                </div>
-                <div className="mt-1 font-mono text-4xl leading-none">{sessionVotes}</div>
-              </div>
-              <MiniBarChart values={mod.voteHistory} height={36} />
-            </div>
-            <button
-              type="button"
-              onClick={() => setVoted((v) => !v)}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-sm p-3 font-sans text-sm font-semibold"
-              style={{
-                background: voted ? "var(--color-amber)" : "transparent",
-                color: voted ? "var(--color-ink)" : "var(--color-surface)",
-                border: voted ? "none" : "1px solid rgba(255,255,255,.2)",
-              }}
-            >
-              {voted ? "✓ Tu as voté — retirer" : "+1 Voter pour ce mod"}
-            </button>
-            <div className="mt-3 flex items-center gap-[5px]">
-              {voted && (
-                <UserAvatar src={session?.user?.image} name={session?.user?.name} size={20} ring />
-              )}
-              <AvatarPlaceholder size={20} />
-              <AvatarPlaceholder size={20} />
-              <AvatarPlaceholder size={20} />
-              {!voted && <AvatarPlaceholder size={20} />}
-              <span className="ml-1 font-mono text-[10px] text-[var(--color-text-on-ink)]">
-                + 8 autres membres
-              </span>
-            </div>
-          </div>
+          <VotePanel mod={mod} viewer={session?.user} />
 
           {mod.primaryLink && (
             <a

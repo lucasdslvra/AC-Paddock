@@ -19,7 +19,7 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
   if (!session?.user) redirect("/");
 
   const [record, actor] = await Promise.all([
-    prisma.mod.findUnique({ where: { id }, include: modInclude }),
+    prisma.mod.findUnique({ where: { id }, include: modInclude(session.user.id) }),
     // Pas de ligne User tant que le membre n'a rien créé : il n'est alors ni auteur
     // ni admin, et `canDeleteMod` répond non.
     prisma.user.findUnique({

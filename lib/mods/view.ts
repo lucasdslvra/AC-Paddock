@@ -8,8 +8,10 @@ import { toUiModType } from "./type";
  * (celle décrite dans lib/mock-data.ts). C'est par ici que passe le catalogue (US-E1),
  * qui reçoit ses fiches en JSON et n'a donc que des dates ISO sous la main.
  *
- * Les champs encore non implémentés — votes (Epic F), contributions et soirées
- * (Epic G) — restent vides tant que leurs US ne sont pas faites.
+ * Les champs encore non implémentés — contributions et soirées (Epic G) — restent
+ * vides tant que leurs US ne sont pas faites. `voteHistory` en fait partie : il ne
+ * décore que les fiches de démonstration, le vote réel (US-F1) n'a pas d'historique
+ * jour par jour à en tirer.
  */
 export function apiModToView(mod: ApiMod): ModView {
   const createdAt = new Date(mod.createdAt);
@@ -19,7 +21,8 @@ export function apiModToView(mod: ApiMod): ModView {
     type: toUiModType(mod.type),
     name: mod.name,
     tags: mod.tags,
-    totalVotes: 0,
+    totalVotes: mod.votes,
+    hasVoted: mod.hasVoted,
     voteHistory: [],
     author: mod.author.username,
     ageLabel: formatAge(createdAt),

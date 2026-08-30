@@ -35,6 +35,8 @@ export interface Mod {
   name: string;
   tags: string[];
   totalVotes: number;
+  /** Vrai si le membre connecté a voté pour cette fiche (US-F1). */
+  hasVoted?: boolean;
   voteHistory: number[];
   author: string;
   ageLabel: string;

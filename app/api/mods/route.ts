@@ -13,8 +13,9 @@ import { modInputSchema, toFieldErrors } from "@/lib/mods/schema";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { buildTagCreateWrite } from "@/lib/mods/tags-store";
 import { modUrlKey } from "@/lib/mods/url";
-import { isModImageUrl } from "@/lib/supabase/storage";
 import { prisma } from "@/lib/prisma";
+import { upsertSessionUser } from "@/lib/session-user";
+import { isModImageUrl } from "@/lib/supabase/storage";
 
 /**
  * Ordre des fiches, par option de tri (US-E4).
@@ -25,11 +26,9 @@ import { prisma } from "@/lib/prisma";
  */
 const MOD_ORDER_BY: Record<ModSort, ModOrderByWithRelationInput[]> = {
   date: [{ createdAt: "desc" }, { id: "desc" }],
-  // `votes` est accepté dès maintenant, mais n'a rien à trier tant que le modèle Vote
-  // n'existe pas (Epic F) : toutes les fiches sont à zéro vote, donc ex æquo, et le
-  // classement retombe sur la date. Quand Epic F arrivera, cette entrée deviendra
-  // `[{ votes: { _count: "desc" } }, { createdAt: "desc" }, { id: "desc" }]`.
-  votes: [{ createdAt: "desc" }, { id: "desc" }],
+  // US-F2 — le classement par votes. Deux fiches à égalité de votes (le cas le plus
+  // courant : zéro) se départagent par date, comme dans l'autre tri.
+  votes: [{ votes: { _count: "desc" } }, { createdAt: "desc" }, { id: "desc" }],
 };
 
 /**
@@ -85,7 +84,7 @@ export async function GET(request: Request) {
       prisma.mod.groupBy({ by: ["type"], where: contentWhere, _count: { _all: true } }),
       prisma.mod.findMany({
         where: query.type ? { ...contentWhere, type: query.type } : contentWhere,
-        include: modInclude,
+        include: modInclude(session.user.id),
         orderBy: MOD_ORDER_BY[query.sort],
         skip: (query.page - 1) * MODS_PER_PAGE,
         take: MODS_PER_PAGE,
@@ -157,18 +156,7 @@ export async function POST(request: Request) {
   try {
     // La session porte l'identité Discord, pas un id de ligne User : on
     // crée/rafraîchit l'auteur avant de poser la clé étrangère.
-    const author = await prisma.user.upsert({
-      where: { discordId: session.user.id },
-      update: {
-        username: session.user.name ?? undefined,
-        avatarUrl: session.user.image ?? null,
-      },
-      create: {
-        discordId: session.user.id,
-        username: session.user.name ?? "membre",
-        avatarUrl: session.user.image ?? null,
-      },
-    });
+    const author = await upsertSessionUser(session.user);
 
     // Les tags ne sont pas une colonne de `Mod` : on les sort du lot pour les écrire
     // comme des lignes `ModTag`, en créant au passage ceux qui n'existent pas encore.
@@ -183,7 +171,7 @@ export async function POST(request: Request) {
         authorId: author.id,
         tags: await buildTagCreateWrite(tags),
       },
-      include: modInclude,
+      include: modInclude(session.user.id),
     });
 
     return Response.json(serializeMod(mod), { status: 201 });

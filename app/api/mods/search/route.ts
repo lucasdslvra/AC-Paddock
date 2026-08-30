@@ -55,7 +55,7 @@ export async function GET(request: Request) {
 
     const mods = await prisma.mod.findMany({
       where: { id: { in: ranked.map(({ id }) => id) } },
-      include: modInclude,
+      include: modInclude(session.user.id),
     });
 
     // `findMany` ne garantit aucun ordre : on rétablit celui du classement.

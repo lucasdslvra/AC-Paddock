@@ -69,8 +69,8 @@ relu en base à chaque requête plutôt que porté par la session : un changemen
 prend effet tout de suite, sans attendre une reconnexion.
 
 L'image de la fiche est retirée du bucket dans la foulée. Ses associations `ModTag`
-partent avec elle (`onDelete: Cascade`, US-C1) ; `Vote` et `SessionMod` suivront le même
-modèle quand ils arriveront — le rappel est dans `prisma/schema.prisma`.
+(US-C1) et ses `Vote` (US-F1) partent avec elle (`onDelete: Cascade`) ; `SessionMod`
+suivra le même modèle quand il arrivera — le rappel est dans `prisma/schema.prisma`.
 
 Aucun admin n'est désigné pour l'instant : `User.role` vaut `MEMBER` par défaut. Pour
 en promouvoir un, passer son rôle à `ADMIN` en base.
@@ -286,11 +286,10 @@ frappe : passer par l'URL à chaque lettre lancerait une requête par caractère
 
 ### Tri (US-E4)
 
-`sort=votes` est accepté dès maintenant, mais n'a rien à trier tant que le modèle `Vote`
-n'existe pas (Epic F) : toutes les fiches sont à zéro vote, donc ex æquo, et le
-classement retombe légitimement sur la date. Quand Epic F arrivera, il suffira de faire
-précéder `MOD_ORDER_BY.votes` de `{ votes: { _count: "desc" } }`
-([app/api/mods/route.ts](app/api/mods/route.ts)).
+`sort=votes` classe par nombre de votes décroissant, agrégé par la base
+(`{ votes: { _count: "desc" } }` dans `MOD_ORDER_BY`,
+[app/api/mods/route.ts](app/api/mods/route.ts)). Les fiches à égalité — le cas le plus
+courant, zéro vote — se départagent par date, comme dans l'autre tri.
 
 Les deux tris se terminent par `{ id: "desc" }`. Ce n'est pas décoratif : deux fiches
 créées dans la même milliseconde s'échangeraient d'une page à l'autre, et la pagination
@@ -313,9 +312,57 @@ Les fiches arrivent en JSON et passent par `apiModToView`
 `toModView`, qui part d'une ligne Prisma (fiche détail), repasse désormais par cette même
 fonction : une fiche s'affiche pareil qu'elle vienne d'un `findUnique` ou d'un `fetch`.
 
-Les votes affichés sur les cartes (`totalVotes`, `voteHistory`) restent à zéro : ils
-appartiennent à Epic F. Les compteurs FICHES / VOTES de l'en-tête viennent encore de
-`lib/mock-data.ts`.
+`voteHistory` (le petit histogramme des cartes) ne décore que les fiches de
+démonstration : le vote réel n'a pas d'historique jour par jour à en tirer. Les
+compteurs FICHES / VOTES de l'en-tête viennent encore de `lib/mock-data.ts`.
+
+## Votes (US-F1, US-F2)
+
+Modèle `Vote` (`prisma/schema.prisma`), une ligne par membre et par fiche. L'unicité
+est portée par la base — `@@unique([userId, modId])` — pas par une vérification
+préalable : deux clics partis en même temps ne peuvent pas produire deux votes.
+
+Le cahier §4 rattache le vote à un `SessionMod`. Le MVP vote « sans notion formelle de
+soirée » (cahier §6), donc `Vote` pointe directement sur la fiche ; l'Epic G ajoutera
+`sessionModId` à côté plutôt que de réécrire la table.
+
+### Les routes
+
+`POST /api/mods/[id]/vote` enregistre le vote, `DELETE` le retire
+([app/api/mods/[id]/vote/route.ts](app/api/mods/[id]/vote/route.ts)). Le backlog ne
+demande que le POST, mais le bouton qu'il décrit a deux états : sans le DELETE, l'état
+actif serait sans retour.
+
+Les deux verbes sont idempotents (`skipDuplicates` d'un côté, `deleteMany` de l'autre) et
+répondent le même objet, `VoteState` ([lib/mods/vote.ts](lib/mods/vote.ts)) : le total
+de la fiche et l'état du membre. Une requête rejouée — réseau capricieux, double clic —
+redit donc la même chose au lieu d'inverser le vote, ce qu'une bascule côté serveur ne
+garantirait pas.
+
+Voter est souvent la première écriture d'un membre : sa ligne `User` n'existe pas
+forcément encore, et `upsertSessionUser` ([lib/session-user.ts](lib/session-user.ts)) la
+crée au passage — la même que celle utilisée à la création d'une fiche.
+
+### Le compteur (US-F2)
+
+`modInclude` ([lib/mods/serialize.ts](lib/mods/serialize.ts)) est devenu une fonction
+prenant l'identifiant Discord du membre connecté. Elle ramène en une seule requête le
+total (`_count.votes`) et le vote de ce membre — filtré par la relation, pas par un `id`
+de ligne `User` qui n'existe pas forcément. `ApiMod` expose donc `votes` et `hasVoted`,
+et chaque carte du catalogue sait s'afficher sans requête supplémentaire.
+
+### Côté interface
+
+`useVote` ([lib/mods/useVote.ts](lib/mods/useVote.ts)) porte la mécanique, partagée par
+la carte du catalogue et par le panneau de la fiche détail : deux dessins, un seul
+comportement. Le compteur bouge avant la réponse du serveur — voter est l'action la plus
+banale de l'application, souvent faite depuis un téléphone — puis la réponse remplace la
+valeur optimiste par le compte réel, les votes des autres membres compris. Un échec la
+remet exactement où elle était, avec un message.
+
+L'état local l'emporte ensuite sur les valeurs venues du serveur : la carte survit à un
+re-rendu du catalogue (changement de tri, de page) sans que le bouton ne retombe une
+seconde sur l'ancien compte.
 
 ## Stockage des images (US-B2)
 

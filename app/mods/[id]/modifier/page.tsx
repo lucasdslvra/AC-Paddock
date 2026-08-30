@@ -11,7 +11,7 @@ export default async function ModifierModPage(props: PageProps<"/mods/[id]/modif
   const session = await auth();
   if (!session?.user) redirect("/");
 
-  const mod = await prisma.mod.findUnique({ where: { id }, include: modInclude });
+  const mod = await prisma.mod.findUnique({ where: { id }, include: modInclude(session.user.id) });
   // Les fiches de démonstration ne vivent qu'en dur dans lib/mock-data.ts : rien à éditer.
   if (!mod) notFound();
 

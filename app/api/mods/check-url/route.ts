@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     // fiche modifiée, qui se trouverait elle-même.
     const mod = await prisma.mod.findFirst({
       where: { urlKey },
-      include: modInclude,
+      include: modInclude(session.user.id),
       orderBy: { createdAt: "asc" },
     });
 

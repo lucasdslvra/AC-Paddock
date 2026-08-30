@@ -68,7 +68,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/mods/[id]"
     const mod = await prisma.mod.update({
       where: { id },
       data: { ...data, ...(tagWrite && { tags: tagWrite }) },
-      include: modInclude,
+      include: modInclude(session.user.id),
     });
 
     // L'ancienne image n'est plus référencée : on la retire du bucket. Si ça échoue,
@@ -93,9 +93,10 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/mods/[id]"
 
 /**
  * US-B4 — suppression d'une fiche, réservée à son auteur ou à un admin.
- * Ses associations `ModTag` partent avec elle, via le `onDelete: Cascade` posé sur la
- * relation (US-C1). Les tags eux-mêmes survivent : ils appartiennent au vocabulaire
- * commun, pas à la fiche. Vote et SessionMod suivront le même modèle (Epics F et G).
+ * Ses associations `ModTag` (US-C1) et ses `Vote` (US-F1) partent avec elle, via le
+ * `onDelete: Cascade` posé sur leurs relations. Les tags eux-mêmes survivent : ils
+ * appartiennent au vocabulaire commun, pas à la fiche. SessionMod suivra le même
+ * modèle (Epic G).
  */
 export async function DELETE(_request: Request, ctx: RouteContext<"/api/mods/[id]">) {
   const session = await auth();

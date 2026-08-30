@@ -268,7 +268,7 @@ export function ModForm({ mod }: ModFormProps) {
               onClick={() => {
                 if (!isEditing) clearModDraft();
               }}
-              className="rounded-sm border border-[var(--color-border-strong)] px-[13px] py-2 font-sans text-xs font-medium"
+              className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-[13px] py-2 font-sans text-xs font-medium"
             >
               Annuler
             </Link>
@@ -276,7 +276,7 @@ export function ModForm({ mod }: ModFormProps) {
               type="submit"
               form={FORM_ID}
               disabled={isSubmitting || isUploadingImage}
-              className="rounded-sm px-[14px] py-2 font-sans text-xs font-semibold disabled:opacity-60"
+              className="btn-solid rounded-sm px-[14px] py-2 font-sans text-xs font-semibold disabled:opacity-60"
               style={{ background: "var(--color-amber)", color: "var(--color-ink)" }}
             >
               {isSubmitting ? pendingLabel : submitLabel}
@@ -303,7 +303,7 @@ export function ModForm({ mod }: ModFormProps) {
               <button
                 type="button"
                 onClick={discardDraft}
-                className="flex-none border-b font-sans text-[11px] font-medium text-[var(--color-link)]"
+                className="link-underline flex-none border-b font-sans text-[11px] font-medium text-[var(--color-link)]"
                 style={{ borderColor: "var(--color-amber)" }}
               >
                 repartir de zéro
@@ -332,11 +332,15 @@ export function ModForm({ mod }: ModFormProps) {
                   type="button"
                   onClick={() => setType(option)}
                   aria-pressed={type === option}
-                  className="rounded-sm px-[18px] py-[10px] font-sans text-[13px] font-semibold"
+                  className={`rounded-sm px-[18px] py-[10px] font-sans text-[13px] font-semibold ${
+                    type === option
+                      ? "btn-solid"
+                      : "btn-outline border border-[var(--color-border-strong)] text-[var(--color-text-secondary)] hover:text-[var(--color-foreground)]"
+                  }`}
                   style={
                     type === option
                       ? { background: "var(--color-emphasis-bg)", color: "var(--color-emphasis-text)" }
-                      : { border: "1px solid var(--color-border-strong)", color: "var(--color-text-secondary)" }
+                      : undefined
                   }
                 >
                   {option === "vehicule" ? "Véhicule" : "Circuit"}
@@ -403,7 +407,7 @@ export function ModForm({ mod }: ModFormProps) {
                     <Link
                       href={`/mods/${entry.id}?brouillon=1`}
                       onClick={keepDraft}
-                      className="flex-none rounded-sm bg-[var(--color-emphasis-bg)] px-[10px] py-[6px] font-sans text-[11px] font-medium text-[var(--color-emphasis-text)]"
+                      className="btn-solid flex-none rounded-sm bg-[var(--color-emphasis-bg)] px-[10px] py-[6px] font-sans text-[11px] font-medium text-[var(--color-emphasis-text)]"
                     >
                       Voir la fiche
                     </Link>
@@ -472,7 +476,7 @@ export function ModForm({ mod }: ModFormProps) {
                   <Link
                     href={`/mods/${urlDuplicate.match.id}?brouillon=1`}
                     onClick={keepDraft}
-                    className="whitespace-nowrap rounded-sm bg-[var(--color-emphasis-bg)] px-[11px] py-[7px] text-center font-sans text-[11px] font-semibold text-[var(--color-emphasis-text)]"
+                    className="btn-solid whitespace-nowrap rounded-sm bg-[var(--color-emphasis-bg)] px-[11px] py-[7px] text-center font-sans text-[11px] font-semibold text-[var(--color-emphasis-text)]"
                   >
                     Voir la fiche existante
                   </Link>
@@ -481,7 +485,7 @@ export function ModForm({ mod }: ModFormProps) {
                   <button
                     type="button"
                     onClick={urlDuplicate.dismiss}
-                    className="whitespace-nowrap rounded-sm border border-[var(--color-border-strong)] px-[11px] py-[7px] font-sans text-[11px] font-medium"
+                    className="btn-outline whitespace-nowrap rounded-sm border border-[var(--color-border-strong)] px-[11px] py-[7px] font-sans text-[11px] font-medium"
                   >
                     Créer quand même
                   </button>
@@ -549,7 +553,7 @@ export function ModForm({ mod }: ModFormProps) {
                   imageInputRef.current?.click();
                 }
               }}
-              className="mt-[9px] flex h-24 cursor-pointer items-center justify-center rounded-sm border border-dashed border-[var(--color-border-dashed)] bg-cover bg-center font-mono text-[10px] text-[var(--color-text-muted)]"
+              className="dropzone mt-[9px] flex h-24 cursor-pointer items-center justify-center rounded-sm border border-dashed border-[var(--color-border-dashed)] bg-cover bg-center font-mono text-[10px] text-[var(--color-text-muted)]"
               style={
                 imagePreview
                   ? { backgroundImage: `url(${imagePreview})` }
@@ -579,7 +583,7 @@ export function ModForm({ mod }: ModFormProps) {
                 <button
                   type="button"
                   onClick={clearImage}
-                  className="flex-none border-b font-sans text-[11px] font-medium text-[var(--color-link)]"
+                  className="link-underline flex-none border-b font-sans text-[11px] font-medium text-[var(--color-link)]"
                   style={{ borderColor: "var(--color-amber)" }}
                 >
                   retirer

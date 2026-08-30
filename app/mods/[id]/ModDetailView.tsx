@@ -68,15 +68,12 @@ function VotePanel({
   const others = soireeVotes - (hasVoted ? 1 : 0);
 
   return (
-    <div
-      className="rounded-sm p-[18px]"
-      style={{ background: "var(--color-invert-bg)", color: "var(--color-invert-text)" }}
-    >
+    <div className="rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-[18px]">
       <div className="flex items-end justify-between">
         <div>
           {/* US-G3 — le compteur est celui de la soirée en cours, et il repart de zéro
               à chaque nouvelle. L'historique, lui, est dans les barres à droite. */}
-          <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-on-ink)]">
+          <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
             {isEngaged ? "VOTES CE SOIR" : "SOIRÉES PRÉCÉDENTES"}
           </div>
           <div className="mt-1 font-mono text-4xl leading-none">
@@ -91,25 +88,24 @@ function VotePanel({
           onClick={toggle}
           aria-pressed={hasVoted}
           aria-busy={isPending}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-sm p-3 font-sans text-sm font-semibold"
-          style={{
-            background: hasVoted ? "var(--color-amber)" : "transparent",
-            color: hasVoted ? "var(--color-ink)" : "var(--color-invert-text)",
-            border: hasVoted ? "none" : "1px solid rgba(255,255,255,.2)",
-            opacity: isPending ? 0.7 : 1,
-          }}
+          className={`mt-4 flex w-full items-center justify-center gap-2 rounded-sm p-3 font-sans text-sm font-semibold ${
+            hasVoted
+              ? "btn-solid bg-[var(--color-amber)] text-[var(--color-ink)]"
+              : "btn-outline border border-[var(--color-border-strong)]"
+          }`}
+          style={{ opacity: isPending ? 0.7 : 1 }}
         >
           {hasVoted ? "✓ Tu as voté — retirer" : "+1 Voter pour ce mod"}
         </button>
       ) : (
         /* Pas de bouton éteint : il annoncerait un score qui n'existe pas. À la place,
            la raison — elle n'est pas la même selon qu'une soirée est ouverte ou non. */
-        <p className="mt-4 rounded-sm p-3 text-center font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-on-ink)]" style={{ border: "1px dashed rgba(255,255,255,.2)" }}>
+        <p className="mt-4 rounded-sm border border-dashed border-[var(--color-border-dashed)] p-3 text-center font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-muted)]">
           {voteDisabledReason(hasCurrentSoiree)}
         </p>
       )}
       {error && (
-        <p role="alert" className="mt-2 font-mono text-[10px] leading-[1.5] text-[var(--color-amber)]">
+        <p role="alert" className="mt-2 font-mono text-[10px] leading-[1.5] text-[var(--color-danger-text)]">
           {error}
         </p>
       )}
@@ -119,7 +115,7 @@ function VotePanel({
         {Array.from({ length: Math.min(others, 4) }, (_, index) => (
           <AvatarPlaceholder key={index} size={20} />
         ))}
-        <span className="ml-1 font-mono text-[10px] text-[var(--color-text-on-ink)]">
+        <span className="ml-1 font-mono text-[10px] text-[var(--color-text-muted)]">
           {!isEngaged
             ? "pas engagé dans la soirée en cours"
             : soireeVotes === 0
@@ -156,7 +152,10 @@ export function ModDetailView({
         <BreadcrumbHeader crumbs={[{ label: "Catalogue", href: "/catalogue" }, { label: "Fiche introuvable" }]} />
         <div className="p-8">
           <p className="font-sans text-sm">Cette fiche n&apos;existe pas ou a été supprimée.</p>
-          <Link href="/catalogue" className="mt-3 inline-block font-sans text-sm text-[var(--color-link)]">
+          <Link
+            href="/catalogue"
+            className="link-underline mt-3 inline-block font-sans text-sm text-[var(--color-link)]"
+          >
             Retour au catalogue
           </Link>
         </div>
@@ -180,7 +179,7 @@ export function ModDetailView({
         actions={
           <Link
             href="/mods/nouveau"
-            className="rounded-sm px-[14px] py-2 font-sans text-xs font-semibold"
+            className="btn-solid rounded-sm px-[14px] py-2 font-sans text-xs font-semibold"
             style={{ background: "var(--color-amber)", color: "var(--color-ink)" }}
           >
             Proposer un mod
@@ -213,7 +212,7 @@ export function ModDetailView({
           </div>
           <Link
             href="/mods/nouveau"
-            className="flex-none rounded-sm px-[14px] py-2 font-sans text-xs font-semibold"
+            className="btn-solid flex-none rounded-sm px-[14px] py-2 font-sans text-xs font-semibold"
             style={{ background: "var(--color-amber)", color: "var(--color-ink)" }}
           >
             Reprendre ma fiche
@@ -269,7 +268,7 @@ export function ModDetailView({
               {editHref && (
                 <Link
                   href={editHref}
-                  className="relative ml-auto rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2 py-1 font-mono text-[10px] text-[var(--color-text-secondary)]"
+                  className="btn-outline relative ml-auto rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2 py-1 font-mono text-[10px] text-[var(--color-text-secondary)]"
                 >
                   remplacer l&apos;image
                 </Link>
@@ -281,7 +280,11 @@ export function ModDetailView({
                   DESCRIPTION
                 </div>
                 {editHref && (
-                  <Link href={editHref} className="border-b font-mono text-[10px] text-[var(--color-link)]" style={{ borderColor: "var(--color-amber)" }}>
+                  <Link
+                    href={editHref}
+                    className="link-underline border-b font-mono text-[10px] text-[var(--color-link)]"
+                    style={{ borderColor: "var(--color-amber)" }}
+                  >
                     modifier
                   </Link>
                 )}
@@ -364,8 +367,7 @@ export function ModDetailView({
               href={mod.primaryLink.href ?? `https://${mod.primaryLink.url}`}
               target="_blank"
               rel="noreferrer noopener"
-
-              className="flex items-center justify-between rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-[15px] py-[13px]"
+              className="btn-outline flex items-center justify-between rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-[15px] py-[13px]"
             >
               <span>
                 <span className="block font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
@@ -420,7 +422,7 @@ export function ModDetailView({
               {editHref && (
                 <Link
                   href={editHref}
-                  className="rounded-sm border border-[var(--color-border-strong)] px-3 py-[9px] text-center font-sans text-xs font-medium"
+                  className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-3 py-[9px] text-center font-sans text-xs font-medium"
                 >
                   Modifier la fiche
                 </Link>

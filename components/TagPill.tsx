@@ -27,9 +27,14 @@ export function TagPill({ label, active = false, removable = false, onClick, hre
     </>
   );
 
+  // Une pastille inerte ne prend pas de survol : il annoncerait un clic qui n'arrive
+  // jamais. Le voile suit l'état — voile blanc sur une pastille pleine, voile d'encre
+  // sur une pastille bordée.
+  const interactiveClassName = `${className} ${active ? "btn-solid" : "btn-outline"}`;
+
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} className={className}>
+      <button type="button" onClick={onClick} className={interactiveClassName}>
         {content}
       </button>
     );
@@ -37,7 +42,7 @@ export function TagPill({ label, active = false, removable = false, onClick, hre
 
   if (href) {
     return (
-      <Link href={href} className={className}>
+      <Link href={href} className={interactiveClassName}>
         {content}
       </Link>
     );

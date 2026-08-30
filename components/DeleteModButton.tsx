@@ -57,7 +57,7 @@ export function DeleteModButton({ modId, modName }: DeleteModButtonProps) {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="rounded-sm px-3 py-[9px] font-sans text-xs font-medium"
+        className="btn-danger rounded-sm px-3 py-[9px] font-sans text-xs font-medium"
         style={{ border: "1px solid var(--color-danger)", color: "var(--color-danger-text)" }}
       >
         Supprimer la fiche
@@ -105,7 +105,7 @@ export function DeleteModButton({ modId, modName }: DeleteModButtonProps) {
                 type="button"
                 onClick={() => setIsOpen(false)}
                 disabled={isDeleting}
-                className="rounded-sm border border-[var(--color-border-strong)] px-[13px] py-2 font-sans text-xs font-medium disabled:opacity-60"
+                className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-[13px] py-2 font-sans text-xs font-medium disabled:opacity-60"
               >
                 Annuler
               </button>
@@ -113,7 +113,7 @@ export function DeleteModButton({ modId, modName }: DeleteModButtonProps) {
                 type="button"
                 onClick={handleDelete}
                 disabled={isDeleting}
-                className="rounded-sm px-[14px] py-2 font-sans text-xs font-semibold disabled:opacity-60"
+                className="btn-solid rounded-sm px-[14px] py-2 font-sans text-xs font-semibold disabled:opacity-60"
                 style={{ background: "var(--color-danger)", color: "#fff" }}
               >
                 {isDeleting ? "Suppression…" : "Supprimer définitivement"}

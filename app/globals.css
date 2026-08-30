@@ -10,7 +10,6 @@
   --color-text-muted: #6b7076;
   --color-text-faint: #9aa0a6;
   --color-text-secondary: #4b5158;
-  --color-text-on-ink: #8f959c;
 
   --color-border-hairline: rgba(20, 24, 32, 0.08);
   --color-border: rgba(20, 24, 32, 0.14);
@@ -27,6 +26,17 @@
   --color-bar-dimmed: rgba(20, 24, 32, 0.22);
   --color-track: rgba(20, 24, 32, 0.1);
 
+  /* Voiles d'interaction. Ils sont posés en ombre *interne* plutôt qu'en fond : une
+     ombre interne se superpose au fond du bouton au lieu de le remplacer — y compris
+     quand ce fond vient d'un `style` inline, hors de portée d'une feuille de style.
+     C'est ce qui permet à un même survol de marcher sur l'ambre, sur l'encre et sur
+     un bouton transparent. */
+  --color-hover-veil: rgba(20, 24, 32, 0.07);
+  --color-press-veil: rgba(20, 24, 32, 0.13);
+  --color-danger-veil: oklch(0.55 0.19 25 / 0.13);
+  --color-danger-press-veil: oklch(0.55 0.19 25 / 0.22);
+  --color-shadow-hover: rgba(20, 24, 32, 0.16);
+
   /* High-emphasis fills (logo mark, primary CTA): ink-on-light in light mode,
      amber-on-ink in dark mode — the mockup's dark counter-proof flips these. */
   --color-emphasis-bg: var(--color-ink);
@@ -36,11 +46,6 @@
   /* Fond des champs de saisie et des listes qui leur sont accrochées : au-dessus de la
      surface sur fond clair, en retrait dessous sur fond sombre. */
   --color-field: #ffffff;
-
-  /* Panneau inversé (le bloc de vote d'une fiche) : sombre sur clair. En sombre il ne
-     peut pas s'inverser une seconde fois — il s'élève alors d'un cran sur le fond. */
-  --color-invert-bg: var(--color-ink);
-  --color-invert-text: var(--color-surface);
 }
 
 @theme inline {
@@ -51,7 +56,6 @@
   --color-text-muted: var(--color-text-muted);
   --color-text-faint: var(--color-text-faint);
   --color-text-secondary: var(--color-text-secondary);
-  --color-text-on-ink: var(--color-text-on-ink);
   --color-border: var(--color-border);
   --color-border-strong: var(--color-border-strong);
   --color-amber: var(--color-amber);
@@ -75,8 +79,6 @@
      La hiérarchie reste la même, à l'envers : secondaire > sourdine > estompé. */
   --color-text-secondary: #b6bcc3;
   --color-text-faint: #62686f;
-  /* Le panneau inversé est moins sombre ici : son gris secondaire s'éclaircit d'autant. */
-  --color-text-on-ink: #9aa1a9;
 
   --color-border-hairline: rgba(255, 255, 255, 0.09);
   --color-border: rgba(255, 255, 255, 0.1);
@@ -88,6 +90,15 @@
   --color-bar-dimmed: rgba(255, 255, 255, 0.2);
   --color-track: rgba(255, 255, 255, 0.12);
 
+  --color-hover-veil: rgba(255, 255, 255, 0.08);
+  --color-press-veil: rgba(255, 255, 255, 0.14);
+  /* Le rouge s'éclaircit avec le reste : le voile suit la teinte du texte d'erreur. */
+  --color-danger-veil: oklch(0.72 0.16 25 / 0.16);
+  --color-danger-press-veil: oklch(0.72 0.16 25 / 0.26);
+  /* Une ombre portée noire ne se voit pas sur un fond sombre : elle doit y être bien
+     plus dense qu'en clair pour détacher le bouton survolé. */
+  --color-shadow-hover: rgba(0, 0, 0, 0.45);
+
   /* Lien et texte d'erreur sont posés sur le fond, pas dessous : leurs teintes
      claires (assombries pour ressortir sur du papier) doivent s'éclaircir ici. */
   --color-link: oklch(0.78 0.13 70);
@@ -98,9 +109,6 @@
   --color-emphasis-text: var(--color-ink);
 
   --color-field: #0d0f13;
-
-  --color-invert-bg: #1e232a;
-  --color-invert-text: var(--foreground);
 }
 
 .bg-grid {
@@ -114,4 +122,119 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* ---------------------------------------------------------------------------
+   Interaction — pointeur, survol, pression, focus clavier.
+
+   Le socle (pointeur, transition, anneau de focus) est dans `base` : les utilitaires
+   Tailwind doivent pouvoir le reprendre au cas par cas — `cursor-default` sur
+   l'attrape-clic du menu, par exemple.
+
+   Les états de survol, eux, sont volontairement HORS `@layer` : une règle sans couche
+   l'emporte sur toutes les couches, donc sur les `bg-*` et `border-*` de Tailwind
+   qu'elle doit précisément recouvrir le temps du survol.
+   --------------------------------------------------------------------------- */
+
+@layer base {
+  button,
+  [role="button"],
+  select,
+  summary,
+  a[href] {
+    cursor: pointer;
+  }
+
+  /* Un bouton éteint doit se lire comme tel avant le clic, pas après. */
+  button:disabled,
+  select:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  button,
+  [role="button"],
+  select,
+  a[href] {
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease,
+      box-shadow 0.15s ease,
+      opacity 0.15s ease;
+  }
+
+  /* `:focus-visible` et non `:focus` : l'anneau apparaît au clavier, pas sous la
+     souris, où il ferait doublon avec le survol. */
+  :focus-visible {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 2px;
+  }
+}
+
+/* Bouton plein — ambre, encre, danger. Le survol l'éclaircit d'un voile blanc et le
+   décolle du fond ; la pression l'assombrit et le repose. */
+.btn-solid:hover:not(:disabled) {
+  box-shadow:
+    inset 0 0 0 999px rgba(255, 255, 255, 0.15),
+    0 2px 8px var(--color-shadow-hover);
+}
+
+.btn-solid:active:not(:disabled) {
+  box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.12);
+}
+
+/* Bouton bordé, fantôme ou pastille : le survol pose un voile de la couleur de
+   l'encre, qui s'inverse avec le thème. */
+.btn-outline:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 999px var(--color-hover-veil);
+}
+
+.btn-outline:active:not(:disabled) {
+  box-shadow: inset 0 0 0 999px var(--color-press-veil);
+}
+
+/* Action destructrice : son survol se teinte de rouge plutôt que de gris — la couleur
+   fait partie de l'avertissement. */
+.btn-danger:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 999px var(--color-danger-veil);
+}
+
+.btn-danger:active:not(:disabled) {
+  box-shadow: inset 0 0 0 999px var(--color-danger-press-veil);
+}
+
+/* Bouton rond sans bordure (l'avatar du menu) : rien à voiler, on cercle. */
+.btn-round:hover {
+  box-shadow: 0 0 0 2px var(--color-border-strong);
+}
+
+/* Lien-action souligné, dans un paragraphe ou sous un champ : il monte en contraste. */
+.link-underline:hover {
+  color: var(--color-foreground);
+}
+
+/* Lien discret posé sur du texte sourdine (fil d'Ariane). */
+.link-quiet:hover {
+  color: var(--color-foreground);
+}
+
+/* Titre cliquable — le soulignement est le seul repère qu'une liste dense supporte. */
+.link-title:hover,
+.link-card:hover .title-text {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+/* Carte entièrement cliquable : sa bordure se renforce et elle se décolle. */
+.card-interactive:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: 0 2px 10px var(--color-shadow-hover);
+}
+
+/* Zone de dépôt d'image : l'ambre annonce qu'un fichier peut y tomber. */
+.dropzone:hover {
+  border-color: var(--color-amber);
+  box-shadow: inset 0 0 0 999px var(--color-hover-veil);
 }

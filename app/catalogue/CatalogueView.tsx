@@ -172,14 +172,18 @@ export function CatalogueView() {
                     type="button"
                     onClick={() => updateQuery({ type: option.key })}
                     aria-pressed={isActive}
-                    className="flex justify-between rounded-sm px-[10px] py-[7px] font-sans text-xs font-medium"
+                    className={`flex justify-between rounded-sm px-[10px] py-[7px] font-sans text-xs font-medium ${
+                      isActive
+                        ? "btn-solid"
+                        : "btn-outline text-[var(--color-text-secondary)] hover:text-[var(--color-foreground)]"
+                    }`}
                     style={
                       isActive
                         ? {
                             background: "var(--color-emphasis-bg)",
                             color: "var(--color-emphasis-text)",
                           }
-                        : { color: "var(--color-text-secondary)" }
+                        : undefined
                     }
                   >
                     <span>{option.label}</span>
@@ -214,7 +218,7 @@ export function CatalogueView() {
                   setSearchInput("");
                   updateQuery({ tags: [], type: null, search: "" });
                 }}
-                className="mt-[10px] inline-block border-b font-sans text-[11px] font-medium text-[var(--color-link)]"
+                className="link-underline mt-[10px] inline-block border-b font-sans text-[11px] font-medium text-[var(--color-link)]"
                 style={{ borderColor: "var(--color-amber)" }}
               >
                 réinitialiser les filtres
@@ -233,7 +237,7 @@ export function CatalogueView() {
               <>
                 <Link
                   href="/soiree"
-                  className="mt-1 block font-sans text-sm font-semibold leading-[1.3]"
+                  className="link-title mt-1 block font-sans text-sm font-semibold leading-[1.3]"
                 >
                   {formatSoireeDate(new Date(currentSoiree.date))}
                 </Link>
@@ -270,7 +274,7 @@ export function CatalogueView() {
               <select
                 value={query.sort}
                 onChange={(event) => updateQuery({ sort: event.target.value as ModSort })}
-                className="cursor-pointer rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-[6px] py-[3px] font-mono text-[11px] text-[var(--color-foreground)] outline-none"
+                className="btn-outline cursor-pointer rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-[6px] py-[3px] font-mono text-[11px] text-[var(--color-foreground)] outline-none"
               >
                 {MOD_SORTS.map((sort) => (
                   <option key={sort} value={sort}>
@@ -316,7 +320,7 @@ export function CatalogueView() {
                         setSearchInput("");
                         updateQuery({ tags: [], type: null, search: "" });
                       }}
-                      className="border-b text-[var(--color-link)]"
+                      className="link-underline border-b text-[var(--color-link)]"
                       style={{ borderColor: "var(--color-amber)" }}
                     >
                       réinitialise les filtres
@@ -346,7 +350,7 @@ export function CatalogueView() {
                 <button
                   type="button"
                   onClick={() => updateQuery({ page: 1 }, { scroll: true })}
-                  className="border-b text-[var(--color-link)]"
+                  className="link-underline border-b text-[var(--color-link)]"
                   style={{ borderColor: "var(--color-amber)" }}
                 >
                   Revenir au début
@@ -365,7 +369,7 @@ export function CatalogueView() {
                 type="button"
                 disabled={query.page <= 1}
                 onClick={() => updateQuery({ page: query.page - 1 }, { scroll: true })}
-                className="rounded-sm border border-[var(--color-border-strong)] px-[10px] py-[5px] disabled:cursor-not-allowed disabled:opacity-40"
+                className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-[10px] py-[5px] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 ← précédent
               </button>
@@ -376,7 +380,7 @@ export function CatalogueView() {
                 type="button"
                 disabled={query.page >= pageCount}
                 onClick={() => updateQuery({ page: query.page + 1 }, { scroll: true })}
-                className="rounded-sm border border-[var(--color-border-strong)] px-[10px] py-[5px] disabled:cursor-not-allowed disabled:opacity-40"
+                className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-[10px] py-[5px] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 suivant →
               </button>

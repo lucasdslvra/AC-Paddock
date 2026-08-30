@@ -31,12 +31,14 @@ export function ModCard({ mod }: ModCardProps) {
   const authorImage = session?.user?.name === mod.author ? session.user.image : null;
 
   return (
-    <article className="flex flex-col gap-[10px] rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[13px]">
-      <Link href={`/mods/${mod.id}`} className="flex gap-[11px]">
+    <article className="card-interactive flex flex-col gap-[10px] rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[13px]">
+      <Link href={`/mods/${mod.id}`} className="link-card flex gap-[11px]">
         <ModThumbnail src={mod.imageUrl} name={mod.name} size={52} />
         <div className="min-w-0">
           <TypeBadge type={mod.type} />
-          <div className="mt-[2px] text-pretty text-sm font-semibold leading-tight">{mod.name}</div>
+          <div className="title-text mt-[2px] text-pretty text-sm font-semibold leading-tight">
+            {mod.name}
+          </div>
         </div>
       </Link>
       {mod.tags.length > 0 && (
@@ -71,13 +73,12 @@ export function ModCard({ mod }: ModCardProps) {
               aria-label={
                 hasVoted ? `Retirer mon vote pour ${mod.name}` : `Voter pour ${mod.name}`
               }
-              className="flex items-center gap-[6px] rounded-sm px-[9px] py-[5px] font-mono text-xs"
-              style={{
-                background: hasVoted ? "var(--color-emphasis-bg)" : "transparent",
-                color: hasVoted ? "var(--color-emphasis-text)" : "var(--color-foreground)",
-                border: hasVoted ? "none" : "1px solid var(--color-border-strong)",
-                opacity: isPending ? 0.6 : 1,
-              }}
+              className={`flex items-center gap-[6px] rounded-sm px-[9px] py-[5px] font-mono text-xs ${
+                hasVoted
+                  ? "btn-solid bg-[var(--color-emphasis-bg)] text-[var(--color-emphasis-text)]"
+                  : "btn-outline border border-[var(--color-border-strong)] text-[var(--color-foreground)]"
+              }`}
+              style={{ opacity: isPending ? 0.6 : 1 }}
             >
               {hasVoted && <span className="font-sans text-[10px] font-semibold">+1</span>}
               <span>{String(soireeVotes).padStart(2, "0")}</span>

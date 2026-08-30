@@ -30,7 +30,9 @@ export function BreadcrumbHeader({ crumbs, actions }: BreadcrumbHeaderProps) {
           <span key={crumb.label} className="flex items-center gap-2">
             {index > 0 && <span>/</span>}
             {crumb.href ? (
-              <Link href={crumb.href}>{crumb.label}</Link>
+              <Link href={crumb.href} className="link-quiet">
+                {crumb.label}
+              </Link>
             ) : (
               <span className="text-[var(--color-foreground)]">{crumb.label}</span>
             )}

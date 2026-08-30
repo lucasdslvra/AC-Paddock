@@ -198,7 +198,7 @@ export function TagInput({ value, onChange, error }: TagInputProps) {
               aria-selected={index === highlight}
               onMouseEnter={() => setHighlighted(option.name)}
               onClick={() => addTag(option.name)}
-              className="flex w-full items-center justify-between border-b border-[var(--color-border-hairline)] px-3 py-2 text-left last:border-b-0"
+              className="btn-outline flex w-full items-center justify-between border-b border-[var(--color-border-hairline)] px-3 py-2 text-left last:border-b-0"
               style={{ background: index === highlight ? "var(--color-border-hairline)" : "transparent" }}
             >
               <span className="font-mono text-[11px] text-[var(--color-foreground)]">

@@ -73,14 +73,20 @@ export function AppHeader({ active = null, variant = "default", subtitle, stats,
             <Link
               key={item.key}
               href={item.href}
-              className="rounded-sm px-3 py-[6px] font-sans text-xs font-medium"
+              className={`rounded-sm px-3 py-[6px] font-sans text-xs font-medium ${
+                active === item.key
+                  ? "btn-solid"
+                  : "btn-outline text-[var(--color-text-secondary)] hover:text-[var(--color-foreground)]"
+              }`}
+              // La couleur de l'onglet inactif passe par une classe, pas par `style` :
+              // un `style` inline l'emporterait sur le survol.
               style={
                 active === item.key
                   ? {
                       background: "var(--color-emphasis-bg)",
                       color: "var(--color-emphasis-text)",
                     }
-                  : { color: "var(--color-text-secondary)" }
+                  : undefined
               }
             >
               {item.label}
@@ -119,7 +125,7 @@ export function AppHeader({ active = null, variant = "default", subtitle, stats,
         {cta && !isAdmin && (
           <Link
             href={cta.href}
-            className="rounded-sm px-[14px] py-2 font-sans text-xs font-semibold"
+            className="btn-solid rounded-sm px-[14px] py-2 font-sans text-xs font-semibold"
             style={{ background: "var(--color-amber)", color: "var(--color-ink)" }}
           >
             {cta.label}

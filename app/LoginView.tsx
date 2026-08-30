@@ -115,7 +115,7 @@ export function LoginView({ guildName }: LoginViewProps) {
             <button
               type="button"
               onClick={() => signIn("discord", { redirectTo: "/catalogue" })}
-              className="mt-[18px] flex w-full items-center justify-center gap-[10px] rounded-[3px] p-[14px]"
+              className="btn-solid mt-[18px] flex w-full items-center justify-center gap-[10px] rounded-[3px] p-[14px]"
               style={{ background: "var(--color-emphasis-bg)", color: "var(--color-emphasis-text)" }}
             >
               <span className="h-4 w-4 rounded-sm" style={{ background: "var(--color-emphasis-icon)" }} />
@@ -157,14 +157,14 @@ export function LoginView({ guildName }: LoginViewProps) {
                 <button
                   type="button"
                   onClick={() => signIn("discord", { redirectTo: "/catalogue" })}
-                  className="rounded-[3px] border border-[var(--color-border-strong)] px-3 py-[7px] font-sans text-[11px] font-medium"
+                  className="btn-outline rounded-[3px] border border-[var(--color-border-strong)] px-3 py-[7px] font-sans text-[11px] font-medium"
                 >
                   Réessayer
                 </button>
                 {errorCopy.showContactAdmin && (
                   <a
                     href="https://discord.com"
-                    className="rounded-[3px] px-3 py-[7px] font-sans text-[11px] font-medium text-[var(--color-text-secondary)]"
+                    className="link-underline rounded-[3px] px-3 py-[7px] font-sans text-[11px] font-medium text-[var(--color-text-secondary)]"
                     style={{ borderBottom: "1px solid var(--color-border-strong)" }}
                   >
                     Contacter un admin

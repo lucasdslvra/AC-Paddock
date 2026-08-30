@@ -96,7 +96,10 @@ function RankingRow({
       <div className="font-mono text-xl leading-none">{String(rank).padStart(2, "0")}</div>
       <ModThumbnail src={entry.mod.imageUrl ?? undefined} name={entry.mod.name} size={42} />
       <div className="min-w-0">
-        <Link href={`/mods/${entry.mod.id}`} className="font-sans text-[15px] font-semibold leading-tight">
+        <Link
+          href={`/mods/${entry.mod.id}`}
+          className="link-title font-sans text-[15px] font-semibold leading-tight"
+        >
           {entry.mod.name}
         </Link>
         <div className="mt-[3px] flex flex-wrap items-center gap-[5px] font-mono text-[9.5px] text-[var(--color-text-muted)]">
@@ -127,7 +130,7 @@ function RankingRow({
             onClick={() => void remove()}
             disabled={isRemoving}
             title="Retirer ce mod de la soirée — ses votes partent avec lui."
-            className="rounded-sm border border-[var(--color-border-strong)] px-[8px] py-[6px] font-mono text-[10px] text-[var(--color-text-secondary)] disabled:opacity-50"
+            className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-[8px] py-[6px] font-mono text-[10px] text-[var(--color-text-secondary)] disabled:opacity-50"
           >
             retirer
           </button>
@@ -141,12 +144,12 @@ function RankingRow({
           aria-label={
             hasVoted ? `Retirer mon vote pour ${entry.mod.name}` : `Voter pour ${entry.mod.name}`
           }
-          className="rounded-sm px-[11px] py-[7px] font-sans text-xs font-semibold"
-          style={
+          className={`rounded-sm px-[11px] py-[7px] font-sans text-xs font-semibold ${
             hasVoted
-              ? { background: "var(--color-amber)", color: "var(--color-ink)", opacity: isPending ? 0.7 : 1 }
-              : { border: "1px solid var(--color-border-strong)", opacity: isPending ? 0.7 : 1 }
-          }
+              ? "btn-solid bg-[var(--color-amber)] text-[var(--color-ink)]"
+              : "btn-outline border border-[var(--color-border-strong)]"
+          }`}
+          style={{ opacity: isPending ? 0.7 : 1 }}
         >
           {hasVoted ? "✓ voté" : "+1"}
         </button>
@@ -201,14 +204,14 @@ export function SoireeView({ soiree: initialSoiree, memberCount, isAdmin = false
           <div className="mt-4 flex gap-2">
             <Link
               href="/catalogue"
-              className="rounded-sm px-[14px] py-2 font-sans text-xs font-semibold"
+              className="btn-solid rounded-sm px-[14px] py-2 font-sans text-xs font-semibold"
               style={{ background: "var(--color-emphasis-bg)", color: "var(--color-emphasis-text)" }}
             >
               Retour au catalogue
             </Link>
             <Link
               href="/admin"
-              className="rounded-sm border border-[var(--color-border-strong)] px-[14px] py-2 font-sans text-xs font-medium"
+              className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-[14px] py-2 font-sans text-xs font-medium"
             >
               Espace admin
             </Link>

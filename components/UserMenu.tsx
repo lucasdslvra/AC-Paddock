@@ -16,7 +16,7 @@ export function UserMenu() {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="flex items-center gap-2 rounded-full"
+        className="btn-round flex items-center gap-2 rounded-full"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={name ? `Menu de ${name}` : "Menu du compte"}
@@ -53,7 +53,7 @@ export function UserMenu() {
               type="button"
               role="menuitem"
               onClick={() => signOut({ redirectTo: "/" })}
-              className="rounded-sm border border-[var(--color-border-strong)] px-2 py-[6px] text-left font-sans text-xs font-medium"
+              className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-2 py-[6px] text-left font-sans text-xs font-medium"
             >
               Se déconnecter
             </button>

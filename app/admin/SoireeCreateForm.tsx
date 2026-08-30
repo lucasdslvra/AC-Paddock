@@ -136,7 +136,7 @@ export function SoireeCreateForm() {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="rounded-sm px-[14px] py-2 font-sans text-xs font-semibold disabled:opacity-60"
+          className="btn-solid rounded-sm px-[14px] py-2 font-sans text-xs font-semibold disabled:opacity-60"
           style={{ background: "var(--color-amber)", color: "var(--color-ink)" }}
         >
           {isSubmitting ? "Création…" : "Créer la soirée"}

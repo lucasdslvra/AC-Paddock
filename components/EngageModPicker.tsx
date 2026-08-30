@@ -140,7 +140,7 @@ export function EngageModPicker({ soireeId, onEngaged }: EngageModPickerProps) {
                 type="button"
                 onClick={() => void engage(mod.id)}
                 disabled={isEngaged || pendingId === mod.id}
-                className="flex-none rounded-sm px-[10px] py-[6px] font-sans text-[11px] font-medium disabled:cursor-not-allowed"
+                className="btn-solid flex-none rounded-sm px-[10px] py-[6px] font-sans text-[11px] font-medium disabled:cursor-not-allowed"
                 style={
                   isEngaged
                     ? { border: "1px solid var(--color-border)", color: "var(--color-text-muted)" }

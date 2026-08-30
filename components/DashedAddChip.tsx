@@ -12,7 +12,7 @@ const CLASS_NAME =
 export function DashedAddChip({ label, href }: DashedAddChipProps) {
   if (href) {
     return (
-      <Link href={href} className={CLASS_NAME}>
+      <Link href={href} className={`${CLASS_NAME} btn-outline`}>
         {label}
       </Link>
     );

@@ -21,6 +21,7 @@ import { apiModToView } from "@/lib/mods/view";
 import { siteStats } from "@/lib/mock-data";
 import { formatSoireeDate } from "@/lib/soirees/format";
 import { useRequireAuth } from "@/lib/useRequireAuth";
+import { ActiveFilterBar, type ActiveFilter } from "./ActiveFilterBar";
 
 interface AvailableTag {
   name: string;
@@ -119,6 +120,19 @@ export function CatalogueView() {
     [query.tags, updateQuery],
   );
 
+  // US-J1 — les trois critères tombent ensemble. Le champ de recherche garde sa propre
+  // valeur pendant la frappe : le vider ici aussi, sinon l'effet de debounce
+  // réécrirait la recherche dans l'URL un quart de seconde après sa remise à zéro.
+  const clearFilters = useCallback(() => {
+    setSearchInput("");
+    updateQuery({ tags: [], type: null, search: "" });
+  }, [updateQuery]);
+
+  const clearSearch = useCallback(() => {
+    setSearchInput("");
+    updateQuery({ search: "" });
+  }, [updateQuery]);
+
   if (isAuthLoading) {
     return <p className="p-8">Chargement…</p>;
   }
@@ -128,6 +142,30 @@ export function CatalogueView() {
   const total = data?.total ?? 0;
   const pageCount = data?.pageCount ?? 1;
   const hasFilters = query.tags.length > 0 || query.type !== null || query.search !== "";
+
+  // US-J1 — les critères dans l'ordre où la colonne de gauche les propose, pour que la
+  // barre et le panneau se lisent dans le même sens.
+  const activeFilters: ActiveFilter[] = [
+    ...(query.search
+      ? [{ key: "search", kind: "nom", label: `« ${query.search} »`, onRemove: clearSearch }]
+      : []),
+    ...(query.type
+      ? [
+          {
+            key: "type",
+            kind: "type",
+            label: TYPE_FILTERS.find((option) => option.key === query.type)?.label ?? query.type,
+            onRemove: () => updateQuery({ type: null }),
+          },
+        ]
+      : []),
+    ...query.tags.map((tag) => ({
+      key: `tag:${tag}`,
+      kind: "tag",
+      label: tag,
+      onRemove: () => toggleTag(tag),
+    })),
+  ];
 
   // US-G1/G3 — la soirée en cours vient avec la liste (`ModListResponse`) : c'est elle
   // qui rend les fiches votables, et le panneau ci-dessous l'annonce.
@@ -214,10 +252,7 @@ export function CatalogueView() {
             {hasFilters && (
               <button
                 type="button"
-                onClick={() => {
-                  setSearchInput("");
-                  updateQuery({ tags: [], type: null, search: "" });
-                }}
+                onClick={clearFilters}
                 className="link-underline mt-[10px] inline-block border-b font-sans text-[11px] font-medium text-[var(--color-link)]"
                 style={{ borderColor: "var(--color-amber)" }}
               >
@@ -267,7 +302,6 @@ export function CatalogueView() {
                   serait un mensonge : on ne sait pas encore. */}
               {data === null ? "CHARGEMENT…" : `${total} RÉSULTAT${total > 1 ? "S" : ""}`}
               {pageCount > 1 ? ` · PAGE ${query.page} SUR ${pageCount}` : ""}
-              {query.tags.length > 0 ? ` — FILTRE : ${query.tags.join(" + ").toUpperCase()}` : ""}
             </div>
             <label className="flex shrink-0 items-center gap-[6px] font-mono text-[11px] text-[var(--color-text-secondary)]">
               tri :
@@ -284,6 +318,8 @@ export function CatalogueView() {
               </select>
             </label>
           </div>
+
+          <ActiveFilterBar filters={activeFilters} onReset={clearFilters} />
 
           {/* La grille est estompée pendant qu'une nouvelle réponse arrive, plutôt que
               vidée : les cartes affichées se périment un instant, elles ne sautent pas. */}
@@ -316,10 +352,7 @@ export function CatalogueView() {
                     restreignent un peu plus. Retires-en un, ou{" "}
                     <button
                       type="button"
-                      onClick={() => {
-                        setSearchInput("");
-                        updateQuery({ tags: [], type: null, search: "" });
-                      }}
+                      onClick={clearFilters}
                       className="link-underline border-b text-[var(--color-link)]"
                       style={{ borderColor: "var(--color-amber)" }}
                     >

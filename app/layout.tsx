@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
-import Script from "next/script";
 import "./globals.css";
 import { Providers } from "./providers";
 
@@ -43,9 +42,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       {/* Les extensions de navigateur (ColorZilla & co.) ajoutent leurs attributs
           sur <body> avant l'hydratation : on ignore l'écart sur cet élément. */}
       <body className="min-h-full flex flex-col bg-grid" suppressHydrationWarning>
-        <Script id="no-flash-theme" strategy="beforeInteractive">
-          {NO_FLASH_THEME_SCRIPT}
-        </Script>
+        {/* Le thème choisi est posé sur <html> pendant l'analyse du document, donc
+            avant le premier rendu : sans ça, un membre en thème sombre verrait la page
+            s'afficher en clair le temps que React s'hydrate.
+
+            Un <script> nu, et non `next/script` : en `beforeInteractive`, un script
+            en ligne n'est pas exécuté par le navigateur mais empilé dans la file du
+            runtime Next, qui le joue après le premier rendu — trop tard pour ce qu'on
+            cherche justement à éviter. React, lui, n'exécute jamais un <script> qu'il
+            monte côté client : ici il ne fait que le rendre dans le HTML du serveur, et
+            l'hydratation réutilise l'élément sans le recréer. */}
+        <script dangerouslySetInnerHTML={{ __html: NO_FLASH_THEME_SCRIPT }} />
         <Providers>{children}</Providers>
       </body>
     </html>

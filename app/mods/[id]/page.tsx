@@ -6,6 +6,7 @@ import { modInclude } from "@/lib/mods/serialize";
 import { toModView } from "@/lib/mods/view";
 import { prisma } from "@/lib/prisma";
 import { currentSoiree } from "@/lib/soirees/current";
+import { formatSoireeShortDay } from "@/lib/soirees/format";
 import { ModDetailView } from "./ModDetailView";
 
 export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
@@ -45,7 +46,7 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
       editHref={record ? `/mods/${id}/modifier` : undefined}
       canDelete={record ? canDeleteMod(actor, record) : false}
       hasPendingDraft={hasPendingDraft}
-      hasCurrentSoiree={soiree !== null}
+      currentSoiree={soiree ? { id: soiree.id, dateLabel: formatSoireeShortDay(soiree.date) } : null}
     />
   );
 }

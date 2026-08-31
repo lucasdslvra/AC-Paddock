@@ -12,6 +12,11 @@ const SOIREE_DAY_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
   year: "numeric",
 });
 
+const SOIREE_SHORT_DAY_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
+  day: "numeric",
+  month: "long",
+});
+
 const SOIREE_MONTH_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
   month: "long",
   year: "numeric",
@@ -25,6 +30,15 @@ export function formatSoireeDate(date: Date): string {
 /** « 4 septembre 2026 » — pour l'historique, où l'heure n'apprend plus rien. */
 export function formatSoireeDay(date: Date): string {
   return SOIREE_DAY_FORMATTER.format(date);
+}
+
+/**
+ * « 4 septembre » — la soirée nommée à l'intérieur d'une phrase (« Engager dans la
+ * soirée du 4 septembre »). Ni l'heure ni l'année : la soirée en cours est toujours
+ * proche, et une date longue déborderait du bouton.
+ */
+export function formatSoireeShortDay(date: Date): string {
+  return SOIREE_SHORT_DAY_FORMATTER.format(date);
 }
 
 /** « février 2026 » — l'origine de l'archive, en tête de l'historique (US-I1). */

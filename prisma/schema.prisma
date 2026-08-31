@@ -45,6 +45,9 @@ model User {
   soirees     Soiree[]
   engagedMods SoireeMod[]
 
+  /// Liens secondaires ajoutés sur les fiches des autres (usage wiki, cahier §2.2).
+  modLinks ModLink[]
+
   /// US-K2/K3 — ce que ce membre a supprimé, et les réglages qu'il a modifiés.
   deletions     DeletionLog[]
   configUpdates AppConfig[]
@@ -74,6 +77,10 @@ model Mod {
 
   tags    ModTag[]
   votes   Vote[]
+  /// Liens secondaires ajoutés par les membres (miroir, pack de textures, patch…).
+  /// Le lien du cahier §2.2 reste `url` : c'est lui que porte le bouton de
+  /// téléchargement et lui seul qui sert la détection de doublons (`urlKey`).
+  links   ModLink[]
   /// Engagements de cette fiche dans des soirées (US-G2).
   soirees SoireeMod[]
 
@@ -104,6 +111,32 @@ model Tag {
 /// Table d'association mod ↔ tag. Les deux `onDelete: Cascade` sont ce sur quoi
 /// comptent DELETE /api/mods/[id] (US-B4) et la suppression d'un tag : effacer une
 /// fiche ou un tag ne doit jamais laisser d'association orpheline.
+/// Un lien secondaire d'une fiche. Table à part plutôt qu'un tableau de textes sur
+/// `Mod` : un lien porte un intitulé et un auteur, et se retire à l'unité — trois
+/// choses qu'une colonne `text[]` ne saurait pas dire.
+model ModLink {
+  id String @id @default(cuid())
+
+  modId String
+  mod   Mod    @relation(fields: [modId], references: [id], onDelete: Cascade)
+
+  /// Intitulé libre (« miroir », « pack de textures »). Vide, la fiche affiche le
+  /// domaine du lien — un intitulé n'apprend rien de plus que « racedepartment.com ».
+  label String?
+  url   String
+
+  /// Le membre qui l'a ajouté. Conservé même s'il n'est pas l'auteur de la fiche :
+  /// c'est ce que la fiche affiche sous le lien.
+  addedById String
+  addedBy   User   @relation(fields: [addedById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  /// Les liens d'une fiche se lisent toujours ensemble, dans leur ordre d'ajout.
+  @@index([modId])
+  @@index([addedById])
+}
+
 model ModTag {
   modId String
   tagId String

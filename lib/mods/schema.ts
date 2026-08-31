@@ -77,6 +77,42 @@ export const modInputSchema = z.object({
 
 export type ModInput = z.infer<typeof modInputSchema>;
 
+/**
+ * Combien de liens secondaires une fiche accepte, en plus du lien principal.
+ *
+ * La limite n'est pas technique : passé une demi-douzaine d'adresses, la fiche ne dit
+ * plus où télécharger le mod — ce qui est précisément ce qu'elle sert à dire.
+ */
+export const MAX_LINKS_PER_MOD = 6;
+
+export const LINK_LABEL_MAX_LENGTH = 40;
+
+/**
+ * Cahier §2.2 — un lien secondaire ajouté sur une fiche existante (miroir, pack de
+ * textures, patch). L'intitulé est facultatif : sans lui, la fiche affiche le domaine,
+ * qui en dit déjà autant.
+ */
+export const modLinkSchema = z.object({
+  label: z.preprocess(
+    emptyToUndefined,
+    z
+      .string()
+      .max(LINK_LABEL_MAX_LENGTH, `L'intitulé ne doit pas dépasser ${LINK_LABEL_MAX_LENGTH} caractères.`)
+      .optional(),
+  ),
+  url: z.preprocess(
+    trimmed,
+    z
+      .string({ error: "Le lien est obligatoire." })
+      .min(1, "Le lien est obligatoire.")
+      .max(2048, "Ce lien est trop long.")
+      // Comme le lien principal : cette adresse finira dans un href sur la fiche.
+      .pipe(z.url({ protocol: /^https?$/, error: "Entre un lien valide, en http(s)://" })),
+  ),
+});
+
+export type ModLinkInput = z.infer<typeof modLinkSchema>;
+
 /** Version partielle, pour PATCH /api/mods/[id] (US-B3). */
 export const modPatchSchema = modInputSchema.partial();
 

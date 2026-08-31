@@ -67,6 +67,15 @@ export function apiModToView(mod: ApiMod): ModView {
       url: stripProtocol(mod.url),
       href: mod.url,
     },
+    // Un lien sans intitulé se présente sous son domaine : « racedepartment.com » dit
+    // déjà où il mène, et laisser la case vide dessinerait une étiquette blanche.
+    altLinks: mod.links.map((link) => ({
+      id: link.id,
+      label: link.label ?? formatLinkLabel(link.url),
+      url: stripProtocol(link.url),
+      href: link.url,
+      addedBy: link.addedBy,
+    })),
   };
 }
 

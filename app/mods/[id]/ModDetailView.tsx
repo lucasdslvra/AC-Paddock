@@ -2,18 +2,26 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AvatarPlaceholder } from "@/components/AvatarPlaceholder";
 import { BreadcrumbHeader } from "@/components/BreadcrumbHeader";
 import { DashedAddChip } from "@/components/DashedAddChip";
 import { DeleteModButton } from "@/components/DeleteModButton";
+import { EngageModButton } from "@/components/EngageModButton";
 import { MiniBarChart } from "@/components/MiniBarChart";
+import { ModInlineImageEdit } from "@/components/ModInlineImageEdit";
+import { ModInlineLinksEdit } from "@/components/ModInlineLinksEdit";
+import { ModInlineTagsEdit } from "@/components/ModInlineTagsEdit";
+import { ModInlineTextEdit } from "@/components/ModInlineTextEdit";
 import { ProgressBar } from "@/components/ProgressBar";
 import { TagPill } from "@/components/TagPill";
 import { TypeBadge } from "@/components/TypeBadge";
 import { UserAvatar } from "@/components/UserAvatar";
-import { currentSession, type Mod } from "@/lib/mock-data";
+import type { Mod } from "@/lib/mock-data";
+import type { ApiMod } from "@/lib/mods/serialize";
 import { useVote } from "@/lib/mods/useVote";
+import { apiModToView } from "@/lib/mods/view";
 import { voteDisabledReason } from "@/lib/mods/vote";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 
@@ -32,11 +40,23 @@ interface ModDetailViewProps {
    * une saisie attend dans l'onglet, la fiche propose de la reprendre.
    */
   hasPendingDraft?: boolean;
-  /** US-G3 — distingue « pas engagé » de « aucune soirée programmée » (cf. VotePanel). */
-  hasCurrentSoiree?: boolean;
+  /**
+   * La soirée en cours (US-G2/G3), ou `null` s'il n'y en a aucune de programmée. Elle
+   * sert deux fois : elle distingue « pas engagé » de « aucune soirée » dans le panneau
+   * de vote, et c'est elle qu'on engage la fiche depuis le bloc d'actions.
+   */
+  currentSoiree?: { id: string; dateLabel: string } | null;
 }
 
 const TYPE_PLURAL = { vehicule: "Véhicules", circuit: "Circuits" } as const;
+
+/**
+ * Le champ ouvert en retouche (US-B3), ou `null` quand la fiche est en lecture.
+ *
+ * Un seul à la fois : deux champs ouverts en même temps donneraient deux « Enregistrer »
+ * à l'écran, et l'un des deux partirait avec une valeur que l'autre vient de changer.
+ */
+type EditableField = "description" | "url" | "links" | "tags" | "image";
 
 /**
  * US-F1 / US-F2 — le vote depuis la fiche, et le compte de ceux qui ont déjà voté.
@@ -130,17 +150,39 @@ function VotePanel({
 }
 
 export function ModDetailView({
-  mod,
+  mod: serverMod,
   editHref,
   canDelete = false,
   hasPendingDraft = false,
-  hasCurrentSoiree = false,
+  currentSoiree = null,
 }: ModDetailViewProps) {
   const { session, isLoading } = useRequireAuth();
+  const router = useRouter();
+  // US-B3 — les corrections se font sur la fiche, sans passer par le formulaire complet.
+  const [editing, setEditing] = useState<EditableField | null>(null);
+  // La fiche telle que la route l'a réécrite. Elle l'emporte sur celle du serveur, qui
+  // date de l'ouverture de la page : `router.refresh()` la rattrapera, mais plus tard,
+  // et le champ ne doit pas se rafficher une seconde dans son ancienne version.
+  const [editedMod, setEditedMod] = useState<Mod | null>(null);
   // L'URL d'aperçu qui n'a rien ramené : `Mod.imageUrl` peut pointer vers un objet que
   // le bucket n'a plus (fichier retiré à la main, bucket recréé). On retombe alors sur
   // le motif rayé, comme une fiche sans image — même parti pris que `ModThumbnail`.
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+
+  const mod = editedMod ?? serverMod;
+
+  /** Une écriture aboutie, la retouche restant ouverte (retrait d'un lien secondaire). */
+  function handleChanged(updated: ApiMod) {
+    setEditedMod(apiModToView(updated));
+    // La fiche est aussi rendue ailleurs (catalogue, soirée, fil d'Ariane) : on
+    // redemande le rendu serveur plutôt que de laisser deux versions cohabiter.
+    router.refresh();
+  }
+
+  function handleSaved(updated: ApiMod) {
+    handleChanged(updated);
+    setEditing(null);
+  }
 
   if (isLoading) {
     return <p className="p-8">Chargement…</p>;
@@ -233,14 +275,25 @@ export function ModDetailView({
               <h1 className="mt-[10px] text-pretty font-sans text-[32px] font-bold leading-[1.05] tracking-[-0.03em]">
                 {mod.name}
               </h1>
-              <div className="mt-3 flex flex-wrap gap-[5px]">
-                {mod.tags.map((tag) => (
-                  <TagPill key={tag} label={tag} href={`/catalogue?tags=${tag}`} />
-                ))}
-                {/* Les tags s'ajoutent depuis le formulaire, qui porte déjà
-                    l'autocomplétion (US-C1) — inutile d'en avoir deux. */}
-                {editHref && <DashedAddChip label="+ ajouter un tag" href={editHref} />}
-              </div>
+              {editing === "tags" ? (
+                <ModInlineTagsEdit
+                  modId={mod.id}
+                  initialTags={mod.tags}
+                  onSaved={handleSaved}
+                  onCancel={() => setEditing(null)}
+                />
+              ) : (
+                <div className="mt-3 flex flex-wrap gap-[5px]">
+                  {mod.tags.map((tag) => (
+                    <TagPill key={tag} label={tag} href={`/catalogue?tags=${tag}`} />
+                  ))}
+                  {/* US-B3 — le champ s'ouvre ici, avec la même autocomplétion que le
+                      formulaire (US-C1) : ajouter un tag ne vaut pas de quitter la fiche. */}
+                  {editHref && (
+                    <DashedAddChip label="+ ajouter un tag" onClick={() => setEditing("tags")} />
+                  )}
+                </div>
+              )}
             </div>
             <div
               className="relative flex items-end justify-between overflow-hidden border-y border-[var(--color-border)] px-[14px] py-[10px]"
@@ -268,52 +321,131 @@ export function ModDetailView({
                   aperçu du mod — image déposée par un membre
                 </span>
               )}
-              {editHref && (
-                <Link
-                  href={editHref}
+              {editHref && editing !== "image" && (
+                <button
+                  type="button"
+                  onClick={() => setEditing("image")}
                   className="btn-outline relative ml-auto rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2 py-1 font-mono text-[10px] text-[var(--color-text-secondary)]"
                 >
                   remplacer l&apos;image
-                </Link>
+                </button>
               )}
             </div>
+            {editing === "image" && (
+              <div className="border-b border-[var(--color-border)] p-5">
+                <ModInlineImageEdit
+                  modId={mod.id}
+                  currentImageUrl={mod.imageUrl ?? null}
+                  onSaved={handleSaved}
+                  onCancel={() => setEditing(null)}
+                />
+              </div>
+            )}
             <div className="p-5">
               <div className="flex items-baseline justify-between">
                 <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
                   DESCRIPTION
                 </div>
-                {editHref && (
-                  <Link
-                    href={editHref}
+                {editHref && editing !== "description" && (
+                  <button
+                    type="button"
+                    onClick={() => setEditing("description")}
                     className="link-underline border-b font-mono text-[10px] text-[var(--color-link)]"
                     style={{ borderColor: "var(--color-amber)" }}
                   >
                     modifier
-                  </Link>
+                  </button>
                 )}
               </div>
-              <p className="mt-[9px] max-w-[640px] text-pretty font-sans text-sm leading-[1.65] text-[var(--color-text-secondary)]">
-                {mod.description ?? "Pas encore de description — n'importe quel membre peut en ajouter une."}
-              </p>
-              <div className="mt-[14px] flex flex-wrap gap-2 border-t border-[var(--color-border-hairline)] pt-[14px]">
-                {mod.primaryLink && (
-                  <div className="flex min-w-[150px] flex-col gap-[3px] rounded-sm border border-[var(--color-border)] px-3 py-[9px]">
-                    <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--color-text-muted)]">
-                      LIEN PRINCIPAL
-                    </span>
-                    <span className="font-mono text-[11px]">{mod.primaryLink.url}</span>
+              {editing === "description" ? (
+                <ModInlineTextEdit
+                  modId={mod.id}
+                  field="description"
+                  initialValue={mod.description ?? ""}
+                  multiline
+                  placeholder="Ce qu'il faut savoir avant de l'installer : version, pack de textures requis, physique…"
+                  hint="Champ laissé vide : la description disparaît de la fiche. Échap annule."
+                  onSaved={handleSaved}
+                  onCancel={() => setEditing(null)}
+                />
+              ) : (
+                <p className="mt-[9px] max-w-[640px] text-pretty font-sans text-sm leading-[1.65] text-[var(--color-text-secondary)]">
+                  {mod.description ?? "Pas encore de description — n'importe quel membre peut en ajouter une."}
+                </p>
+              )}
+              {editing === "url" && (
+                <div className="mt-[14px] max-w-[520px] border-t border-[var(--color-border-hairline)] pt-[14px]">
+                  <div className="font-mono text-[10px] tracking-[0.08em] text-[var(--color-text-muted)]">
+                    LIEN PRINCIPAL
                   </div>
-                )}
-                {mod.altLinks?.map((link) => (
-                  <div key={link.url} className="flex min-w-[150px] flex-col gap-[3px] rounded-sm border border-[var(--color-border)] px-3 py-[9px]">
-                    <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--color-text-muted)]">
-                      {link.label.toUpperCase()}
-                    </span>
-                    <span className="font-mono text-[11px]">{link.url}</span>
-                  </div>
-                ))}
-                <DashedAddChip label="+ lien" />
-              </div>
+                  <ModInlineTextEdit
+                    modId={mod.id}
+                    field="url"
+                    initialValue={mod.primaryLink?.href ?? mod.primaryLink?.url ?? ""}
+                    placeholder="https://www.racedepartment.com/downloads/…"
+                    hint="Le lien principal, celui du bouton de téléchargement. Pour un miroir ou un pack de textures, ajoute plutôt un lien secondaire. Échap annule."
+                    onSaved={handleSaved}
+                    onCancel={() => setEditing(null)}
+                  />
+                </div>
+              )}
+
+              {editing === "links" && (
+                <ModInlineLinksEdit
+                  modId={mod.id}
+                  links={mod.altLinks ?? []}
+                  onChanged={handleChanged}
+                  onSaved={handleSaved}
+                  onCancel={() => setEditing(null)}
+                />
+              )}
+
+              {editing !== "url" && editing !== "links" && (
+                <div className="mt-[14px] flex flex-wrap gap-2 border-t border-[var(--color-border-hairline)] pt-[14px]">
+                  {mod.primaryLink && (
+                    <div className="flex min-w-[150px] flex-col gap-[3px] rounded-sm border border-[var(--color-border)] px-3 py-[9px]">
+                      <span className="flex items-baseline gap-3 font-mono text-[10px] tracking-[0.08em] text-[var(--color-text-muted)]">
+                        LIEN PRINCIPAL
+                        {editHref && (
+                          <button
+                            type="button"
+                            onClick={() => setEditing("url")}
+                            className="link-underline ml-auto border-b tracking-normal text-[var(--color-link)]"
+                            style={{ borderColor: "var(--color-amber)" }}
+                          >
+                            modifier
+                          </button>
+                        )}
+                      </span>
+                      <span className="font-mono text-[11px]">{mod.primaryLink.url}</span>
+                    </div>
+                  )}
+                  {/* Cahier §2.2 — les liens qu'un autre membre a ajoutés. Cliquables :
+                      seul le lien principal a son bouton de téléchargement à côté. */}
+                  {mod.altLinks?.map((link) => (
+                    <a
+                      key={link.id ?? link.url}
+                      href={link.href ?? `https://${link.url}`}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="btn-outline flex min-w-[150px] max-w-full flex-col gap-[3px] rounded-sm border border-[var(--color-border)] px-3 py-[9px]"
+                    >
+                      <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--color-text-muted)]">
+                        {link.label.toUpperCase()} ↗
+                      </span>
+                      <span className="truncate font-mono text-[11px]">{link.url}</span>
+                      {link.addedBy && (
+                        <span className="font-mono text-[9.5px] text-[var(--color-text-faint)]">
+                          ajouté par {link.addedBy}
+                        </span>
+                      )}
+                    </a>
+                  ))}
+                  {editHref && (
+                    <DashedAddChip label="+ lien" onClick={() => setEditing("links")} />
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -363,7 +495,7 @@ export function ModDetailView({
         </div>
 
         <div className="flex flex-col gap-3">
-          <VotePanel mod={mod} viewer={session?.user} hasCurrentSoiree={hasCurrentSoiree} />
+          <VotePanel mod={mod} viewer={session?.user} hasCurrentSoiree={currentSoiree !== null} />
 
           {mod.primaryLink && (
             <a
@@ -430,9 +562,16 @@ export function ModDetailView({
                   Modifier la fiche
                 </Link>
               )}
-              <span className="rounded-sm border border-[var(--color-border-strong)] px-3 py-[9px] font-sans text-xs font-medium">
-                Engager dans la soirée du {currentSession.dateLabel.split(" ").slice(-2).join(" ")}
-              </span>
+              {/* US-G2 — seules les fiches en base s'engagent : celles de démonstration
+                  ne vivent qu'en dur, l'API ne les connaît pas. Même condition que
+                  l'édition, et pour la même raison. */}
+              {editHref && (
+                <EngageModButton
+                  modId={mod.id}
+                  soiree={currentSoiree}
+                  isEngaged={mod.engagement != null}
+                />
+              )}
               {canDelete ? (
                 <DeleteModButton modId={mod.id} modName={mod.name} />
               ) : (

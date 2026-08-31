@@ -3,6 +3,12 @@ import type { ApiModEngagement } from "@/lib/mods/serialize";
 export type ModType = "vehicule" | "circuit";
 
 export interface ModLink {
+  /**
+   * Identifiant de la ligne `ModLink`, pour pouvoir retirer le lien depuis la fiche.
+   * Absent sur le lien principal, qui est une colonne de `Mod`, et sur les données de
+   * démonstration, qui n'existent pas en base.
+   */
+  id?: string;
   label: string;
   /** Version affichée du lien, sans protocole. */
   url: string;
@@ -77,7 +83,7 @@ export const mods: Mod[] = [
       "Kit large Rocket Bunny v2, deux jeux de jantes, physique retravaillée pour le drift. Version 1.4 : le son moteur a été refait, ça n'a plus rien à voir. Attention, il faut aussi le pack de textures séparé sinon les vitres sont noires.",
     primaryLink: { label: "RaceDepartment", url: "racedepartment.com/…/s15-rb" },
     altLinks: [
-      { label: "Lien alternatif · ajouté par Tibo", url: "drive.google.com/…/textures", addedBy: "Tibo" },
+      { label: "Pack de textures", url: "drive.google.com/…/textures", addedBy: "Tibo" },
     ],
     fileUpload: {
       filename: "silvia_s15_rb_v14.zip",

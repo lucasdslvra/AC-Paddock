@@ -1,4 +1,5 @@
 import type {
+  ModLinkModel,
   ModModel,
   ModTagModel,
   SoireeModModel,
@@ -33,6 +34,9 @@ export function modInclude(viewerDiscordId: string, currentSoiree: CurrentSoiree
     // chaque nouvelle — mais c'est lui que trie `MOD_ORDER_BY.votes` (US-E4) : un tri
     // sur le score du soir mettrait tout le catalogue à égalité hors soirée.
     _count: { select: { votes: true } },
+    // Cahier §2.2 — les liens secondaires ajoutés par les membres, dans leur ordre
+    // d'ajout : la fiche les affiche à la suite du lien principal, qui reste `url`.
+    links: { include: { addedBy: true }, orderBy: { createdAt: "asc" } },
     // US-G2/G3/G4 — les dernières soirées où la fiche a été engagée, la plus récente
     // d'abord. Elles servent deux fois :
     //
@@ -61,6 +65,7 @@ export type ModWithRelations = ModModel & {
   author: UserModel;
   tags: (ModTagModel & { tag: TagModel })[];
   _count: { votes: number };
+  links: (ModLinkModel & { addedBy: UserModel })[];
   /**
    * Les `MOD_VOTE_HISTORY_LENGTH` dernières soirées où la fiche a été engagée, la plus
    * récente d'abord. La soirée en cours y figure en tête si la fiche y est engagée.
@@ -82,6 +87,19 @@ export interface ApiModEngagement {
   soireeModId: string;
   /** Votes de cette fiche **dans la soirée en cours** — pas son total (voir `votes`). */
   votes: number;
+}
+
+/**
+ * Un lien secondaire de la fiche (cahier §2.2). Le lien principal, lui, reste le champ
+ * `url` : il n'est pas dans cette liste.
+ */
+export interface ApiModLink {
+  id: string;
+  /** Intitulé saisi, ou `null` — la fiche affiche alors le domaine du lien. */
+  label: string | null;
+  url: string;
+  /** Pseudo du membre qui l'a ajouté, que la fiche affiche sous le lien. */
+  addedBy: string;
 }
 
 /** Forme d'un mod telle qu'exposée par l'API (dates sérialisées en ISO). */
@@ -113,6 +131,8 @@ export interface ApiMod {
   hasVoted: boolean;
   /** US-G3 — `null` si la fiche n'est pas engagée dans la soirée en cours. */
   engagement: ApiModEngagement | null;
+  /** Cahier §2.2 — les liens alternatifs, dans leur ordre d'ajout. */
+  links: ApiModLink[];
   author: { discordId: string; username: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
@@ -140,6 +160,12 @@ export function serializeMod(mod: ModWithRelations, currentSoireeId: string | nu
     voteHistory: mod.soirees.map((entry) => entry._count.votes).reverse(),
     hasVoted: engagement !== undefined && engagement.votes.length > 0,
     engagement: engagement ? { soireeModId: engagement.id, votes: engagement._count.votes } : null,
+    links: mod.links.map((link) => ({
+      id: link.id,
+      label: link.label,
+      url: link.url,
+      addedBy: link.addedBy.username,
+    })),
     author: {
       discordId: mod.author.discordId,
       username: mod.author.username,

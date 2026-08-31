@@ -13,9 +13,11 @@ import { toUiModType } from "./type";
  * (celle décrite dans lib/mock-data.ts). C'est par ici que passe le catalogue (US-E1),
  * qui reçoit ses fiches en JSON et n'a donc que des dates ISO sous la main.
  *
- * Les champs encore non implémentés — les contributions — restent vides tant que leurs
- * US ne sont pas faites. `voteHistory`, lui, est désormais réel : une barre par soirée
- * où la fiche a été engagée (US-G4), et non plus un ornement des fiches de démonstration.
+ * Le fil des contributions et les soirées déjà jouées n'en font pas partie : ils ne
+ * s'affichent que sur la fiche détail, qui les lit à part (lib/mods/contributions.ts,
+ * lib/mods/played.ts) — les charger ici les ferait payer à chaque carte du catalogue.
+ * `voteHistory`, lui, est réel : une barre par soirée où la fiche a été engagée (US-G4),
+ * et non plus un ornement des fiches de démonstration.
  */
 /**
  * Hauteur, en pourcentage, d'une soirée où la fiche était engagée sans recevoir un

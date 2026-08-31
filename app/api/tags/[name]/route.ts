@@ -1,5 +1,6 @@
 import { recordDeletion } from "@/lib/admin/deletion-log";
 import { requireAdmin } from "@/lib/admin/guard";
+import { recordContributionOnMods } from "@/lib/mods/contributions";
 import { normalizeTagName } from "@/lib/mods/tags";
 import { prisma } from "@/lib/prisma";
 
@@ -40,7 +41,23 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/tags/[na
       return Response.json({ error: "Ce tag n'existe pas." }, { status: 404 });
     }
 
+    // Les fiches concernées, lues avant la suppression : après, les associations sont
+    // parties et plus rien ne dit lesquelles perdent une pastille.
+    const affected = await prisma.modTag.findMany({
+      where: { tagId: tag.id },
+      select: { modId: true },
+    });
+
     await prisma.tag.delete({ where: { id: tag.id } });
+
+    // Cahier §2.2 — le geste se voit sur chaque fiche : le fil doit le dire. Le journal
+    // des suppressions (US-K2) enregistre la même chose côté admin, mais il ne se lit
+    // pas depuis une fiche.
+    await recordContributionOnMods(
+      affected.map((entry) => entry.modId),
+      guard.actor.id,
+      { kind: "TAG_REMOVED", detail: tag.name },
+    );
 
     await recordDeletion({
       target: "TAG",

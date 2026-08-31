@@ -1,4 +1,6 @@
 import { auth } from "@/auth";
+import { recordContribution } from "@/lib/mods/contributions";
+import { formatLinkLabel } from "@/lib/mods/format";
 import { MAX_LINKS_PER_MOD, modLinkSchema, toFieldErrors } from "@/lib/mods/schema";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { modUrlKey } from "@/lib/mods/url";
@@ -87,6 +89,14 @@ export async function POST(request: Request, ctx: RouteContext<"/api/mods/[id]/l
         url: parsed.data.url,
         addedById: member.id,
       },
+    });
+
+    // Cahier §2.2 — le fil de la fiche. Le lien porte déjà le nom de celui qui l'a
+    // ajouté, mais pas la date : c'est le fil qui situe le geste parmi les autres.
+    // Sans intitulé, le domaine — celui que la fiche affiche à sa place.
+    await recordContribution(mod.id, member.id, {
+      kind: "LINK_ADDED",
+      detail: parsed.data.label ?? formatLinkLabel(parsed.data.url),
     });
 
     const updated = await prisma.mod.findUniqueOrThrow({

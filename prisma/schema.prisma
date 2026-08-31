@@ -48,6 +48,9 @@ model User {
   /// Liens secondaires ajoutés sur les fiches des autres (usage wiki, cahier §2.2).
   modLinks ModLink[]
 
+  /// Ce que ce membre a corrigé ou complété sur les fiches (cahier §2.2).
+  contributions ModContribution[]
+
   /// US-K2/K3 — ce que ce membre a supprimé, et les réglages qu'il a modifiés.
   deletions     DeletionLog[]
   configUpdates AppConfig[]
@@ -83,6 +86,8 @@ model Mod {
   links   ModLink[]
   /// Engagements de cette fiche dans des soirées (US-G2).
   soirees SoireeMod[]
+  /// Ce que les membres y ont corrigé depuis sa création (cahier §2.2).
+  contributions ModContribution[]
 
   createdAt DateTime @default(now())
   /// Usage wiki : n'importe quel membre peut éditer la fiche (US-B3).
@@ -135,6 +140,59 @@ model ModLink {
   /// Les liens d'une fiche se lisent toujours ensemble, dans leur ordre d'ajout.
   @@index([modId])
   @@index([addedById])
+}
+
+/// Cahier §2.2 — le fil des corrections d'une fiche, tenu par l'usage wiki : « n'importe
+/// quel membre peut compléter ou corriger la fiche d'un mod existant ».
+///
+/// La fiche ne garde d'un membre que ce qu'il a laissé (`authorId`, `ModLink.addedById`) :
+/// une description remplacée, un tag retiré, une image changée ne se voient nulle part,
+/// et `updatedAt` ne dit ni qui ni quoi. C'est cette table qui répond, sur la fiche, à
+/// « qui a touché à ça, et quand ? » — la seule question que pose un wiki à plusieurs
+/// mains.
+///
+/// La création n'y est **pas** écrite : `Mod.authorId` et `Mod.createdAt` la disent déjà,
+/// pour toutes les fiches, y compris celles d'avant cette table. La fiche la reconstitue
+/// à la lecture (lib/mods/contributions.ts) plutôt que de la dupliquer ici.
+model ModContribution {
+  id String @id @default(cuid())
+
+  modId String
+  mod   Mod    @relation(fields: [modId], references: [id], onDelete: Cascade)
+
+  kind ContributionKind
+  /// Ce sur quoi portait le geste, quand le genre ne suffit pas à le dire : le nom du
+  /// tag ajouté, l'intitulé du lien retiré, l'ancien nom de la fiche. Le libellé complet
+  /// est composé à l'affichage — le stocker figerait la formulation en base.
+  detail String?
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  /// Le fil se lit toujours par fiche, du plus récent au plus ancien.
+  @@index([modId, createdAt])
+  @@index([authorId])
+}
+
+/// Les gestes qu'une fiche enregistre. Un genre par phrase affichable : ajouter une
+/// description et la remplacer ne se racontent pas pareil, et la distinction est perdue
+/// si les deux s'écrivent `DESCRIPTION`.
+enum ContributionKind {
+  NAME
+  TYPE
+  URL
+  DESCRIPTION_ADDED
+  DESCRIPTION_UPDATED
+  DESCRIPTION_REMOVED
+  IMAGE_ADDED
+  IMAGE_UPDATED
+  IMAGE_REMOVED
+  TAG_ADDED
+  TAG_REMOVED
+  LINK_ADDED
+  LINK_REMOVED
 }
 
 model ModTag {

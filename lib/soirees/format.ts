@@ -38,7 +38,16 @@ export function formatSoireeDay(date: Date): string {
  * proche, et une date longue déborderait du bouton.
  */
 export function formatSoireeShortDay(date: Date): string {
-  return SOIREE_SHORT_DAY_FORMATTER.format(date);
+  return ordinalFirst(SOIREE_SHORT_DAY_FORMATTER.format(date), date);
+}
+
+/**
+ * « 1 août » → « 1er août ». Le premier du mois est le seul jour que le français écrit
+ * en ordinal, et `Intl` ne le sait pas : il rend « 1 », qui se lit comme une faute au
+ * milieu d'une phrase (« la soirée du 1 août »).
+ */
+function ordinalFirst(label: string, date: Date): string {
+  return date.getDate() === 1 ? label.replace(/^1(?=\D)/, "1er") : label;
 }
 
 /** « février 2026 » — l'origine de l'archive, en tête de l'historique (US-I1). */

@@ -1,10 +1,17 @@
 import { auth } from "@/auth";
 import { recordDeletion } from "@/lib/admin/deletion-log";
+import {
+  diffMod,
+  MOD_SNAPSHOT_SELECT,
+  recordContributions,
+  toModSnapshot,
+} from "@/lib/mods/contributions";
 import { canDeleteMod } from "@/lib/mods/permissions";
 import { buildModUpdateData, modPatchSchema, toFieldErrors } from "@/lib/mods/schema";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { buildTagReplaceWrite } from "@/lib/mods/tags-store";
 import { prisma } from "@/lib/prisma";
+import { upsertSessionUser } from "@/lib/session-user";
 import { currentSoiree } from "@/lib/soirees/current";
 import { deleteModImages, isModImageUrl, modImagePath } from "@/lib/supabase/storage";
 
@@ -53,7 +60,16 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/mods/[id]"
   const soiree = await currentSoiree();
 
   try {
-    const existing = await prisma.mod.findUnique({ where: { id }, select: { imageUrl: true } });
+    // L'état d'avant, et pas seulement l'image : c'est de sa comparaison avec l'état
+    // d'après que sort le fil des contributions de la fiche (cahier §2.2). Le comparer
+    // plutôt que lire le corps de la requête évite d'inscrire une correction là où le
+    // formulaire a simplement renvoyé les champs inchangés.
+    const [existing, member] = await Promise.all([
+      prisma.mod.findUnique({ where: { id }, select: MOD_SNAPSHOT_SELECT }),
+      // Corriger la fiche d'un autre est souvent la première écriture d'un membre : sa
+      // ligne `User` peut ne pas exister encore, et c'est elle que signe le fil.
+      upsertSessionUser(session.user),
+    ]);
     if (!existing) {
       return Response.json({ error: "Cette fiche n'existe pas." }, { status: 404 });
     }
@@ -74,6 +90,12 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/mods/[id]"
       data: { ...data, ...(tagWrite && { tags: tagWrite }) },
       include: modInclude(session.user.id, soiree),
     });
+
+    // Cahier §2.2 — ce que cette édition a changé, inscrit au fil de la fiche. Après
+    // l'écriture : une mise à jour refusée ne doit pas laisser la trace d'une
+    // correction qui n'a pas eu lieu.
+    const changes = diffMod(toModSnapshot(existing), toModSnapshot(mod));
+    await recordContributions(mod.id, member.id, changes);
 
     // L'ancienne image n'est plus référencée : on la retire du bucket. Si ça échoue,
     // le balayage périodique la ramassera — pas de raison de faire échouer l'édition.

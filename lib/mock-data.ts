@@ -35,6 +35,10 @@ export interface ModPlayedAt {
   sessionLabel: string;
   rank: number;
   votes: number;
+  /** Le thème de la soirée (cahier §2.5), quand elle en avait un. */
+  theme?: string | null;
+  /** Lien vers la soirée. Absent sur les données de démonstration, qui n'ont pas de page. */
+  href?: string;
 }
 
 export interface Mod {

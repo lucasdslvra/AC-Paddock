@@ -18,7 +18,7 @@ import { ProgressBar } from "@/components/ProgressBar";
 import { TagPill } from "@/components/TagPill";
 import { TypeBadge } from "@/components/TypeBadge";
 import { UserAvatar } from "@/components/UserAvatar";
-import type { Mod } from "@/lib/mock-data";
+import type { Mod, ModContribution, ModPlayedAt } from "@/lib/mock-data";
 import { PageLoader } from "@/components/PageLoader";
 import type { ApiMod } from "@/lib/mods/serialize";
 import { useVote } from "@/lib/mods/useVote";
@@ -41,6 +41,19 @@ interface ModDetailViewProps {
    * une saisie attend dans l'onglet, la fiche propose de la reprendre.
    */
   hasPendingDraft?: boolean;
+  /**
+   * Cahier §2.2 — le fil des corrections de la fiche, création comprise, les plus
+   * récentes d'abord. `total` compte tout le fil et `olderCount` ce que la page ne
+   * déroule pas : le bloc annonce un nombre, pas une longueur de liste.
+   *
+   * Une prop à part, et non un champ de `mod` : la fiche est réécrite en place après
+   * chaque retouche (US-B3), à partir de ce que renvoie l'API — qui ne porte pas le
+   * fil. Rangé dans `mod`, le bloc disparaîtrait le temps que le rendu serveur
+   * rattrape.
+   */
+  contributions?: { entries: ModContribution[]; total: number; olderCount: number };
+  /** Cahier §2.5 — les soirées où la fiche a déjà été jouée, la plus récente d'abord. */
+  playedAt?: { entries: ModPlayedAt[]; olderCount: number };
   /**
    * La soirée en cours (US-G2/G3), ou `null` s'il n'y en a aucune de programmée. Elle
    * sert deux fois : elle distingue « pas engagé » de « aucune soirée » dans le panneau
@@ -155,6 +168,8 @@ export function ModDetailView({
   editHref,
   canDelete = false,
   hasPendingDraft = false,
+  contributions = { entries: [], total: 0, olderCount: 0 },
+  playedAt = { entries: [], olderCount: 0 },
   currentSoiree = null,
 }: ModDetailViewProps) {
   const { session, isLoading } = useRequireAuth();
@@ -206,7 +221,10 @@ export function ModDetailView({
     );
   }
 
-  const lastContribution = mod.contributions?.[0];
+  // La création n'est pas une modification : sur une fiche que personne n'a encore
+  // corrigée, le fil ne contient qu'elle, et « dernière modif » redirait l'auteur
+  // affiché juste au-dessus.
+  const lastContribution = contributions.total > 1 ? contributions.entries[0] : undefined;
   // Mock authors have no avatar of their own; only the signed-in member does.
   const authorImage = session?.user?.name === mod.author ? session.user.image : null;
   const previewUrl = mod.imageUrl && mod.imageUrl !== failedImageUrl ? mod.imageUrl : undefined;
@@ -450,46 +468,86 @@ export function ModDetailView({
             </div>
           </div>
 
-          {mod.contributions && mod.contributions.length > 0 && (
+          {/* Cahier §2.2 — l'usage wiki, rendu lisible : qui est passé sur cette fiche.
+              Le fil porte toujours au moins la création, il n'y a donc pas de cas vide
+              pour une fiche en base. */}
+          {contributions.entries.length > 0 && (
             <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
               <div className="flex items-baseline justify-between">
                 <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
-                  CONTRIBUTIONS · {mod.contributions.length}
+                  CONTRIBUTIONS · {contributions.total}
                 </div>
                 <div className="font-mono text-[10px] text-[var(--color-text-muted)]">
                   tout le monde peut corriger cette fiche
                 </div>
               </div>
               <div className="mt-3 flex flex-col">
-                {mod.contributions.map((entry, index) => (
+                {contributions.entries.map((entry, index) => (
                   <div
                     key={`${entry.author}-${index}`}
                     className="grid grid-cols-[100px_1fr_92px] items-center gap-3 border-b border-[var(--color-border-hairline)] py-2 last:border-b-0"
                   >
-                    <span className="font-mono text-[10px]">{entry.author}</span>
+                    <span className="truncate font-mono text-[10px]">{entry.author}</span>
                     <span className="font-sans text-xs text-[var(--color-text-secondary)]">{entry.action}</span>
                     <span className="font-mono text-[10px] text-[var(--color-text-faint)]">{entry.whenLabel}</span>
                   </div>
                 ))}
               </div>
+              {contributions.olderCount > 0 && (
+                <div className="mt-2 font-mono text-[10px] text-[var(--color-text-faint)]">
+                  + {contributions.olderCount} plus ancienne
+                  {contributions.olderCount > 1 ? "s" : ""}
+                </div>
+              )}
             </div>
           )}
 
-          {mod.playedAt && mod.playedAt.length > 0 && (
+          {/* Cahier §2.5 — l'historique (US-I1) vu depuis la fiche : les soirées où ce
+              mod a déjà tourné, et ce qu'il y a fait. Les soirées à venir n'y sont pas,
+              y compris celle de ce soir : le vote y est encore ouvert, le rang ne
+              voudrait rien dire. */}
+          {playedAt.entries.length > 0 && (
             <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
               <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
                 DÉJÀ JOUÉ LORS DE
               </div>
-              <div className="mt-[11px] flex flex-wrap gap-[10px]">
-                {mod.playedAt.map((entry) => (
-                  <div key={entry.sessionLabel} className="rounded-sm border border-[var(--color-border)] px-3 py-[9px]">
-                    <div className="font-sans text-xs font-semibold">{entry.sessionLabel}</div>
-                    <div className="font-mono text-[10px] text-[var(--color-text-muted)]">
-                      {entry.rank}
-                      {entry.rank === 1 ? "er" : "e"} · {entry.votes} votes
+              <div className="mt-[11px] flex flex-wrap items-start gap-[10px]">
+                {playedAt.entries.map((entry) => {
+                  const content = (
+                    <>
+                      <div className="font-sans text-xs font-semibold">{entry.sessionLabel}</div>
+                      <div className="font-mono text-[10px] text-[var(--color-text-muted)]">
+                        {entry.rank}
+                        {entry.rank === 1 ? "er" : "e"} · {entry.votes} vote
+                        {entry.votes > 1 ? "s" : ""}
+                      </div>
+                      {entry.theme && (
+                        <div className="font-mono text-[9.5px] text-[var(--color-text-faint)]">
+                          {entry.theme}
+                        </div>
+                      )}
+                    </>
+                  );
+                  const className = "rounded-sm border border-[var(--color-border)] px-3 py-[9px]";
+
+                  // Les fiches de démonstration n'ont pas de soirée à ouvrir : leur
+                  // vignette reste inerte plutôt que de mener à une page vide.
+                  return entry.href ? (
+                    <Link key={entry.href} href={entry.href} className={`btn-outline ${className}`}>
+                      {content}
+                    </Link>
+                  ) : (
+                    <div key={entry.sessionLabel} className={className}>
+                      {content}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
+                {playedAt.olderCount > 0 && (
+                  <span className="self-center font-mono text-[10px] text-[var(--color-text-faint)]">
+                    + {playedAt.olderCount} soirée{playedAt.olderCount > 1 ? "s" : ""} plus
+                    ancienne{playedAt.olderCount > 1 ? "s" : ""}
+                  </span>
+                )}
               </div>
             </div>
           )}

@@ -1,6 +1,9 @@
 import { auth } from "@/auth";
+import { recordContribution } from "@/lib/mods/contributions";
+import { formatLinkLabel } from "@/lib/mods/format";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { prisma } from "@/lib/prisma";
+import { upsertSessionUser } from "@/lib/session-user";
 import { currentSoiree } from "@/lib/soirees/current";
 
 /**
@@ -26,10 +29,17 @@ export async function DELETE(
   const { id, linkId } = await ctx.params;
 
   try {
-    const link = await prisma.modLink.findUnique({
-      where: { id: linkId },
-      select: { id: true, modId: true },
-    });
+    const [link, member] = await Promise.all([
+      prisma.modLink.findUnique({
+        // `label` et `url` ne servent qu'au fil des contributions : ils sont lus ici
+        // parce qu'après la suppression, plus rien ne dira quel lien est parti.
+        where: { id: linkId },
+        select: { id: true, modId: true, label: true, url: true },
+      }),
+      // Retirer un miroir mort est un geste de correction comme un autre : le membre
+      // qui le fait n'a pas forcément encore de ligne `User`.
+      upsertSessionUser(session.user),
+    ]);
 
     // L'identifiant de la fiche est vérifié, pas seulement lu dans l'URL : sans ça, un
     // lien d'une autre fiche partirait par un chemin qui prétend le contraire.
@@ -38,6 +48,11 @@ export async function DELETE(
     }
 
     await prisma.modLink.delete({ where: { id: link.id } });
+
+    await recordContribution(link.modId, member.id, {
+      kind: "LINK_REMOVED",
+      detail: link.label ?? formatLinkLabel(link.url),
+    });
 
     const soiree = await currentSoiree();
     const updated = await prisma.mod.findUniqueOrThrow({

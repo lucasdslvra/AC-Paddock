@@ -21,6 +21,11 @@ const modDraftSchema = z.object({
   /** Image déjà déposée dans le bucket : c'est son URL publique, pas le fichier. */
   imageUrl: z.string().nullable(),
   imageName: z.string().nullable(),
+  /**
+   * US-G2 — l'interrupteur « engager directement ». Optionnel : un brouillon écrit
+   * avant ce champ reste lisible, et retrouve le réglage par défaut du formulaire.
+   */
+  engage: z.boolean().default(true),
 });
 
 export type ModDraft = z.infer<typeof modDraftSchema>;

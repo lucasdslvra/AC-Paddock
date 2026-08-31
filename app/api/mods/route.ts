@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { auth } from "@/auth";
 import type { ModOrderByWithRelationInput, ModWhereInput } from "@/lib/generated/prisma/models";
 import { escapeLikeWildcards } from "@/lib/mods/like";
@@ -17,6 +18,12 @@ import { prisma } from "@/lib/prisma";
 import { upsertSessionUser } from "@/lib/session-user";
 import { currentSoiree } from "@/lib/soirees/current";
 import { isModImageUrl } from "@/lib/supabase/storage";
+
+/**
+ * Le drapeau « engager directement » de POST (US-G2), lu à part de la fiche elle-même.
+ * Non strict : un corps qui ne le porte pas crée simplement une fiche non engagée.
+ */
+const engageFlagSchema = z.object({ engage: z.boolean().optional() });
 
 /**
  * Ordre des fiches, par option de tri (US-E4).
@@ -176,6 +183,12 @@ export async function POST(request: Request) {
     );
   }
 
+  // US-G2 — « engager directement » du formulaire de proposition. Le drapeau ne passe
+  // pas par `modInputSchema`, qui ne décrit que ce qui va dans la table `Mod` : c'est
+  // une action, pas un champ de la fiche. Tout ce qui n'est pas `true` vaut non.
+  const engageFlag = engageFlagSchema.safeParse(payload);
+  const engage = engageFlag.success && engageFlag.data.engage === true;
+
   // L'URL d'image ne peut venir que de notre propre route d'upload : on refuse
   // qu'une fiche pointe vers une image hébergée ailleurs.
   if (parsed.data.imageUrl && !isModImageUrl(parsed.data.imageUrl)) {
@@ -203,6 +216,16 @@ export async function POST(request: Request) {
         urlKey: modUrlKey(fields.url),
         authorId: author.id,
         tags: await buildTagCreateWrite(tags),
+        // L'engagement est écrit avec la fiche plutôt qu'en second appel : la soirée
+        // visée est celle en cours **au moment de l'écriture**, que le serveur est seul
+        // à connaître, et une fiche publiée mais non engagée par un aller-retour perdu
+        // laisserait le membre croire qu'elle est dans la soirée. Sans soirée
+        // programmée, il n'y a rien à engager — la case du formulaire ne s'affiche même
+        // pas dans ce cas.
+        ...(engage &&
+          soiree && {
+            soirees: { create: { soireeId: soiree.id, engagedById: author.id } },
+          }),
       },
       include: modInclude(session.user.id, soiree),
     });

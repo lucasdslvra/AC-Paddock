@@ -14,7 +14,7 @@ import { describeImageProblem, IMAGE_ACCEPT_ATTRIBUTE, MAX_IMAGE_LABEL } from "@
 import { modInputSchema, toFieldErrors, type ModFieldErrors } from "@/lib/mods/schema";
 import { MOD_TYPES_UI, toDbModType, toUiModType } from "@/lib/mods/type";
 import { useSimilarMods, useUrlDuplicate } from "@/lib/mods/useDuplicates";
-import { currentSession, type ModType } from "@/lib/mock-data";
+import type { ModType } from "@/lib/mock-data";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 
 const FORM_ID = "fiche-mod";
@@ -33,9 +33,15 @@ export interface ModFormValues {
 interface ModFormProps {
   /** Fiche à modifier (US-B3). Absente, le formulaire crée une nouvelle fiche (US-B1). */
   mod?: ModFormValues;
+  /**
+   * US-G2 — la soirée en cours, où la fiche peut être engagée dès sa publication.
+   * `null` s'il n'y en a aucune de programmée. Sans objet à l'édition : une fiche déjà
+   * publiée s'engage depuis la fiche elle-même (`EngageModButton`).
+   */
+  currentSoiree?: { dateLabel: string; theme: string | null } | null;
 }
 
-export function ModForm({ mod }: ModFormProps) {
+export function ModForm({ mod, currentSoiree = null }: ModFormProps) {
   const isEditing = mod !== undefined;
   const { session, isLoading } = useRequireAuth();
   const router = useRouter();
@@ -63,6 +69,10 @@ export function ModForm({ mod }: ModFormProps) {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
+  // US-G2 — engager la fiche dans la soirée en cours au moment de la publier. Coché
+  // par défaut : on ne propose un mod la veille d'une soirée que pour l'y jouer, et le
+  // membre qui ne le veut pas a l'interrupteur sous les yeux.
+  const [engage, setEngage] = useState(draft?.engage ?? true);
   const [fieldErrors, setFieldErrors] = useState<ModFieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -126,7 +136,7 @@ export function ModForm({ mod }: ModFormProps) {
    * dans le bucket, il n'y a rien à renvoyer.
    */
   function keepDraft() {
-    saveModDraft({ type, name, url, description, tags, imageUrl, imageName });
+    saveModDraft({ type, name, url, description, tags, imageUrl, imageName, engage });
   }
 
   /** « Repartir de zéro » : la saisie retrouvée n'a plus lieu d'être, on vide tout. */
@@ -139,6 +149,7 @@ export function ModForm({ mod }: ModFormProps) {
     setUrl("");
     setDescription("");
     setTags([]);
+    setEngage(true);
     setFieldErrors({});
     urlDuplicate.reset();
     setIsDraftRestored(false);
@@ -218,6 +229,9 @@ export function ModForm({ mod }: ModFormProps) {
           ...parsed.data,
           description: parsed.data.description ?? null,
           imageUrl: parsed.data.imageUrl ?? null,
+          // La route ne le lit qu'à la création, et c'est elle qui résout la soirée
+          // visée : le formulaire dit s'il faut engager, pas où.
+          ...(!isEditing && currentSoiree && { engage }),
         }),
       });
       const body = await response.json().catch(() => null);
@@ -620,15 +634,28 @@ export function ModForm({ mod }: ModFormProps) {
               <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
                 ENGAGER DIRECTEMENT
               </div>
-              <div className="mt-[10px] flex items-center justify-between">
-                <div>
-                  <div className="font-sans text-xs font-semibold">Soirée du 4 sept</div>
-                  <div className="font-mono text-[10px] text-[var(--color-text-muted)]">
-                    thème : {currentSession.theme}
+              {currentSoiree ? (
+                <div className="mt-[10px] flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-sans text-xs font-semibold">
+                      Soirée du {currentSoiree.dateLabel}
+                    </div>
+                    <div className="truncate font-mono text-[10px] text-[var(--color-text-muted)]">
+                      {currentSoiree.theme ? <>thème : {currentSoiree.theme}</> : "sans thème"}
+                    </div>
                   </div>
+                  <ToggleSwitch
+                    on={engage}
+                    onToggle={setEngage}
+                    label={`Engager cette fiche dans la soirée du ${currentSoiree.dateLabel}`}
+                  />
                 </div>
-                <ToggleSwitch on />
-              </div>
+              ) : (
+                <p className="mt-[10px] font-mono text-[10px] leading-[1.6] text-[var(--color-text-muted)]">
+                  Aucune soirée programmée — la fiche rejoindra le catalogue, et pourra
+                  être engagée depuis la prochaine soirée créée.
+                </p>
+              )}
             </div>
           )}
 

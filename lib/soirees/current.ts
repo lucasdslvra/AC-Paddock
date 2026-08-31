@@ -33,13 +33,15 @@ export function startOfToday(now: Date = new Date()): Date {
 export interface CurrentSoiree {
   id: string;
   date: Date;
+  /** Le thème, facultatif — affiché partout où la soirée est nommée avant sa page. */
+  name: string | null;
 }
 
 export async function currentSoiree(now?: Date): Promise<CurrentSoiree | null> {
   return prisma.soiree.findFirst({
     where: { date: { gte: startOfToday(now) } },
     orderBy: { date: "asc" },
-    select: { id: true, date: true },
+    select: { id: true, date: true, name: true },
   });
 }
 

@@ -293,39 +293,15 @@ export const currentSession = {
   filesToReuploadCount: 3,
 };
 
-export interface AdminModRow {
-  name: string;
-  author: string;
-  dateLabel: string;
-  votes: number;
-  danger?: boolean;
-  subtitle?: string;
-}
-
+/**
+ * Ce qui reste de maquette dans l'espace admin. Le tableau de modération, le journal
+ * des suppressions et le plafond d'upload sont désormais réels (US-K2/K3) et lus en
+ * base ; ne subsistent ici que les panneaux dont aucune US ne parle — la rétention des
+ * fichiers, dont le cahier §2.7 fixe la durée « simple et fixe », l'accès Discord et la
+ * liste des membres.
+ */
 export const admin = {
-  modsTable: [
-    { name: "Nissan Silvia S15 — Rocket Bunny", author: "kev", dateLabel: "19 août", votes: 12 },
-    { name: "Ebisu Minami", author: "Tibo", dateLabel: "18 août", votes: 11 },
-    {
-      name: "Silvia S15 RB (doublon ?)",
-      author: "Sam",
-      dateLabel: "hier",
-      votes: 0,
-      danger: true,
-      subtitle: "même URL que la fiche #014",
-    },
-    { name: "Gunsai Touge", author: "lolo_du_74", dateLabel: "12 août", votes: 3 },
-  ] satisfies AdminModRow[],
-  deletionsLog: [
-    "26/08 21:14 · kev · DELETE mod #031 « Silvia S15 RB (doublon) » · 0 vote",
-    "24/08 18:02 · kev · DELETE tag « drfit » (faute de frappe) · 2 fiches réassignées",
-    "22/08 23:40 · Tibo · DELETE mod #028 « test upload » · auteur",
-  ],
-  olderLogCount: 11,
   settings: {
-    maxUploadMo: 100,
-    minUploadMo: 20,
-    maxUploadMoCeiling: 200,
     retentionHours: 24,
     lastCleanupLabel: "07:00 · 3 fichiers",
   },

@@ -69,10 +69,11 @@ relu en base à chaque requête plutôt que porté par la session : un changemen
 prend effet tout de suite, sans attendre une reconnexion.
 
 L'image de la fiche est retirée du bucket dans la foulée. Ses associations `ModTag`
-(US-C1) et ses `Vote` (US-F1) partent avec elle (`onDelete: Cascade`) ; `SessionMod`
-suivra le même modèle quand il arrivera — le rappel est dans `prisma/schema.prisma`.
+(US-C1), ses `Vote` (US-F1) et ses `SoireeMod` (US-G2) partent avec elle
+(`onDelete: Cascade`). La suppression laisse une entrée au journal (US-K2, plus bas) :
+c'est la seule trace qui reste d'une fiche effacée.
 
-Aucun admin n'est désigné pour l'instant : `User.role` vaut `MEMBER` par défaut. Pour
+Aucun admin n'est désigné par l'application : `User.role` vaut `MEMBER` par défaut. Pour
 en promouvoir un, passer son rôle à `ADMIN` en base.
 
 ## Tags (US-C1, US-C2)
@@ -397,6 +398,90 @@ L'orientation EXIF est appliquée avant que les métadonnées soient retirées, 
 photos de téléphone ressortent couchées. Si le ré-encodage pèse plus lourd que
 l'original — possible sur un PNG déjà minuscule — l'original est conservé ; le JPEG fait
 exception et reste toujours normalisé, à cause de l'EXIF.
+
+## Espace admin (US-K1, US-K2, US-K3)
+
+### Le garde de rôle (US-K1)
+
+Le contrôle est un garde appelé par chaque route — `requireAdmin` dans
+[lib/admin/guard.ts](lib/admin/guard.ts) — et non un `proxy.ts` (l'ex-`middleware.js`,
+renommé en Next.js 16). La documentation de `proxy` prévient qu'il ne doit pas dépendre
+de modules partagés : il est optimisé pour être déployé sur le CDN, loin de la base, et
+c'est en base que vit le rôle. Le garde le relit donc à chaque requête, comme partout
+ailleurs dans le projet — un changement de rôle prend effet tout de suite.
+
+```ts
+const guard = await requireAdmin();
+if (!guard.ok) return guard.response;   // 401 si déconnecté, 403 sinon
+guard.actor;                            // { id, role }
+```
+
+Il couvre `/api/admin/*` (`config`, `deletions`) et les deux suppressions réservées à
+l'admin décrites plus bas.
+
+Côté écrans, [app/admin/layout.tsx](app/admin/layout.tsx) fait la même vérification et
+renvoie un non-admin au catalogue — pas à la page de connexion : il est bien connecté,
+c'est cette section-là qui ne le concerne pas. Le layout porte aussi l'en-tête sombre
+« ESPACE ADMIN », si bien qu'une page ajoutée sous `/admin` est protégée sans que
+personne n'ait à y penser.
+
+L'onglet « Admin » de l'en-tête n'apparaît que pour un admin. Le rôle n'étant pas dans
+la session, `useIsAdmin` le demande à `GET /api/me` — une route volontairement hors de
+`/api/admin/*`, qui répond `{ isAdmin: false }` plutôt qu'un 403. Masquer un lien ne
+protège rien ; c'est le layout et les gardes qui refusent l'accès.
+
+### Modération et journal (US-K2)
+
+| Route | Réservée à | Emporte avec elle |
+| --- | --- | --- |
+| `DELETE /api/mods/[id]` | auteur **ou** admin (US-B4) | tags associés, votes, engagements |
+| `DELETE /api/tags/[name]` | admin | les associations `ModTag` — les fiches restent |
+| `DELETE /api/soirees/[id]` | admin | les engagements et les votes de la soirée |
+
+Les deux nouvelles suppressions étendent les routes de ressource existantes plutôt que
+d'ouvrir un `/api/admin/tags/…` parallèle : c'est la même ressource, avec une exigence
+de rôle en plus.
+
+Supprimer un tag est un acte de modération, pas d'édition : le vocabulaire est alimenté
+librement par les membres (cahier §2.2), et l'autocomplétion (US-C1) recopie ensuite les
+fautes de frappe de fiche en fiche. Supprimer une soirée sert surtout à réparer une date
+fautive — y compris celle en cours, qui capte alors les votes de tout le monde ; la
+suivante prend sa place sans qu'on ait rien à basculer, `currentSoiree` la déduit de la
+date.
+
+Chaque suppression écrit une ligne dans `DeletionLog` (`recordDeletion`,
+[lib/admin/deletion-log.ts](lib/admin/deletion-log.ts)), affichée dans le journal de
+`/admin`. Trois choix s'y lisent :
+
+- **le nom est recopié**, pas référencé : la ligne effacée ne peut plus le donner, et
+  `targetId` ne pointe donc sur rien — c'est ce qui rattache l'entrée à un lien mort
+  partagé ailleurs (« /mods/xyz renvoie 404 » : le journal dit pourquoi) ;
+- **les suppressions d'un auteur sur sa propre fiche y figurent aussi**, marquées
+  `asAdmin: false`. Un journal qui n'en montrerait que la moitié n'expliquerait pas
+  l'autre ;
+- **l'écriture du journal n'échoue jamais bruyamment** : le contenu est déjà parti, une
+  trace manquante ne doit pas ressortir en 500. L'échec reste dans les logs serveur.
+
+### Taille maximale des uploads (US-K3)
+
+Table clé/valeur `AppConfig` : le backlog demande « table/clé de configuration », et un
+réglage de plus ne doit pas coûter une migration. La valeur est stockée en texte, c'est
+[lib/admin/settings.ts](lib/admin/settings.ts) qui sait la lire et qui porte les bornes
+— 20 à 200 Mo, 100 par défaut. Une clé absente n'est pas une anomalie : la table ne
+contient que ce que quelqu'un a réellement changé, et le code retombe sur sa valeur par
+défaut. Une valeur devenue illisible est traitée pareil, plutôt que de faire échouer un
+upload sur un réglage cassé.
+
+Le réglage porte sur le **fichier du mod** — le .zip du cahier §2.2 — et pas sur l'image
+d'aperçu (US-B2), qui garde sa limite en dur : elle est ré-encodée avant stockage, sa
+borne est celle de ce que `sharp` doit accepter de lire, pas une question d'espace
+disque.
+
+`maxModFileBytes()` ([lib/admin/config.ts](lib/admin/config.ts)) est la lecture que les
+routes d'upload du fichier de mod (US-H1/H2) doivent faire. **Ces routes n'existent pas
+encore** : la valeur est administrable et persistée, mais rien ne la consomme tant que
+l'Epic H n'est pas faite. C'est le seul point du backlog K qui reste en attente, et il
+attend une autre US.
 
 ## Nettoyage des images orphelines
 

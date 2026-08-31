@@ -257,6 +257,9 @@ export function ModDetailView({
                   alt={`Aperçu de ${mod.name}`}
                   fill
                   sizes="(max-width: 1024px) 100vw, 700px"
+                  // Aperçu en haut de fiche : c'est l'élément LCP, il ne doit pas
+                  // attendre le lazy-loading par défaut de `next/image`.
+                  loading="eager"
                   onError={() => setFailedImageUrl(previewUrl)}
                   className="object-cover"
                 />

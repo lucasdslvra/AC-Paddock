@@ -1,23 +1,26 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { readAdminConfig } from "@/lib/admin/config";
+import { listDeletions } from "@/lib/admin/deletion-log";
+import { listModerationMods, listModerationTags } from "@/lib/admin/moderation";
 import { AdminView } from "./AdminView";
 
 /**
- * Espace admin. Page serveur pour une seule raison : le rôle n'est pas dans la session
- * — il est relu en base à chaque écriture, pour qu'une session ouverte avant un
- * changement de rôle ne garde pas d'anciens droits. C'est donc ici qu'on le lit, et
- * `AdminView` n'en fait qu'un affichage : `POST /api/soirees` revérifie avant d'écrire.
+ * US-K1 à US-K3 — l'espace admin.
+ *
+ * Page serveur : tout ce qu'elle affiche se lit en base, et rien n'a besoin d'être
+ * redemandé au navigateur au premier rendu. Les panneaux qui écrivent (suppression,
+ * réglage d'upload) sont des composants clients qui rappellent `router.refresh()` :
+ * c'est cette page qui recharge, donc le tableau, le journal et les compteurs restent
+ * d'accord entre eux après chaque action.
+ *
+ * Le contrôle de rôle est dans `layout.tsx`, pas ici : il vaut pour toute la section.
  */
 export default async function AdminPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/");
+  const [mods, tags, deletions, config] = await Promise.all([
+    listModerationMods(),
+    listModerationTags(),
+    listDeletions(),
+    readAdminConfig(),
+  ]);
 
-  // Pas de ligne User tant que le membre n'a rien écrit : il n'est alors pas admin.
-  const actor = await prisma.user.findUnique({
-    where: { discordId: session.user.id },
-    select: { role: true },
-  });
-
-  return <AdminView isAdmin={actor?.role === "ADMIN"} />;
+  return <AdminView mods={mods} tags={tags} deletions={deletions} config={config} />;
 }

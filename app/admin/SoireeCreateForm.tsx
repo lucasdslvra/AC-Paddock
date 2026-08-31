@@ -7,11 +7,15 @@ import { SOIREE_NAME_MAX_LENGTH, type SoireeFieldErrors } from "@/lib/soirees/sc
 import type { ApiSoireeSummary } from "@/lib/soirees/serialize";
 
 /**
- * US-G1 — « Créer une soirée », visible des seuls admins (cahier §2.6).
+ * US-G1 — « Créer une soirée ». Le panneau ne s'affiche que dans `/admin`, dont le
+ * layout est réservé aux admins (US-K1) ; `POST /api/soirees` revérifie de toute façon.
  *
  * Le panneau liste aussi les soirées existantes, et pas par décoration : la « soirée en
  * cours » est la prochaine à venir, donc en créer une plus proche déplace celle où tout
  * le monde vote. Sans cette liste, l'organisateur ne verrait pas ce qu'il déplace.
+ *
+ * US-K2 — c'est aussi de là qu'on supprime une soirée : sa date fautive se voit ici, à
+ * côté de celles qu'elle déplace.
  */
 export function SoireeCreateForm() {
   const router = useRouter();
@@ -21,6 +25,15 @@ export function SoireeCreateForm() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [soirees, setSoirees] = useState<ApiSoireeSummary[] | null>(null);
+  // US-K2 — suppression d'une soirée : la ligne en attente de confirmation, celle dont
+  // la requête est partie, et l'erreur éventuelle. Séparées de celles du formulaire de
+  // création, qui parle d'autre chose.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Incrémenté après chaque écriture pour relire la liste : elle change aussi bien
+  // quand on crée que quand on supprime.
+  const [listVersion, setListVersion] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -29,7 +42,37 @@ export function SoireeCreateForm() {
       .then((body: ApiSoireeSummary[] | null) => setSoirees(body ?? []))
       .catch(() => {});
     return () => controller.abort();
-  }, [isSubmitting]);
+  }, [listVersion]);
+
+  /**
+   * US-K2 — supprimer une soirée emporte ses engagements et les votes qui s'y
+   * rattachaient (cascade). C'est la réparation d'une date fautive, pas une opération
+   * courante : d'où la confirmation en place, sur la ligne.
+   */
+  async function handleDelete(soiree: ApiSoireeSummary) {
+    setDeleteError(null);
+    setDeletingId(soiree.id);
+
+    try {
+      const response = await fetch(`/api/soirees/${soiree.id}`, { method: "DELETE" });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        setDeleteError(body?.error ?? "La soirée n'a pas pu être supprimée.");
+        return;
+      }
+
+      setPendingDeleteId(null);
+      setListVersion((version) => version + 1);
+      // La soirée en cours vient peut-être de changer : le catalogue, les fiches et la
+      // page soirée en dépendent tous, et le journal de l'espace admin aussi.
+      router.refresh();
+    } catch {
+      setDeleteError("Impossible de joindre le serveur. Réessaie dans un instant.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -59,6 +102,7 @@ export function SoireeCreateForm() {
 
       setName("");
       setDate("");
+      setListVersion((version) => version + 1);
       // La soirée en cours vient peut-être de changer : le catalogue, les fiches et la
       // page soirée en dépendent tous, et sont rendus côté serveur.
       router.refresh();
@@ -153,6 +197,11 @@ export function SoireeCreateForm() {
               Aucune soirée encore. Tant qu&apos;il n&apos;y en a pas, personne ne peut voter.
             </p>
           )}
+          {deleteError && (
+            <p role="alert" className="font-mono text-[10.5px] text-[var(--color-danger-text)]">
+              {deleteError}
+            </p>
+          )}
           {soirees?.map((soiree) => (
             <div key={soiree.id} className="flex items-baseline justify-between gap-3">
               <div className="min-w-0">
@@ -164,18 +213,54 @@ export function SoireeCreateForm() {
                   {soiree.modCount} mod{soiree.modCount > 1 ? "s" : ""}
                 </div>
               </div>
-              <span
-                className="flex-none font-mono text-[9.5px] tracking-[0.08em]"
-                style={
-                  soiree.isCurrent
-                    ? { background: "var(--color-amber)", color: "var(--color-ink)", padding: "2px 6px" }
-                    : { color: "var(--color-text-faint)" }
-                }
-              >
-                {soiree.isCurrent
-                  ? "EN COURS"
-                  : formatSoireeCountdown(new Date(soiree.date)).toUpperCase()}
-              </span>
+              {pendingDeleteId === soiree.id ? (
+                <span className="flex flex-none gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPendingDeleteId(null)}
+                    disabled={deletingId === soiree.id}
+                    className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-[6px] py-[2px] font-mono text-[10px] disabled:opacity-60"
+                  >
+                    non
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(soiree)}
+                    disabled={deletingId === soiree.id}
+                    className="btn-solid rounded-sm px-[6px] py-[2px] font-mono text-[10px] disabled:opacity-60"
+                    style={{ background: "var(--color-danger)", color: "#fff" }}
+                  >
+                    {deletingId === soiree.id ? "…" : "supprimer"}
+                  </button>
+                </span>
+              ) : (
+                <span className="flex flex-none items-baseline gap-[6px]">
+                  <span
+                    className="font-mono text-[9.5px] tracking-[0.08em]"
+                    style={
+                      soiree.isCurrent
+                        ? { background: "var(--color-amber)", color: "var(--color-ink)", padding: "2px 6px" }
+                        : { color: "var(--color-text-faint)" }
+                    }
+                  >
+                    {soiree.isCurrent
+                      ? "EN COURS"
+                      : formatSoireeCountdown(new Date(soiree.date)).toUpperCase()}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteError(null);
+                      setPendingDeleteId(soiree.id);
+                    }}
+                    aria-label={`Supprimer la soirée du ${formatSoireeDate(new Date(soiree.date))}`}
+                    className="btn-danger rounded-sm px-[5px] py-[1px] font-mono text-[11px] leading-none"
+                    style={{ border: "1px solid var(--color-border-strong)", color: "var(--color-text-muted)" }}
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
             </div>
           ))}
         </div>

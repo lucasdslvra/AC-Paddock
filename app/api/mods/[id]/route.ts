@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { recordDeletion } from "@/lib/admin/deletion-log";
 import { canDeleteMod } from "@/lib/mods/permissions";
 import { buildModUpdateData, modPatchSchema, toFieldErrors } from "@/lib/mods/schema";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
@@ -98,8 +99,11 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/mods/[id]"
  * US-B4 — suppression d'une fiche, réservée à son auteur ou à un admin.
  * Ses associations `ModTag` (US-C1) et ses `Vote` (US-F1) partent avec elle, via le
  * `onDelete: Cascade` posé sur leurs relations. Les tags eux-mêmes survivent : ils
- * appartiennent au vocabulaire commun, pas à la fiche. SessionMod suivra le même
- * modèle (Epic G).
+ * appartiennent au vocabulaire commun, pas à la fiche. `SoireeMod` (US-G2) suit le
+ * même modèle.
+ *
+ * US-K2 — l'opération laisse une entrée au journal des suppressions : c'est la seule
+ * trace qui restera d'une fiche effacée.
  */
 export async function DELETE(_request: Request, ctx: RouteContext<"/api/mods/[id]">) {
   const session = await auth();
@@ -111,7 +115,12 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/mods/[id
 
   try {
     const [mod, actor] = await Promise.all([
-      prisma.mod.findUnique({ where: { id }, select: { authorId: true, imageUrl: true } }),
+      // `name` et le compte de votes ne servent qu'au journal (US-K2) : ils sont lus
+      // ici parce que, après la suppression, plus rien ne peut les donner.
+      prisma.mod.findUnique({
+        where: { id },
+        select: { authorId: true, imageUrl: true, name: true, _count: { select: { votes: true } } },
+      }),
       // Le rôle n'est pas dans la session : on le relit en base, ce qui évite qu'une
       // session ouverte avant un changement de rôle garde d'anciens droits.
       prisma.user.findUnique({
@@ -132,6 +141,19 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/mods/[id
     }
 
     await prisma.mod.delete({ where: { id } });
+
+    // US-K2 — les suppressions d'un admin sur la fiche d'un autre sont de la
+    // modération, et c'est ce que le journal doit rendre lisible. Celles d'un auteur
+    // sur sa propre fiche (US-B4) y figurent aussi, marquées comme telles : un journal
+    // qui n'en montrerait que la moitié n'expliquerait pas l'autre.
+    await recordDeletion({
+      target: "MOD",
+      targetId: id,
+      label: mod.name,
+      detail: `${mod._count.votes} vote${mod._count.votes > 1 ? "s" : ""}`,
+      asAdmin: actor.id !== mod.authorId,
+      actorId: actor.id,
+    });
 
     // Plus aucune fiche ne référence l'image : on la retire du bucket. Un échec ici ne
     // doit pas faire échouer la suppression, le balayage périodique ramassera.

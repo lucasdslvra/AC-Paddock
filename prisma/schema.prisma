@@ -1,6 +1,6 @@
 // Schéma Prisma — voir le cahier des charges §4 « Modèle de données ».
-// Périmètre actuel : US-A5 (User), US-B1 (Mod), US-C1 (Tag/ModTag), US-F1 (Vote) et
-// US-G1/G2 (Soiree/SoireeMod).
+// Périmètre actuel : US-A5 (User), US-B1 (Mod), US-C1 (Tag/ModTag), US-F1 (Vote),
+// US-G1/G2 (Soiree/SoireeMod) et US-K2/K3 (DeletionLog, AppConfig).
 //
 // Le cahier §4 appelle la soirée `Session`. Le modèle s'appelle ici `Soiree` : `Session`
 // est déjà le type de next-auth, présent dans presque toutes les routes sous la forme
@@ -44,6 +44,10 @@ model User {
   /// dans une soirée (US-G2).
   soirees     Soiree[]
   engagedMods SoireeMod[]
+
+  /// US-K2/K3 — ce que ce membre a supprimé, et les réglages qu'il a modifiés.
+  deletions     DeletionLog[]
+  configUpdates AppConfig[]
 }
 
 model Mod {
@@ -210,4 +214,72 @@ model SoireeMod {
   /// mais la fiche a besoin de l'autre pour savoir où elle est engagée.
   @@index([modId])
   @@index([engagedById])
+}
+
+/// US-K2 — le journal des suppressions (cahier §2.6 : l'admin « modère, suppression de
+/// n'importe quel contenu »).
+///
+/// Une suppression est irréversible et ne laisse rien derrière elle : sans cette table,
+/// « qui a effacé la fiche qu'on cherche ? » n'aurait aucune réponse. Le backlog parle
+/// de « logs applicatifs », mais des lignes de log serveur ne sont lisibles que depuis
+/// la console de l'hébergeur — le journal doit s'afficher dans l'espace admin.
+model DeletionLog {
+  id String @id @default(cuid())
+
+  target   DeletionTarget
+  /// L'identifiant de la ligne effacée. Il ne pointe plus sur rien — aucune clé
+  /// étrangère, donc — mais c'est ce qui rattache l'entrée à un lien mort partagé
+  /// ailleurs (« /mods/xyz renvoie 404 » : le journal dit pourquoi).
+  targetId String
+  /// Le nom de ce qui a disparu, recopié au moment de la suppression : la ligne
+  /// effacée ne peut plus le donner.
+  label    String
+  /// Ce que la suppression a emporté — « 12 votes », « 3 fiches ». Facultatif : toutes
+  /// les suppressions ne détruisent pas de contenu autour d'elles.
+  detail   String?
+
+  /// Vrai quand l'auteur agissait au titre de son rôle admin, faux quand il supprimait
+  /// sa propre fiche (US-B4, ouvert à l'auteur). Les deux sont journalisées — un
+  /// journal qui ne montrerait que la moitié des suppressions n'expliquerait pas
+  /// l'autre — mais seule la première est la modération dont parle US-K2.
+  asAdmin Boolean
+
+  actorId String
+  actor   User   @relation(fields: [actorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  /// Le journal se lit du plus récent au plus ancien, et ne se lit que comme ça.
+  @@index([createdAt])
+  @@index([actorId])
+}
+
+enum DeletionTarget {
+  MOD
+  TAG
+  SOIREE
+}
+
+/// US-K3 — les réglages modifiables depuis l'espace admin (cahier §2.6 : l'admin
+/// « gère la config (ex. taille max des uploads) »).
+///
+/// Une table clé/valeur plutôt qu'une colonne par réglage : le backlog demande
+/// « table/clé de configuration », et un réglage de plus ne doit pas coûter une
+/// migration. La valeur est stockée en texte pour la même raison — c'est
+/// `lib/admin/settings.ts` qui sait comment lire chaque clé, et qui borne ce qui entre.
+///
+/// Un réglage absent n'est pas une erreur : chaque clé a une valeur par défaut dans le
+/// code, et la table ne contient que ce que quelqu'un a réellement changé.
+model AppConfig {
+  key   String @id
+  value String
+
+  /// Qui a posé cette valeur, et quand. Le formulaire l'affiche : un plafond d'upload
+  /// qui a bougé sans que personne ne s'en souvienne est la première question qu'on se
+  /// pose quand un envoi est refusé.
+  updatedById String?
+  updatedBy   User?    @relation(fields: [updatedById], references: [id])
+  updatedAt   DateTime @updatedAt
+
+  @@index([updatedById])
 }

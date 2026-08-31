@@ -2,16 +2,23 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { useIsAdmin } from "@/lib/admin/useIsAdmin";
 import { ThemeToggle } from "./ThemeToggle";
 import { UserMenu } from "./UserMenu";
 
 type NavKey = "catalogue" | "soiree" | "historique" | "admin";
 
-const NAV_ITEMS: { key: NavKey; label: string; href: string }[] = [
+/**
+ * US-K1 — « Admin » porte `adminOnly` : la section n'est proposée qu'à ceux qui peuvent
+ * y entrer, les autres n'ont aucune raison de la voir. Le lien masqué ne protège rien
+ * — c'est le layout `/admin` qui refuse l'accès — il évite juste un onglet qui renvoie
+ * tout le monde d'où il vient.
+ */
+const NAV_ITEMS: { key: NavKey; label: string; href: string; adminOnly?: boolean }[] = [
   { key: "catalogue", label: "Catalogue", href: "/catalogue" },
   { key: "soiree", label: "Soirée en cours", href: "/soiree" },
   { key: "historique", label: "Historique", href: "/historique" },
-  { key: "admin", label: "Admin", href: "/admin" },
+  { key: "admin", label: "Admin", href: "/admin", adminOnly: true },
 ];
 
 interface AppHeaderProps {
@@ -24,6 +31,7 @@ interface AppHeaderProps {
 
 export function AppHeader({ active = null, variant = "default", subtitle, stats, cta }: AppHeaderProps) {
   const { data: session } = useSession();
+  const isAdminMember = useIsAdmin();
 
   const isAdmin = variant === "admin";
 
@@ -69,7 +77,7 @@ export function AppHeader({ active = null, variant = "default", subtitle, stats,
         </>
       ) : (
         <nav className="ml-[14px] flex gap-1">
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.filter((item) => !item.adminOnly || isAdminMember).map((item) => (
             <Link
               key={item.key}
               href={item.href}

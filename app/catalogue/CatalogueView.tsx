@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { ModCard } from "@/components/ModCard";
+import { PageLoader } from "@/components/PageLoader";
 import { TagPill } from "@/components/TagPill";
 import type { ModType } from "@/lib/generated/prisma/enums";
 import {
@@ -18,9 +19,9 @@ import {
 } from "@/lib/mods/query";
 import { useModCatalogue } from "@/lib/mods/useCatalogue";
 import { apiModToView } from "@/lib/mods/view";
-import { siteStats } from "@/lib/mock-data";
 import { formatSoireeDate } from "@/lib/soirees/format";
 import { useRequireAuth } from "@/lib/useRequireAuth";
+import { useSiteStats } from "@/lib/useSiteStats";
 import { ActiveFilterBar, type ActiveFilter } from "./ActiveFilterBar";
 
 interface AvailableTag {
@@ -35,10 +36,12 @@ const TYPE_FILTERS: { key: ModType | null; label: string }[] = [
   { key: "TRACK", label: "Circuits" },
 ];
 
-/** US-E4 — les deux tris du cahier §2.3, sous les mots de l'interface. */
+/** US-E4 — les tris de la route, sous les mots de l'interface. */
 const SORT_LABELS: Record<ModSort, string> = {
   date: "date d'ajout",
   votes: "votes",
+  az: "nom (A → Z)",
+  za: "nom (Z → A)",
 };
 
 export function CatalogueView() {
@@ -46,6 +49,9 @@ export function CatalogueView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [knownTags, setKnownTags] = useState<AvailableTag[]>([]);
+  // Les compteurs de l'en-tête portent sur tout le site, pas sur la page affichée :
+  // ils viennent de leur propre route, et non de la réponse filtrée du catalogue.
+  const stats = useSiteStats();
 
   // L'URL est la seule source de vérité des filtres, pas un état local : un lien
   // `/catalogue?tags=drift,jdm&type=CAR&sort=votes` arrive donc déjà filtré, la
@@ -134,7 +140,7 @@ export function CatalogueView() {
   }, [updateQuery]);
 
   if (isAuthLoading) {
-    return <p className="p-8">Chargement…</p>;
+    return <PageLoader />;
   }
 
   const mods = data?.mods.map(apiModToView) ?? [];
@@ -177,8 +183,8 @@ export function CatalogueView() {
         active="catalogue"
         subtitle={session?.guildName ?? "serveur"}
         stats={[
-          { label: "FICHES", value: siteStats.fiches },
-          { label: "VOTES", value: siteStats.votes },
+          { label: "MODS", value: stats?.mods ?? "—" },
+          { label: "SOIRÉES", value: stats?.soirees ?? "—" },
         ]}
         cta={{ label: "Proposer un mod", href: "/mods/nouveau" }}
       />

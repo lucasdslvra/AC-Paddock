@@ -238,3 +238,37 @@ body {
   border-color: var(--color-amber);
   box-shadow: inset 0 0 0 999px var(--color-hover-veil);
 }
+
+/* Anneau d'attente (`PageLoader`) : un cercle d'ambre qui tourne dans une piste de la
+   couleur des bordures. L'ambre est la couleur de l'action en cours partout ailleurs
+   — c'est elle qui dit « ça travaille » sans un mot. */
+@keyframes loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loader-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.loader-ring {
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  /* La piste complète, puis un seul quart repeint en ambre : c'est cet arc qui rend la
+     rotation visible — un anneau uni tournerait sans que rien ne bouge. */
+  border: 2.5px solid var(--color-border);
+  border-top-color: var(--color-amber);
+  animation: loader-spin 0.7s linear infinite;
+}
+
+/* Le mouvement peut être refusé par le système. L'anneau ne disparaît pas pour autant :
+   il respire au lieu de tourner, l'attente reste annoncée. */
+@media (prefers-reduced-motion: reduce) {
+  .loader-ring {
+    animation: loader-pulse 1.6s ease-in-out infinite;
+  }
+}

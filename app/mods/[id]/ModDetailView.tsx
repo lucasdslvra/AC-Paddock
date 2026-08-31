@@ -19,6 +19,7 @@ import { TagPill } from "@/components/TagPill";
 import { TypeBadge } from "@/components/TypeBadge";
 import { UserAvatar } from "@/components/UserAvatar";
 import type { Mod } from "@/lib/mock-data";
+import { PageLoader } from "@/components/PageLoader";
 import type { ApiMod } from "@/lib/mods/serialize";
 import { useVote } from "@/lib/mods/useVote";
 import { apiModToView } from "@/lib/mods/view";
@@ -185,7 +186,7 @@ export function ModDetailView({
   }
 
   if (isLoading) {
-    return <p className="p-8">Chargement…</p>;
+    return <PageLoader />;
   }
 
   if (!mod) {

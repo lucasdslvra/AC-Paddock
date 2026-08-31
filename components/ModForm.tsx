@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { BreadcrumbHeader } from "@/components/BreadcrumbHeader";
 import { ModThumbnail } from "@/components/ModThumbnail";
+import { PageLoader } from "@/components/PageLoader";
 import { TagInput } from "@/components/TagInput";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
 import { TypeBadge } from "@/components/TypeBadge";
@@ -241,7 +242,7 @@ export function ModForm({ mod }: ModFormProps) {
   }
 
   if (isLoading) {
-    return <p className="p-8">Chargement…</p>;
+    return <PageLoader />;
   }
 
   const submitLabel = isEditing ? "Enregistrer" : "Publier la fiche";

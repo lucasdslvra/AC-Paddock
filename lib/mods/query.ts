@@ -24,8 +24,16 @@ export const MAX_SEARCH_LENGTH = 80;
 /** Temps d'inactivité avant d'interroger l'API pendant la frappe (US-E3). */
 export const SEARCH_DEBOUNCE_MS = 250;
 
-/** US-E4 — cahier §2.3 : « tri par date d'ajout ou par nombre de votes ». */
-export const MOD_SORTS = ["date", "votes"] as const;
+/**
+ * US-E4 — cahier §2.3 : « tri par date d'ajout ou par nombre de votes ». Le tri
+ * alphabétique s'y ajoute : les deux tris du cahier répondent à « quoi de neuf ? » et
+ * « qu'est-ce qui plaît ? », aucun à « où est la fiche que je cherche ? » — la question
+ * qu'on se pose quand on connaît déjà le nom du mod et que le catalogue s'allonge.
+ *
+ * `az` / `za` plutôt que `nom` / `nom-desc` : le sens de lecture est dans le nom du
+ * paramètre, qui se retrouve tel quel dans l'URL partagée.
+ */
+export const MOD_SORTS = ["date", "votes", "az", "za"] as const;
 export type ModSort = (typeof MOD_SORTS)[number];
 
 /** La fiche la plus récente en premier : c'est ce que le catalogue montrait déjà. */

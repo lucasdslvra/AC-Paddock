@@ -30,6 +30,11 @@ const MOD_ORDER_BY: Record<ModSort, ModOrderByWithRelationInput[]> = {
   // US-F2 — le classement par votes. Deux fiches à égalité de votes (le cas le plus
   // courant : zéro) se départagent par date, comme dans l'autre tri.
   votes: [{ votes: { _count: "desc" } }, { createdAt: "desc" }, { id: "desc" }],
+  // Le classement alphabétique est celui de Postgres, sous la collation de la base
+  // (`en_US.UTF-8`) : casse et accents y sont traités comme le lecteur les lit —
+  // « Élise » se range à E, et « ferrari » n'atterrit pas après « Zonda ».
+  az: [{ name: "asc" }, { id: "asc" }],
+  za: [{ name: "desc" }, { id: "desc" }],
 };
 
 /**

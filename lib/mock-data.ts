@@ -66,8 +66,6 @@ export interface Mod {
   playedAt?: ModPlayedAt[];
 }
 
-export const siteStats = { fiches: 24, votes: 118, soirees: 14 };
-
 export const mods: Mod[] = [
   {
     id: "silvia-s15-rocket-bunny",

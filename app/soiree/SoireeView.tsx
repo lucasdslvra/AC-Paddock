@@ -15,6 +15,7 @@ import { toUiModType } from "@/lib/mods/type";
 import { apiModToView } from "@/lib/mods/view";
 import { useVote } from "@/lib/mods/useVote";
 import { formatSoireeCountdown, formatSoireeDate } from "@/lib/soirees/format";
+import { PageLoader } from "@/components/PageLoader";
 import type { ApiSoiree, ApiSoireeMod } from "@/lib/soirees/serialize";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 
@@ -211,7 +212,7 @@ export function SoireeView({
   }, [soiree]);
 
   if (isLoading) {
-    return <p className="p-8">Chargement…</p>;
+    return <PageLoader />;
   }
 
   // US-G1 — rien n'est programmé. Dire pourquoi, et où ça se crée : sans ça, la page

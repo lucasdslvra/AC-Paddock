@@ -4,7 +4,7 @@ import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { StatBlock } from "@/components/StatBlock";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { siteStats } from "@/lib/mock-data";
+import type { SiteStats } from "@/lib/stats";
 import { AUTH_ERROR_CODES } from "@/lib/auth-errors";
 
 const BULLETS = [
@@ -15,6 +15,8 @@ const BULLETS = [
 
 interface LoginViewProps {
   guildName: string | null;
+  /** Comptés en base par la page (`app/page.tsx`), `null` si elle n'a pas répondu. */
+  stats: SiteStats | null;
 }
 
 interface ErrorCopy {
@@ -61,7 +63,7 @@ function getErrorCopy(code: string, serverLabel: string): ErrorCopy {
   }
 }
 
-export function LoginView({ guildName }: LoginViewProps) {
+export function LoginView({ guildName, stats }: LoginViewProps) {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
   const serverLabel = guildName ? `« ${guildName} »` : "autorisé";
@@ -98,9 +100,9 @@ export function LoginView({ guildName }: LoginViewProps) {
             on sait déjà ce qu&apos;on installe.
           </p>
           <div className="mt-[26px] flex gap-[26px] border-t border-[var(--color-border)] pt-[18px]">
-            <StatBlock label="FICHES" value={siteStats.fiches} order="value-first" />
-            <StatBlock label="VOTES" value={siteStats.votes} order="value-first" />
-            <StatBlock label="SOIRÉES" value={siteStats.soirees} order="value-first" />
+            <StatBlock label="MODS" value={stats?.mods ?? "—"} order="value-first" />
+            <StatBlock label="VOTES" value={stats?.votes ?? "—"} order="value-first" />
+            <StatBlock label="SOIRÉES" value={stats?.soirees ?? "—"} order="value-first" />
           </div>
         </div>
 

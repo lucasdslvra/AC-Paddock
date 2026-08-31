@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageLoader } from "@/components/PageLoader";
 import { CatalogueView } from "./CatalogueView";
 
 /**
@@ -9,7 +10,7 @@ import { CatalogueView } from "./CatalogueView";
  */
 export default function CataloguePage() {
   return (
-    <Suspense fallback={<p className="p-8">Chargement…</p>}>
+    <Suspense fallback={<PageLoader />}>
       <CatalogueView />
     </Suspense>
   );

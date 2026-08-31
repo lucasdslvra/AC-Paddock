@@ -3,13 +3,14 @@ interface DiscordGuildWidget {
 }
 
 /**
- * Public, unauthenticated lookup of the configured guild's display name.
+ * Public, unauthenticated lookup of a guild's display name — the guild passed in, or
+ * the configured one by default.
  * Requires "Server Widget" to be enabled in Discord (Server Settings → Widget) —
  * returns null otherwise (or if DISCORD_GUILD_ID isn't set), and callers should
  * fall back to generic copy in that case.
  */
-export async function fetchGuildWidgetName(): Promise<string | null> {
-  const guildId = process.env.DISCORD_GUILD_ID;
+export async function fetchGuildWidgetName(guild?: string): Promise<string | null> {
+  const guildId = guild ?? process.env.DISCORD_GUILD_ID;
   if (!guildId) return null;
 
   try {

@@ -303,10 +303,10 @@ export const currentSession = {
 
 /**
  * Ce qui reste de maquette dans l'espace admin. Le tableau de modération, le journal
- * des suppressions et le plafond d'upload sont désormais réels (US-K2/K3) et lus en
- * base ; ne subsistent ici que les panneaux dont aucune US ne parle — la rétention des
- * fichiers, dont le cahier §2.7 fixe la durée « simple et fixe », l'accès Discord et la
- * liste des membres.
+ * des suppressions, le plafond d'upload (US-K2/K3), le serveur autorisé et la liste des
+ * membres sont désormais réels ; ne subsistent ici que la rétention des fichiers, dont
+ * le cahier §2.7 fixe la durée « simple et fixe », et la notification Discord, qui
+ * n'aura de sens que le jour où un webhook sera branché derrière.
  */
 export const admin = {
   settings: {
@@ -314,16 +314,7 @@ export const admin = {
     lastCleanupLabel: "07:00 · 3 fichiers",
   },
   access: {
-    guildName: "Les Briscards",
-    guildIdMasked: "8419…2277",
     notifyDiscord: true,
     webhookChannel: "#salon-mods",
   },
-  members: [
-    { name: "kev", role: "admin" as const },
-    { name: "Tibo", role: "membre" as const },
-    { name: "lolo_du_74", role: "membre" as const },
-    { name: "MaxAttack", role: "membre" as const },
-  ],
-  extraMembersCount: 5,
 };

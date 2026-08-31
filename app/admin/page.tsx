@@ -1,5 +1,7 @@
 import { readAdminConfig } from "@/lib/admin/config";
 import { listDeletions } from "@/lib/admin/deletion-log";
+import { readGuildAccess } from "@/lib/admin/guilds";
+import { listAdminMembers } from "@/lib/admin/members";
 import { listModerationMods, listModerationTags } from "@/lib/admin/moderation";
 import { AdminView } from "./AdminView";
 
@@ -15,12 +17,23 @@ import { AdminView } from "./AdminView";
  * Le contrôle de rôle est dans `layout.tsx`, pas ici : il vaut pour toute la section.
  */
 export default async function AdminPage() {
-  const [mods, tags, deletions, config] = await Promise.all([
+  const [mods, tags, deletions, config, members, access] = await Promise.all([
     listModerationMods(),
     listModerationTags(),
     listDeletions(),
     readAdminConfig(),
+    listAdminMembers(),
+    readGuildAccess(),
   ]);
 
-  return <AdminView mods={mods} tags={tags} deletions={deletions} config={config} />;
+  return (
+    <AdminView
+      mods={mods}
+      tags={tags}
+      deletions={deletions}
+      config={config}
+      members={members}
+      access={access}
+    />
+  );
 }

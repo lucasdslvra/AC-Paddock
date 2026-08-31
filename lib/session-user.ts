@@ -25,3 +25,42 @@ export function upsertSessionUser(user: Session["user"]) {
     },
   });
 }
+
+/**
+ * Inscrit une connexion : la ligne `User` du membre, et le serveur Discord devant
+ * lequel son appartenance vient d'être vérifiée (cahier §2.1).
+ *
+ * Appelée depuis le callback `signIn`, pas depuis une écriture : c'est la connexion,
+ * et elle seule, qui constate l'appartenance — un vote ou une fiche n'en savent rien.
+ * C'est aussi ce qui fait exister dans la liste des membres ceux qui n'ont encore rien
+ * publié : jusqu'ici, se connecter ne laissait aucune trace en base.
+ *
+ * Ne relance pas d'erreur : une connexion valide ne doit pas échouer parce que la base
+ * est indisponible. Le membre entre, et sa ligne sera créée à sa première écriture ou
+ * à sa prochaine connexion.
+ */
+export async function recordMemberLogin(member: {
+  discordId: string;
+  username: string;
+  avatarUrl: string | null;
+  guildId: string;
+  guildName: string;
+}): Promise<void> {
+  const seen = {
+    username: member.username,
+    avatarUrl: member.avatarUrl,
+    guildId: member.guildId,
+    guildName: member.guildName,
+    lastSeenAt: new Date(),
+  };
+
+  try {
+    await prisma.user.upsert({
+      where: { discordId: member.discordId },
+      update: seen,
+      create: { discordId: member.discordId, ...seen },
+    });
+  } catch (error) {
+    console.error("recordMemberLogin", error);
+  }
+}

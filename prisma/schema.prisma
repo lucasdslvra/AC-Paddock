@@ -37,6 +37,22 @@ model User {
   role      Role     @default(MEMBER)
   createdAt DateTime @default(now())
 
+  /// Le serveur Discord où l'appartenance de ce membre a été vérifiée, à sa dernière
+  /// connexion (cahier §2.1 : l'accès est réservé aux membres du serveur). Le nom est
+  /// recopié à côté de l'identifiant parce qu'il ne se relit pas sans jeton : Discord
+  /// ne donne la liste des serveurs qu'au membre lui-même, au moment où il se connecte.
+  ///
+  /// Nul pour les lignes créées par une écriture (`upsertSessionUser`) sans connexion
+  /// depuis cette colonne : on préfère l'aveu au serveur courant recopié d'office, qui
+  /// affirmerait une vérification qui n'a pas eu lieu.
+  guildId   String?
+  guildName String?
+
+  /// La dernière connexion vérifiée — la date de ce que dit `guildName`. « Membre de X »
+  /// sans le moment où ça a été constaté ne vaut rien : quelqu'un a pu quitter le
+  /// serveur depuis, l'application ne le revoit qu'à sa prochaine connexion.
+  lastSeenAt DateTime?
+
   mods  Mod[]
   votes Vote[]
 
@@ -54,6 +70,9 @@ model User {
   /// US-K2/K3 — ce que ce membre a supprimé, et les réglages qu'il a modifiés.
   deletions     DeletionLog[]
   configUpdates AppConfig[]
+
+  /// Les serveurs Discord qu'il a ouverts à l'accès depuis l'espace admin.
+  authorizedGuilds AuthorizedGuild[]
 }
 
 model Mod {
@@ -305,6 +324,39 @@ model SoireeMod {
   /// mais la fiche a besoin de l'autre pour savoir où elle est engagée.
   @@index([modId])
   @@index([engagedById])
+}
+
+/// Les serveurs Discord qui donnent accès à l'application, en plus de celui de la
+/// configuration de déploiement (`DISCORD_GUILD_ID`).
+///
+/// Le serveur d'origine reste dans l'environnement et n'a pas de ligne ici : c'est lui
+/// qui rend impossible de se verrouiller dehors depuis l'espace admin — quoi qu'on
+/// retire de cette table, il autorise encore quelqu'un à entrer. Les serveurs ajoutés
+/// ici s'ouvrent et se referment sans redéploiement, ce que la variable d'environnement
+/// ne permet pas.
+model AuthorizedGuild {
+  id String @id @default(cuid())
+
+  /// L'identifiant Discord du serveur (snowflake). Unique : deux lignes pour le même
+  /// serveur ne voudraient rien dire de plus qu'une seule.
+  guildId String @unique
+
+  /// Le nom affiché. Facultatif : Discord ne le publie qu'aux membres du serveur ou via
+  /// le widget public, souvent désactivé. À défaut, l'écran retombe sur le nom qu'une
+  /// connexion a rapporté (`User.guildName`), puis sur l'identifiant.
+  name String?
+
+  /// US-K1 — protège de la suppression. Retirer un serveur déconnecte tout un groupe à
+  /// sa prochaine connexion : le verrou est là pour que ça ne se fasse pas d'un clic
+  /// distrait, et il se lève depuis le même écran.
+  locked Boolean @default(false)
+
+  addedById String
+  addedBy   User   @relation(fields: [addedById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([addedById])
 }
 
 /// US-K2 — le journal des suppressions (cahier §2.6 : l'admin « modère, suppression de

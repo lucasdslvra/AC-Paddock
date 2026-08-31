@@ -93,6 +93,66 @@ export interface AdminTagRow {
   modCount: number;
 }
 
+/**
+ * Un membre, tel que le panneau « MEMBRES » de l'espace admin l'affiche.
+ *
+ * Le serveur n'est pas déduit de la configuration courante : c'est celui devant lequel
+ * ce membre-là a été vérifié, à sa dernière connexion (`User.guildId`). Il est comparé
+ * à la liste des serveurs autorisés — quand elle change, voir qui n'y est plus est
+ * justement ce que l'admin a besoin.
+ */
+export interface AdminMemberRow {
+  discordId: string;
+  username: string;
+  avatarUrl: string | null;
+  isAdmin: boolean;
+  /** Le serveur constaté à la dernière connexion. `null` : jamais connecté depuis. */
+  guildName: string | null;
+  /** Faux si ce serveur ne fait plus partie de ceux qui donnent accès. */
+  isAuthorizedGuild: boolean;
+  /** Dernière connexion vérifiée, en ISO. `null` si elle est antérieure au suivi. */
+  lastSeenAt: string | null;
+}
+
+/**
+ * Un serveur Discord qui donne accès à l'application (cahier §2.1), tel que le panneau
+ * « ACCÈS » l'affiche.
+ */
+export interface ApiAuthorizedGuild {
+  /** L'identifiant de la ligne, ou `null` pour le serveur du déploiement, qui n'en a pas. */
+  id: string | null;
+  guildId: string;
+  /** L'identifiant tronqué : il suffit à vérifier qu'on parle du bon serveur. */
+  guildIdMasked: string;
+  /** Le nom, quand on le connaît — Discord ne le publie pas à tout le monde. */
+  name: string | null;
+  /** Protégé contre la suppression. Toujours vrai pour le serveur du déploiement. */
+  locked: boolean;
+  /** Vrai s'il vient de `DISCORD_GUILD_ID` : ni modifiable ni supprimable d'ici. */
+  fromConfig: boolean;
+  /** Qui l'a ouvert. `null` pour le serveur du déploiement. */
+  addedBy: string | null;
+}
+
+/** Le panneau « ACCÈS » en entier. */
+export interface ApiGuildAccess {
+  /** Le serveur du déploiement d'abord, puis les serveurs ajoutés, du plus ancien au plus récent. */
+  guilds: ApiAuthorizedGuild[];
+  /** `null` si `DISCORD_GUILD_ID` n'est pas renseigné — plus rien ne protège l'accès. */
+  configuredGuildId: string | null;
+}
+
+const MEMBER_SEEN_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "2-digit",
+});
+
+/** « 31/08/26 » — la ligne d'un membre est déjà chargée, l'heure n'y ajoute rien. */
+export function formatMemberSeenDate(date: Date): string {
+  return MEMBER_SEEN_FORMATTER.format(date);
+}
+
 const DELETION_DATE_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
   day: "2-digit",
   month: "2-digit",

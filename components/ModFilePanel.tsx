@@ -80,6 +80,10 @@ export function ModFilePanel({ modId, file, maxBytes, canUpload, onUploaded }: M
   const xhrRef = useRef<XMLHttpRequest | null>(null);
 
   const isUploading = phase.kind === "uploading";
+  // US-H3 — un fichier passé les 24 h est en sursis : le balayage horaire ne l'a pas
+  // encore retiré, mais il ne doit plus être proposé au téléchargement. La fiche
+  // repasse donc en dépôt, sans attendre que `fileUrl` soit vidé.
+  const available = file && !file.expired;
   const limitLabel = `Archive ${MOD_FILE_ACCEPT_ATTRIBUTE.replaceAll(".", "").replaceAll(",", ", ")} · ${formatFileSize(maxBytes)} max`;
 
   async function handleFile(candidate: File) {
@@ -191,7 +195,7 @@ export function ModFilePanel({ modId, file, maxBytes, canUpload, onUploaded }: M
             Annuler l&apos;envoi
           </button>
         </>
-      ) : file ? (
+      ) : available ? (
         <>
           <div className="mt-2 truncate font-sans text-[13px] font-semibold">{file.filename}</div>
           {(file.sizeLabel || file.uploadedByLabel) && (
@@ -232,6 +236,13 @@ export function ModFilePanel({ modId, file, maxBytes, canUpload, onUploaded }: M
           </div>
         </>
       ) : (
+        <>
+        {file?.expired && (
+          <p className="mt-[10px] font-mono text-[10px] leading-[1.55] text-[var(--color-text-muted)]">
+            « {file.filename} » a passé les {MOD_FILE_TTL_HOURS} h et n&apos;est plus
+            disponible. La fiche, elle, n&apos;a pas bougé.
+          </p>
+        )}
         <div
           onClick={pick}
           onDrop={(event) => {
@@ -253,6 +264,7 @@ export function ModFilePanel({ modId, file, maxBytes, canUpload, onUploaded }: M
           <span>glisse l&apos;archive du mod ici, ou clique pour choisir</span>
           <span className="text-[var(--color-text-faint)]">{limitLabel}</span>
         </div>
+        </>
       )}
 
       {phase.kind === "error" && (

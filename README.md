@@ -598,6 +598,54 @@ La route de balayage exige `Authorization: Bearer $CRON_SECRET` et refuse de tou
 si `CRON_SECRET` n'est pas défini. `vercel.json` la déclenche tous les jours à 4 h ;
 en local, on peut l'appeler à la main avec le même en-tête.
 
+## Expiration des fichiers de mod (US-H3)
+
+Cahier §2.7 : **tout fichier déposé saute 24 h après son upload**, quelle que soit la
+date de la soirée à laquelle le mod est associé. La fiche, elle, n'est jamais supprimée
+— nom, lien, description, votes et historique restent.
+
+`sweepExpiredModFiles` (`lib/mods/expired-files.ts`) cherche les fiches dont
+`fileUploadedAt` dépasse 24 h et dont `fileUrl` est encore renseigné, retire l'objet de
+Cloudflare R2, puis vide les deux colonnes. L'ordre n'est pas indifférent : l'objet part
+**avant** que la fiche l'oublie. Vider `fileUrl` d'abord laisserait, si le retrait
+échoue, un objet que plus rien ne désigne — donc introuvable au balayage suivant, et
+téléchargeable par qui en a gardé l'URL. En cas d'échec la fiche est laissée en l'état
+et repassera à l'heure suivante.
+
+`GET /api/maintenance/expired-files` expose ce balayage, avec le même contrat que celui
+des images orphelines : `Authorization: Bearer $CRON_SECRET`, et refus de tourner si le
+secret n'est pas défini.
+
+### La planification
+
+Elle vit dans la base, pas dans `vercel.json` : le cahier §2.7 demande **plusieurs
+passages par jour** pour que la fenêtre réelle soit « 24 h » et non « 24 h + la période
+du job », or les crons Vercel sont limités à un déclenchement quotidien sur le plan
+Hobby. `pg_cron` tourne à l'heure, gratuitement.
+
+`prisma/cron/expired-mod-files.sql` contient tout : les extensions, les secrets, la
+fonction et le job. À exécuter **une fois** dans l'éditeur SQL de Supabase — ce n'est
+pas une migration Prisma, parce que ça ne décrit pas le schéma dont l'application
+dépend et qu'un échec y bloquerait des migrations qui n'y sont pour rien.
+
+### pg_net appelle l'application, pas Cloudflare
+
+Le cahier proposait que `pg_net` s'adresse directement à l'API R2. Supprimer un objet R2
+demande une signature AWS SigV4 — une chaîne de HMAC-SHA256 à écrire en plpgsql, et
+surtout les identifiants Cloudflare recopiés dans la base. La base appelle donc la route
+de maintenance, qui a déjà le SDK et les clés : `pg_cron` et `pg_net` restent l'un et
+l'autre à leur poste, et les identifiants R2 ne vivent qu'à un seul endroit.
+
+L'URL de l'application et le `CRON_SECRET` sont rangés dans **Supabase Vault**, pas en
+clair dans la définition du job : `cron.job` est une table lisible, et ce secret vaut
+droit de déclencher la maintenance.
+
+### Entre l'échéance et le balayage
+
+Il s'écoule jusqu'à une heure. Pendant ce temps `fileUrl` est encore renseigné, mais
+`modFileLifetime` marque le fichier expiré : le panneau affiche « EXPIRÉ », ne propose
+plus le téléchargement, et rouvre le dépôt.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

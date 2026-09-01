@@ -45,3 +45,4 @@ next-env.d.ts
 AGENTS.md
 CLAUDE.md
 /lib/generated/prisma
+prisma/cron/expired-mod-files.sql

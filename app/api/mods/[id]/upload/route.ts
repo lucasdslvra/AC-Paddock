@@ -1,6 +1,13 @@
 import { auth } from "@/auth";
 import { maxModFileBytes } from "@/lib/admin/config";
-import { describeModFileProblem, formatFileSize } from "@/lib/mods/file";
+import { ARCHIVE_SIGNATURE_BYTES, sniffArchiveMime } from "@/lib/mods/archive";
+import {
+  ALLOWED_MOD_FILE_EXTENSIONS,
+  announcedModFileMime,
+  describeModFileProblem,
+  formatFileSize,
+  modFileExtensionForMime,
+} from "@/lib/mods/file";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { prisma } from "@/lib/prisma";
 import {
@@ -10,6 +17,8 @@ import {
   modFileKeyFromUrl,
   modFilePublicUrl,
   presignModFileUpload,
+  readModFileHead,
+  type StoredModFile,
 } from "@/lib/r2/storage";
 import { soireeContext } from "@/lib/soirees/current";
 
@@ -33,6 +42,12 @@ import { soireeContext } from "@/lib/soirees/current";
  *
  * Cahier §2.2 : l'upload est ouvert à tous les membres, pas au seul auteur de la fiche
  * — c'est déjà ce que dit US-H4 du ré-upload.
+ *
+ * US-H2 — la validation est en deux couches, parce qu'elles ne protègent pas de la même
+ * chose. Avant de signer, la route relit l'extension et la taille annoncée : ça épargne
+ * un envoi de 100 Mo à qui s'est trompé de fichier. Avant d'écrire dans la fiche, elle
+ * va regarder l'objet lui-même — sa taille réelle, et ses premiers octets. Seule cette
+ * seconde couche est opposable : tout ce que dit la première vient du client.
  */
 
 /** Le type sous lequel tout est déposé, et donc celui que la signature couvre. */
@@ -99,11 +114,85 @@ export async function POST(request: Request, ctx: RouteContext<"/api/mods/[id]/u
 }
 
 /**
+ * US-H2 — ce que l'objet réellement déposé doit vérifier avant que la fiche le
+ * référence : sa taille, et son format lu dans ses propres octets.
+ *
+ * Renvoie la réponse de refus, ou `null` si l'objet peut être rattaché. Retirer du
+ * bucket ce qui est refusé fait partie du contrat : un objet qu'aucune fiche ne
+ * référencera n'a plus de raison d'y occuper de la place.
+ *
+ * C'est ici, et pas au moment de signer, que la validation est opposable : tout ce que
+ * la route sait avant l'envoi lui vient du client.
+ */
+async function rejectStoredFile(
+  key: string,
+  stored: StoredModFile,
+  maxBytes: number,
+): Promise<Response | null> {
+  /** Retire l'objet, au mieux : la règle de cycle de vie du bucket repassera derrière. */
+  const discard = (why: string) =>
+    deleteModFile(key).catch((error) => console.error(`Retrait — ${why}`, error));
+
+  // Un objet vide n'a pas d'octets à examiner, et une requête `Range` dessus échouerait
+  // en 416 plutôt qu'en un refus lisible.
+  if (stored.size === 0) {
+    await discard("fichier vide");
+    return Response.json({ error: "Le fichier déposé est vide." }, { status: 400 });
+  }
+
+  // La taille réelle, et non celle que le client avait annoncée pour obtenir sa
+  // signature : rien dans l'URL signée ne borne ce qui peut y être écrit.
+  if (stored.size > maxBytes) {
+    await discard("fichier trop lourd");
+    return Response.json(
+      {
+        error:
+          `Fichier trop lourd : ${formatFileSize(stored.size)} déposés pour ` +
+          `${formatFileSize(maxBytes)} autorisés. Passe plutôt par un lien externe.`,
+      },
+      { status: 413 },
+    );
+  }
+
+  // Le format réel. L'extension et le type MIME du navigateur viennent tous deux du nom
+  // du fichier : renommer suffit à les faire mentir. Huit octets suffisent à trancher
+  // (lib/mods/archive.ts), et une requête `Range` évite de rapatrier l'archive entière.
+  const announced = announcedModFileMime(key.split("/").pop() ?? "");
+  const actual = sniffArchiveMime(await readModFileHead(key, ARCHIVE_SIGNATURE_BYTES));
+
+  if (!actual) {
+    await discard("format non reconnu");
+    return Response.json(
+      {
+        error:
+          "Ce fichier n'est pas une archive : son contenu ne correspond à aucun des " +
+          `formats acceptés (${ALLOWED_MOD_FILE_EXTENSIONS.join(", ")}).`,
+      },
+      { status: 415 },
+    );
+  }
+
+  if (actual !== announced) {
+    await discard("extension trompeuse");
+    return Response.json(
+      {
+        error:
+          `Ce fichier est en réalité une archive ${modFileExtensionForMime(actual)}, ` +
+          "pas ce que son extension annonce. Renomme-le avant de le déposer.",
+      },
+      { status: 415 },
+    );
+  }
+
+  return null;
+}
+
+/**
  * Confirmation : l'objet est là, la fiche peut le référencer.
  *
- * Le serveur ne croit pas le client sur parole — il relit la taille sur l'objet
- * réellement déposé. C'est le seul endroit où le plafond d'US-K3 est vraiment opposable :
- * l'URL signée, elle, ne porte pas de limite de taille.
+ * Le serveur ne croit le client sur rien — ni sur la taille, ni sur le format : il va
+ * voir (`rejectStoredFile`). C'est le seul endroit où le plafond d'US-K3 et les formats
+ * d'US-H2 sont vraiment opposables, l'URL signée ne portant ni l'un ni les autres.
  */
 export async function PUT(request: Request, ctx: RouteContext<"/api/mods/[id]/upload">) {
   const session = await auth();
@@ -144,14 +233,8 @@ export async function PUT(request: Request, ctx: RouteContext<"/api/mods/[id]/up
       return Response.json({ error: "Le fichier n'est pas arrivé. Réessaie." }, { status: 404 });
     }
 
-    if (stored.size > maxBytes) {
-      // Déposé au-delà du plafond : l'objet part, et la fiche n'en saura rien.
-      await deleteModFile(key).catch((error) => console.error("Retrait du fichier trop lourd", error));
-      return Response.json(
-        { error: `Fichier trop lourd : ${formatFileSize(maxBytes)} maximum.` },
-        { status: 413 },
-      );
-    }
+    const rejection = await rejectStoredFile(key, stored, maxBytes);
+    if (rejection) return rejection;
 
     const mod = await prisma.mod.update({
       where: { id },

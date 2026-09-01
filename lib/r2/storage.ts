@@ -1,6 +1,7 @@
 import "server-only";
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -50,6 +51,17 @@ function r2(): S3Client {
         accessKeyId: requireEnv("R2_ACCESS_KEY_ID"),
         secretAccessKey: requireEnv("R2_SECRET_ACCESS_KEY"),
       },
+      // Sans ça, aucun upload ne passe. Depuis la version 3.729, le SDK joint d'office
+      // une somme de contrôle CRC32 à tout `PutObject`. Sur une URL signée, il la calcule
+      // au moment de signer — donc sur un corps vide, faute d'en avoir un — et la fige
+      // dans la query string (`x-amz-checksum-crc32=AAAAAA==`). Le navigateur envoie
+      // ensuite le vrai fichier : R2 recalcule, trouve autre chose, et rejette en 403.
+      //
+      // « WHEN_REQUIRED » n'ajoute la somme que là où le protocole l'exige vraiment.
+      // Aucune de nos opérations n'est dans ce cas : le fichier voyage en HTTPS, et sa
+      // taille comme son format sont vérifiés après coup sur l'objet déposé (US-H2).
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
     });
   }
   return cached;
@@ -142,6 +154,30 @@ export async function headModFile(key: string): Promise<StoredModFile | null> {
     if (status === 404) return null;
     throw error;
   }
+}
+
+/**
+ * US-H2 — les `bytes` premiers octets de l'objet, pour en reconnaître le format réel
+ * (lib/mods/archive.ts).
+ *
+ * Une requête `Range` et non un téléchargement : se prononcer sur une archive de 100 Mo
+ * ne demande que sa tête, et la rapatrier entière ferait payer à chaque upload une
+ * traversée que rien ne justifie.
+ *
+ * Renvoie moins d'octets que demandé si l'objet est plus court — un fichier de trois
+ * octets ne ressemble à aucune archive, et c'est l'appelant qui en conclura.
+ */
+export async function readModFileHead(key: string, bytes: number): Promise<Uint8Array> {
+  const response = await r2().send(
+    new GetObjectCommand({
+      Bucket: modFilesBucket(),
+      Key: key,
+      // `Range` est en octets inclusifs des deux côtés : 0-7 en fait bien huit.
+      Range: `bytes=0-${bytes - 1}`,
+    }),
+  );
+
+  return response.Body ? await response.Body.transformToByteArray() : new Uint8Array();
 }
 
 export async function deleteModFile(key: string): Promise<void> {

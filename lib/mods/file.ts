@@ -12,23 +12,62 @@
  */
 export const MOD_FILE_TTL_HOURS = 24;
 
-/**
- * Extensions acceptées. Un mod d'Assetto Corsa se distribue en archive — c'est ce que
- * Content Manager sait installer, et le seul format qui ait un sens ici.
- *
- * US-H2 durcira la validation (vérification du contenu, pas seulement du nom) ; ce
- * garde-fou-là existe déjà parce qu'une route qui signe une URL d'écriture sans rien
- * regarder ouvrirait le bucket à n'importe quoi.
- */
-export const ALLOWED_MOD_FILE_EXTENSIONS = [".zip", ".rar", ".7z"] as const;
-
-/** Ce que le sélecteur de fichiers doit proposer. */
-export const MOD_FILE_ACCEPT_ATTRIBUTE = ".zip,.rar,.7z";
-
 /** L'extension d'un nom de fichier, en minuscules, point compris. `""` s'il n'en a pas. */
 export function modFileExtension(filename: string): string {
   const dot = filename.lastIndexOf(".");
   return dot > 0 ? filename.slice(dot).toLowerCase() : "";
+}
+
+/**
+ * Les formats acceptés, et le type MIME que chacun doit réellement avoir. Un mod
+ * d'Assetto Corsa se distribue en archive — c'est ce que Content Manager sait
+ * installer, et le seul format qui ait un sens ici.
+ *
+ * US-H2 — la table sert des deux côtés de la validation, et c'est pour ça qu'elle
+ * associe les deux : le navigateur et la route filtrent sur l'extension avant l'envoi,
+ * puis la route compare le type annoncé au type réellement lu dans les octets de
+ * l'objet déposé (lib/mods/archive.ts). Un `.zip` qui n'en est pas un se fait prendre
+ * là, pas avant : le nom d'un fichier n'engage que celui qui l'a tapé.
+ */
+export const MOD_FILE_MIME_TYPES = {
+  ".zip": "application/zip",
+  ".rar": "application/vnd.rar",
+  ".7z": "application/x-7z-compressed",
+} as const;
+
+export type ModFileExtension = keyof typeof MOD_FILE_MIME_TYPES;
+
+export const ALLOWED_MOD_FILE_EXTENSIONS = Object.keys(
+  MOD_FILE_MIME_TYPES,
+) as ModFileExtension[];
+
+/** Ce que le sélecteur de fichiers doit proposer. */
+export const MOD_FILE_ACCEPT_ATTRIBUTE = ALLOWED_MOD_FILE_EXTENSIONS.join(",");
+
+/** Vrai si cette extension est une de celles qu'on accepte — et le dit à TypeScript. */
+export function isAllowedModFileExtension(extension: string): extension is ModFileExtension {
+  return extension in MOD_FILE_MIME_TYPES;
+}
+
+/**
+ * Le type MIME que ce nom de fichier **promet**, ou `null` si son extension n'est pas
+ * des nôtres. C'est la promesse que la route confrontera aux octets réels.
+ */
+export function announcedModFileMime(filename: string): string | null {
+  const extension = modFileExtension(filename);
+  return isAllowedModFileExtension(extension) ? MOD_FILE_MIME_TYPES[extension] : null;
+}
+
+/**
+ * L'extension qui correspond à un type MIME reconnu — la lecture en sens inverse de la
+ * table. Sert au message d'erreur d'US-H2 : dire « c'est une archive .rar » est plus
+ * utile à celui qui s'est trompé que « application/vnd.rar ».
+ */
+export function modFileExtensionForMime(mime: string): ModFileExtension | null {
+  const found = ALLOWED_MOD_FILE_EXTENSIONS.find(
+    (extension) => MOD_FILE_MIME_TYPES[extension] === mime,
+  );
+  return found ?? null;
 }
 
 /**
@@ -56,8 +95,8 @@ export function describeModFileProblem(
   maxBytes: number,
 ): string | null {
   const extension = modFileExtension(file.name);
-  if (!(ALLOWED_MOD_FILE_EXTENSIONS as readonly string[]).includes(extension)) {
-    return `Format non accepté : une archive ${ALLOWED_MOD_FILE_EXTENSIONS.join(", ")}.`;
+  if (!isAllowedModFileExtension(extension)) {
+    return `Format non accepté : une archive ${ALLOWED_MOD_FILE_EXTENSIONS.join(", ")} uniquement.`;
   }
   if (file.size === 0) {
     return "Ce fichier est vide.";

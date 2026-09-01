@@ -10,11 +10,11 @@ import { DashedAddChip } from "@/components/DashedAddChip";
 import { DeleteModButton } from "@/components/DeleteModButton";
 import { EngageModButton } from "@/components/EngageModButton";
 import { MiniBarChart } from "@/components/MiniBarChart";
+import { ModFilePanel } from "@/components/ModFilePanel";
 import { ModInlineImageEdit } from "@/components/ModInlineImageEdit";
 import { ModInlineLinksEdit } from "@/components/ModInlineLinksEdit";
 import { ModInlineTagsEdit } from "@/components/ModInlineTagsEdit";
 import { ModInlineTextEdit } from "@/components/ModInlineTextEdit";
-import { ProgressBar } from "@/components/ProgressBar";
 import { TagPill } from "@/components/TagPill";
 import { TypeBadge } from "@/components/TypeBadge";
 import { UserAvatar } from "@/components/UserAvatar";
@@ -60,6 +60,13 @@ interface ModDetailViewProps {
    * de vote, et c'est elle qu'on engage la fiche depuis le bloc d'actions.
    */
   currentSoiree?: { id: string; dateLabel: string } | null;
+  /**
+   * US-H1/US-K3 — le plafond d'upload du moment, en octets, tel que l'espace admin
+   * l'a réglé. Il descend du serveur avec la page : la fiche l'affiche au membre avant
+   * qu'il choisisse un fichier, et refuse le fichier de trop sans aller-retour. La
+   * route le relit en base au moment de signer — c'est elle qui tranche.
+   */
+  maxModFileBytes: number;
 }
 
 const TYPE_PLURAL = { vehicule: "Véhicules", circuit: "Circuits" } as const;
@@ -171,6 +178,7 @@ export function ModDetailView({
   contributions = { entries: [], total: 0, olderCount: 0 },
   playedAt = { entries: [], olderCount: 0 },
   currentSoiree = null,
+  maxModFileBytes,
 }: ModDetailViewProps) {
   const { session, isLoading } = useRequireAuth();
   const router = useRouter();
@@ -575,39 +583,17 @@ export function ModDetailView({
             </a>
           )}
 
-          {mod.fileUpload && (
-            <div className="rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-[15px]">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
-                  FICHIER SUR PADDOCK
-                </span>
-                <span className="px-[6px] py-[2px] font-mono text-[10px]" style={{ background: "var(--color-amber)", color: "var(--color-ink)" }}>
-                  EXPIRE DANS {mod.fileUpload.expiresInLabel.toUpperCase()}
-                </span>
-              </div>
-              <div className="mt-2 font-sans text-[13px] font-semibold">{mod.fileUpload.filename}</div>
-              <div className="mt-[2px] font-mono text-[10px] text-[var(--color-text-muted)]">
-                {mod.fileUpload.sizeLabel} · {mod.fileUpload.uploadedByLabel}
-              </div>
-              <div className="mt-[10px]">
-                <ProgressBar percent={mod.fileUpload.progressPercent} height={4} />
-              </div>
-              <div className="mt-3 flex gap-[7px]">
-                <span
-                  className="flex-1 rounded-sm py-[9px] text-center font-sans text-xs font-semibold"
-                  style={{ background: "var(--color-emphasis-bg)", color: "var(--color-emphasis-text)" }}
-                >
-                  Télécharger
-                </span>
-                <span className="rounded-sm border border-[var(--color-border-strong)] px-[11px] py-[9px] font-sans text-xs font-medium">
-                  Ré-uploader
-                </span>
-              </div>
-              <div className="mt-[10px] border-t border-[var(--color-border-hairline)] pt-[10px] font-mono text-[10px] leading-[1.55] text-[var(--color-text-muted)]">
-                Les fichiers déposés ici sautent 24 h après l&apos;upload, quoi qu&apos;il arrive. La
-                fiche, elle, reste. Pour une soirée lointaine, garde le lien externe.
-              </div>
-            </div>
+          {/* US-H1 — le fichier déposé sur Cloudflare R2, et de quoi en déposer un.
+              Le panneau ne s'affiche que sur une fiche qui existe en base : une fiche
+              de démonstration n'a rien à recevoir. */}
+          {(editHref || mod.fileUpload) && (
+            <ModFilePanel
+              modId={mod.id}
+              file={mod.fileUpload}
+              maxBytes={maxModFileBytes}
+              canUpload={editHref !== undefined}
+              onUploaded={handleChanged}
+            />
           )}
 
           <div className="rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-[15px]">

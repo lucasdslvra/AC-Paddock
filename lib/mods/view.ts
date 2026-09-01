@@ -1,4 +1,5 @@
-import type { Mod as ModView } from "@/lib/mock-data";
+import type { Mod as ModView, ModFileUpload } from "@/lib/mock-data";
+import { modFileLifetime, modFileNameFromUrl } from "./file";
 import { formatAge, formatCreatedAt, formatLinkLabel, stripProtocol } from "./format";
 import {
   MOD_VOTE_HISTORY_LENGTH,
@@ -47,6 +48,31 @@ function toBarHeights(history: number[]): number[] {
   return [...padding, ...bars];
 }
 
+/**
+ * US-H1 — le fichier déposé, tel que le panneau de la fiche l'affiche.
+ *
+ * Le nom vient de la clé de l'objet et le décompte de `fileUploadedAt` : c'est tout ce
+ * que la base garde d'un upload (cahier §4). La taille et le déposant, que les fiches
+ * de démonstration affichent, ne sont donc pas de la partie ici.
+ *
+ * `undefined` tant que la fiche n'a rien, et aussi quand `fileUploadedAt` manque : une
+ * URL sans horodatage ne permettrait pas de dire quand le fichier saute, et le panneau
+ * annoncerait une disponibilité qu'il ne peut pas garantir.
+ */
+function toFileUpload(mod: ApiMod): ModFileUpload | undefined {
+  if (!mod.fileUrl || !mod.fileUploadedAt) return undefined;
+
+  const { expiresInLabel, remainingPercent, expired } = modFileLifetime(new Date(mod.fileUploadedAt));
+
+  return {
+    filename: modFileNameFromUrl(mod.fileUrl),
+    href: mod.fileUrl,
+    expiresInLabel,
+    progressPercent: remainingPercent,
+    expired,
+  };
+}
+
 export function apiModToView(mod: ApiMod): ModView {
   const createdAt = new Date(mod.createdAt);
 
@@ -64,6 +90,7 @@ export function apiModToView(mod: ApiMod): ModView {
     createdAtLabel: formatCreatedAt(createdAt),
     imageUrl: mod.imageUrl ?? undefined,
     description: mod.description ?? undefined,
+    fileUpload: toFileUpload(mod),
     primaryLink: {
       label: formatLinkLabel(mod.url),
       url: stripProtocol(mod.url),

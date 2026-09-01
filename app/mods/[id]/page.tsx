@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { maxModFileBytes } from "@/lib/admin/config";
 import { getModById } from "@/lib/mock-data";
 import { listModContributions } from "@/lib/mods/contributions";
 import { listModPlayedAt } from "@/lib/mods/played";
@@ -27,7 +28,7 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
   const viewer = await soireeContext(session);
   const soiree = viewer.current;
 
-  const [record, actor, contributions, playedAt] = await Promise.all([
+  const [record, actor, contributions, playedAt, maxFileBytes] = await Promise.all([
     prisma.mod.findUnique({ where: { id }, include: modInclude(session.user.id, viewer) }),
     // Pas de ligne User tant que le membre n'a rien créé : il n'est alors ni auteur
     // ni admin, et `canDeleteMod` répond non.
@@ -42,6 +43,10 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
     // vide si elle n'existe pas.
     listModContributions(id),
     listModPlayedAt(id, viewer.guildId),
+    // US-H1/US-K3 — le plafond d'upload que la fiche affiche et fait respecter côté
+    // navigateur. Lu ici pour descendre avec le rendu : le panneau doit pouvoir
+    // annoncer la limite avant qu'on lui donne un fichier.
+    maxModFileBytes(),
   ]);
 
   // Le catalogue, la soirée et l'historique ne servent plus que de vraies fiches ; seul
@@ -66,6 +71,7 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
       contributions={feed}
       playedAt={played}
       currentSoiree={soiree ? { id: soiree.id, dateLabel: formatSoireeShortDay(soiree.date) } : null}
+      maxModFileBytes={maxFileBytes}
     />
   );
 }

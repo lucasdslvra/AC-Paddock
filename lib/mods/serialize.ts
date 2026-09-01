@@ -120,6 +120,14 @@ export interface ApiMod {
   url: string;
   description: string | null;
   imageUrl: string | null;
+  /**
+   * US-H1 — l'URL publique du fichier déposé sur Cloudflare R2, ou `null` si la fiche
+   * n'en a pas (ou plus : le fichier saute 24 h après son dépôt, cahier §2.7, et c'est
+   * alors cette colonne qui est vidée).
+   */
+  fileUrl: string | null;
+  /** Le moment du dépôt, en ISO. C'est de lui que court le délai de 24 h. */
+  fileUploadedAt: string | null;
   /** Noms des tags, sous leur forme normalisée (US-C1). */
   tags: string[];
   /**
@@ -162,6 +170,8 @@ export function serializeMod(mod: ModWithRelations, currentSoireeId: string | nu
     url: mod.url,
     description: mod.description,
     imageUrl: mod.imageUrl,
+    fileUrl: mod.fileUrl,
+    fileUploadedAt: mod.fileUploadedAt?.toISOString() ?? null,
     // La table d'association ne sert qu'au stockage : l'API n'expose que les noms.
     tags: mod.tags.map(({ tag }) => tag.name),
     votes: mod._count.votes,

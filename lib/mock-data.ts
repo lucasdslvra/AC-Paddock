@@ -19,10 +19,26 @@ export interface ModLink {
 
 export interface ModFileUpload {
   filename: string;
-  sizeLabel: string;
-  uploadedByLabel: string;
+  /**
+   * URL publique du fichier sur Cloudflare R2 (US-H1). Absente sur les données de
+   * démonstration, qui n'ont jamais rien déposé : le bouton de téléchargement est
+   * alors inerte.
+   */
+  href?: string;
+  /**
+   * Taille et déposant : `Mod` n'a pas de colonne pour l'un ni l'autre (cahier §4 :
+   * `fileUrl` et `fileUploadedAt`, rien de plus), donc une vraie fiche ne les connaît
+   * pas. Seules les données de démonstration les portent, et le panneau n'affiche que
+   * ce qu'on lui donne — mieux vaut une ligne en moins qu'un chiffre inventé.
+   */
+  sizeLabel?: string;
+  uploadedByLabel?: string;
+  /** Cahier §2.7 — ce qu'il reste avant la suppression automatique. */
   expiresInLabel: string;
+  /** La part du délai encore devant, en pourcentage : c'est ce que dessine la barre. */
   progressPercent: number;
+  /** Vrai passé les 24 h : le fichier est référencé mais ne devrait plus exister. */
+  expired?: boolean;
 }
 
 export interface ModContribution {

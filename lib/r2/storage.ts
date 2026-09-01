@@ -21,7 +21,7 @@ import { modFileExtension } from "@/lib/mods/file";
  * Le fichier ne transite jamais par l'application : la route signe une URL, le
  * navigateur écrit directement dans le bucket. C'est la seule forme qui tienne sur
  * Vercel, dont les fonctions plafonnent le corps d'une requête à 4,5 Mo là où le
- * réglage admin monte à 200 Mo.
+ * réglage admin monte à 1 Go.
  */
 
 function requireEnv(name: string): string {
@@ -115,8 +115,16 @@ export function buildModFileKey(modId: string, filename: string): string {
   return `${modId}/${crypto.randomUUID()}/${base || "mod"}${extension}`;
 }
 
-/** Combien de temps une URL d'upload signée reste valable. */
-const UPLOAD_URL_TTL_SECONDS = 15 * 60;
+/**
+ * Combien de temps une URL d'upload signée reste valable.
+ *
+ * Une heure, pas un quart : le plafond est monté à 1 Go (US-K3), et sur une liaison
+ * montante ordinaire une archive de cette taille met un long moment à passer. La
+ * signature n'est en principe examinée qu'à l'ouverture de la requête, mais échouer en
+ * 403 après vingt minutes d'envoi serait une façon particulièrement pénible de se
+ * tromper — la marge ne coûte rien.
+ */
+const UPLOAD_URL_TTL_SECONDS = 60 * 60;
 
 /**
  * Une URL d'écriture à durée de vie courte, que le navigateur consomme en `PUT`.

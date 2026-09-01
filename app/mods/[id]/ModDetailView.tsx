@@ -233,6 +233,10 @@ export function ModDetailView({
   // corrigée, le fil ne contient qu'elle, et « dernière modif » redirait l'auteur
   // affiché juste au-dessus.
   const lastContribution = contributions.total > 1 ? contributions.entries[0] : undefined;
+  // US-H1 — le dépôt d'un fichier suppose une fiche réelle (les fiches de démonstration
+  // n'ont rien à recevoir) *et* un engagement dans la soirée en cours. `engagement` est
+  // exactement ça : non nul quand la fiche est au programme du soir.
+  const canUploadFile = editHref !== undefined && mod.engagement != null;
   // Mock authors have no avatar of their own; only the signed-in member does.
   const authorImage = session?.user?.name === mod.author ? session.user.image : null;
   const previewUrl = mod.imageUrl && mod.imageUrl !== failedImageUrl ? mod.imageUrl : undefined;
@@ -584,14 +588,17 @@ export function ModDetailView({
           )}
 
           {/* US-H1 — le fichier déposé sur Cloudflare R2, et de quoi en déposer un.
-              Le panneau ne s'affiche que sur une fiche qui existe en base : une fiche
-              de démonstration n'a rien à recevoir. */}
-          {(editHref || mod.fileUpload) && (
+              Le dépôt est réservé aux mods engagés dans la soirée en cours : un fichier
+              ne vit que 24 h (cahier §2.7), le déposer ailleurs, c'est le voir expirer
+              sans avoir servi. Le panneau ne s'affiche donc que là où il sert — sur une
+              fiche engagée, ou sur une fiche qui porte déjà un fichier. */}
+          {(mod.fileUpload || canUploadFile) && (
             <ModFilePanel
               modId={mod.id}
               file={mod.fileUpload}
               maxBytes={maxModFileBytes}
-              canUpload={editHref !== undefined}
+              canUpload={canUploadFile}
+              hasCurrentSoiree={currentSoiree !== null}
               onUploaded={handleChanged}
             />
           )}

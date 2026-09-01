@@ -6,8 +6,10 @@ import {
   DEFAULT_MOD_FILE_MO,
   MAX_MOD_FILE_MO,
   MIN_MOD_FILE_MO,
+  MO,
   type ApiAdminConfig,
 } from "@/lib/admin/settings";
+import { formatFileSize } from "@/lib/mods/file";
 import { formatCreatedAt } from "@/lib/mods/format";
 
 /**
@@ -69,7 +71,7 @@ export function UploadSizeForm({ config }: { config: ApiAdminConfig }) {
         <label htmlFor="max-upload" className="font-sans text-xs font-medium">
           Taille max d&apos;un fichier de mod
         </label>
-        <span className="font-mono text-[13px] font-medium">{value} Mo</span>
+        <span className="font-mono text-[13px] font-medium">{formatFileSize(value * MO)}</span>
       </div>
 
       {/* Le curseur natif est transparent et posé par-dessus le tracé dessiné : il
@@ -93,15 +95,19 @@ export function UploadSizeForm({ config }: { config: ApiAdminConfig }) {
           type="range"
           min={MIN_MOD_FILE_MO}
           max={MAX_MOD_FILE_MO}
-          step={10}
+          // Un `input[type=range]` ne s'arrête que sur `min + n × step` : un pas qui ne
+          // divise pas l'amplitude rendrait la borne haute inatteignable, et le curseur
+          // plafonnerait sous le maximum que le formulaire affiche juste à côté. De 20 à
+          // 1024 il y a 1004 Mo, dont 4 est le plus grand diviseur utilisable.
+          step={4}
           value={value}
           onChange={(event) => setValue(Number(event.target.value))}
           className="absolute inset-x-0 -top-2 h-5 w-full cursor-pointer opacity-0"
         />
       </div>
       <div className="mt-[5px] flex justify-between font-mono text-[10px] text-[var(--color-text-faint)]">
-        <span>{MIN_MOD_FILE_MO} Mo</span>
-        <span>{MAX_MOD_FILE_MO} Mo</span>
+        <span>{formatFileSize(MIN_MOD_FILE_MO * MO)}</span>
+        <span>{formatFileSize(MAX_MOD_FILE_MO * MO)}</span>
       </div>
 
       <div className="mt-[7px] font-mono text-[10px] leading-[1.6] text-[var(--color-text-secondary)]">
@@ -113,7 +119,7 @@ export function UploadSizeForm({ config }: { config: ApiAdminConfig }) {
             {config.maxModFileUpdatedBy ? ` par ${config.maxModFileUpdatedBy}` : ""}.
           </>
         ) : (
-          <> Valeur par défaut ({DEFAULT_MOD_FILE_MO} Mo), jamais modifiée.</>
+          <> Valeur par défaut ({formatFileSize(DEFAULT_MOD_FILE_MO * MO)}), jamais modifiée.</>
         )}
       </div>
 

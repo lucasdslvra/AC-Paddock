@@ -7,6 +7,7 @@ import {
   describeModFileProblem,
   formatFileSize,
   modFileExtensionForMime,
+  uploadDisabledReason,
 } from "@/lib/mods/file";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { prisma } from "@/lib/prisma";
@@ -35,13 +36,17 @@ import { soireeContext } from "@/lib/soirees/current";
  *     seulement alors qu'il écrit `fileUrl` et `fileUploadedAt`.
  *
  * Le détour est la seule forme qui tienne : les fonctions Vercel plafonnent le corps
- * d'une requête à 4,5 Mo, quand le réglage admin (US-K3) va jusqu'à 200 Mo. Il a un
+ * d'une requête à 4,5 Mo, quand le réglage admin (US-K3) va jusqu'à 1 Go. Il a un
  * corollaire — un client peut déposer un objet puis ne jamais confirmer. Ces objets
  * orphelins ne sont référencés par aucune fiche ; c'est une règle de cycle de vie du
  * bucket qui les ramasse (voir .env.local.example), pas cette route.
  *
  * Cahier §2.2 : l'upload est ouvert à tous les membres, pas au seul auteur de la fiche
- * — c'est déjà ce que dit US-H4 du ré-upload.
+ * — c'est déjà ce que dit US-H4 du ré-upload. Il est en revanche réservé aux mods
+ * **engagés dans la soirée en cours** : un fichier ne vit que 24 h (cahier §2.7), le
+ * déposer sur une fiche que personne n'a engagée reviendrait à le voir expirer sans
+ * avoir servi. C'est aussi ce qui borne ce que le bucket porte à un instant donné, et
+ * rend tenable le plafond de 1 Go d'US-K3.
  *
  * US-H2 — la validation est en deux couches, parce qu'elles ne protègent pas de la même
  * chose. Avant de signer, la route relit l'extension et la taille annoncée : ça épargne
@@ -79,13 +84,30 @@ export async function POST(request: Request, ctx: RouteContext<"/api/mods/[id]/u
   try {
     // Le plafond est relu en base à chaque demande : celui que le navigateur a reçu
     // avec la page peut dater d'avant un changement dans l'espace admin.
-    const [mod, maxBytes] = await Promise.all([
+    const [mod, maxBytes, soiree] = await Promise.all([
       prisma.mod.findUnique({ where: { id }, select: { id: true } }),
       maxModFileBytes(),
+      soireeContext(session),
     ]);
 
     if (!mod) {
       return Response.json({ error: "Cette fiche n'existe pas." }, { status: 404 });
+    }
+
+    // La soirée en cours est celle du serveur de ce membre (`soireeContext`) : un mod
+    // engagé dans la soirée d'un autre groupe ne lui ouvre rien. 409 et non 403 — le
+    // membre a bien le droit, c'est la fiche qui n'est pas dans l'état voulu, et ça se
+    // répare d'un clic sur « Engager ».
+    if (!soiree.current) {
+      return Response.json({ error: uploadDisabledReason(false) }, { status: 409 });
+    }
+
+    const engaged = await prisma.soireeMod.findUnique({
+      where: { soireeId_modId: { soireeId: soiree.current.id, modId: id } },
+      select: { id: true },
+    });
+    if (!engaged) {
+      return Response.json({ error: uploadDisabledReason(true) }, { status: 409 });
     }
 
     const problem = describeModFileProblem({ name: filename, size }, maxBytes);

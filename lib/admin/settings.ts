@@ -14,14 +14,18 @@ export const CONFIG_KEYS = {
  * Bornes du plafond d'upload, en mégaoctets.
  *
  * Le plancher n'est pas décoratif : au-dessous, plus aucun mod d'Assetto Corsa ne
- * passerait, et le réglage ne servirait qu'à casser l'envoi. Le plafond, lui, est celui
- * qu'on peut tenir — les fichiers ne vivent que 24 h (cahier §2.7), mais ils occupent
- * le stockage pendant ce temps-là, et le lien externe reste la voie recommandée pour
- * les gros mods.
+ * passerait, et le réglage ne servirait qu'à casser l'envoi.
+ *
+ * Le plafond est 1 Go. Ce qui le rend tenable, ce n'est pas l'espace — le palier gratuit
+ * de R2 en offre 10 — mais la conjonction de deux règles : un fichier ne vit que 24 h
+ * (cahier §2.7), et il ne peut être déposé que sur un mod engagé dans la soirée en cours
+ * (`uploadDisabledReason`). Ce n'est donc jamais tout le catalogue qui pèse à la fois,
+ * mais la poignée de mods d'une soirée. Le lien externe reste la voie recommandée
+ * au-delà, et le cahier §2.2 le dit avant même de parler de taille.
  */
 export const MIN_MOD_FILE_MO = 20;
-export const MAX_MOD_FILE_MO = 200;
-export const DEFAULT_MOD_FILE_MO = 100;
+export const MAX_MOD_FILE_MO = 1024;
+export const DEFAULT_MOD_FILE_MO = 1024;
 
 export const MO = 1024 * 1024;
 

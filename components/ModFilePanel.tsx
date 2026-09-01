@@ -7,6 +7,7 @@ import {
   formatFileSize,
   MOD_FILE_ACCEPT_ATTRIBUTE,
   MOD_FILE_TTL_HOURS,
+  uploadDisabledReason,
 } from "@/lib/mods/file";
 import type { ModFileUpload } from "@/lib/mock-data";
 import type { ApiMod } from "@/lib/mods/serialize";
@@ -17,8 +18,13 @@ interface ModFilePanelProps {
   file?: ModFileUpload;
   /** Le plafond administrable du moment (US-K3), en octets, lu côté serveur. */
   maxBytes: number;
-  /** Vrai si la fiche existe en base : les fiches de démonstration ne reçoivent rien. */
+  /**
+   * Vrai si le dépôt est ouvert : fiche réelle **et** engagée dans la soirée en cours.
+   * Faux, le panneau dit pourquoi plutôt que de montrer une zone de dépôt inerte.
+   */
   canUpload: boolean;
+  /** Distingue « pas engagé » de « aucune soirée » dans ce refus (`uploadDisabledReason`). */
+  hasCurrentSoiree: boolean;
   /** La fiche telle que la confirmation l'a réécrite. */
   onUploaded: (mod: ApiMod) => void;
 }
@@ -74,7 +80,14 @@ function putToBucket(
  * Cahier §2.2 : n'importe quel membre peut déposer un fichier sur n'importe quelle
  * fiche, comme il peut en corriger la description — l'auteur n'a pas de privilège ici.
  */
-export function ModFilePanel({ modId, file, maxBytes, canUpload, onUploaded }: ModFilePanelProps) {
+export function ModFilePanel({
+  modId,
+  file,
+  maxBytes,
+  canUpload,
+  hasCurrentSoiree,
+  onUploaded,
+}: ModFilePanelProps) {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const inputRef = useRef<HTMLInputElement>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
@@ -237,6 +250,12 @@ export function ModFilePanel({ modId, file, maxBytes, canUpload, onUploaded }: M
         </>
       ) : (
         <>
+        {!canUpload ? (
+          <p className="mt-[10px] rounded-sm border border-dashed border-[var(--color-border-dashed)] p-3 text-center font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-muted)]">
+            {uploadDisabledReason(hasCurrentSoiree)}
+          </p>
+        ) : (
+        <>
         {file?.expired && (
           <p className="mt-[10px] font-mono text-[10px] leading-[1.55] text-[var(--color-text-muted)]">
             « {file.filename} » a passé les {MOD_FILE_TTL_HOURS} h et n&apos;est plus
@@ -264,6 +283,8 @@ export function ModFilePanel({ modId, file, maxBytes, canUpload, onUploaded }: M
           <span>glisse l&apos;archive du mod ici, ou clique pour choisir</span>
           <span className="text-[var(--color-text-faint)]">{limitLabel}</span>
         </div>
+        </>
+        )}
         </>
       )}
 

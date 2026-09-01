@@ -81,8 +81,37 @@ export function formatFileSize(bytes: number): string {
   if (ko < 1024) return `${Math.round(ko)} Ko`;
   const mo = ko / 1024;
   // Une décimale jusqu'à 100 Mo, aucune au-delà : « 128,4 Mo » ne dit rien de plus que
-  // « 128 Mo » sur un fichier de cette taille.
-  return mo < 100 ? `${mo.toFixed(1).replace(".", ",")} Mo` : `${Math.round(mo)} Mo`;
+  // « 128 Mo » sur un fichier de cette taille. Au-dessus de 1024 Mo on passe au gigaoctet
+  // — c'est le plafond d'US-K3, et « 1024 Mo » se lit moins bien que « 1 Go ».
+  if (mo < 1024) return `${withDecimal(mo, mo < 100)} Mo`;
+  return `${withDecimal(mo / 1024, true)} Go`;
+}
+
+/**
+ * Un nombre avec au plus une décimale, virgule française — et aucune quand il tombe
+ * rond : « 1 Go » et « 20 Mo », pas « 1,0 Go » ni « 20,0 Mo ». Les deux bornes du
+ * réglage admin sont justement des comptes ronds, donc c'est le cas le plus fréquent.
+ */
+function withDecimal(value: number, allowDecimal: boolean): string {
+  if (!allowDecimal || Number.isInteger(value)) return String(Math.round(value));
+  return value.toFixed(1).replace(".", ",");
+}
+
+/**
+ * Pourquoi le dépôt d'un fichier est fermé sur cette fiche.
+ *
+ * Un fichier ne vit que 24 h (cahier §2.7) : le déposer sur un mod que personne n'a
+ * engagé, c'est le voir disparaître avant d'avoir servi. Le dépôt est donc réservé aux
+ * mods engagés dans la soirée en cours — ce qui borne du même coup ce que le bucket
+ * porte à un instant donné, et rend tenable le plafond de 1 Go.
+ *
+ * Écrit ici, à côté des autres contraintes du fichier : la route s'en sert pour refuser,
+ * le panneau pour expliquer. Même partage que `voteDisabledReason` pour le vote.
+ */
+export function uploadDisabledReason(hasCurrentSoiree: boolean): string {
+  return hasCurrentSoiree
+    ? "Ce mod n'est pas engagé dans la soirée en cours : engage-le pour pouvoir déposer son fichier."
+    : "Aucune soirée n'est programmée : le dépôt de fichier rouvrira avec la prochaine.";
 }
 
 /**

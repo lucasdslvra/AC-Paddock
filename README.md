@@ -616,6 +616,23 @@ et repassera à l'heure suivante.
 des images orphelines : `Authorization: Bearer $CRON_SECRET`, et refus de tourner si le
 secret n'est pas défini.
 
+### Le dépôt suppose un engagement
+
+Un fichier ne peut être déposé que sur un mod **engagé dans la soirée en cours** — celle
+du serveur du membre (`soireeContext`). La raison tient au §2.7 : le fichier ne vit que
+24 h. Le déposer sur une fiche que personne n'a mise au programme, c'est le voir expirer
+sans avoir servi, et occuper le bucket pour rien entre-temps.
+
+`POST /api/mods/[id]/upload` refuse en **409** dans ce cas — pas 403 : le membre a bien
+le droit, c'est la fiche qui n'est pas dans l'état voulu, et un clic sur « Engager » le
+répare. Le panneau de la fiche ne montre alors pas de zone de dépôt mais la raison
+(`uploadDisabledReason`), sur le modèle de `voteDisabledReason`. Une fiche non engagée
+qui porte déjà un fichier garde son bouton de téléchargement, sans le ré-upload.
+
+C'est aussi cette règle qui rend tenable le plafond de **1 Go** (`MAX_MOD_FILE_MO`) : ce
+n'est jamais tout le catalogue qui pèse à la fois, mais la poignée de mods d'une soirée,
+et pendant 24 h au plus.
+
 ### La planification
 
 Elle vit dans la base, pas dans `vercel.json` : le cahier §2.7 demande **plusieurs

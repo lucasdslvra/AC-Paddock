@@ -7,6 +7,15 @@ import { z } from "zod";
 export const SOIREE_NAME_MAX_LENGTH = 80;
 
 export const soireeInputSchema = z.object({
+  // Le serveur Discord auquel la soirée est attribuée (US-G1). Facultatif dans le
+  // schéma seulement : absent, la route retombe sur le serveur de l'admin qui crée.
+  // C'est elle, et elle seule, qui vérifie que ce serveur donne bien accès — la liste
+  // des serveurs autorisés se lit en base, pas dans un schéma partagé avec le
+  // navigateur.
+  guildId: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() !== "" ? value.trim() : undefined),
+    z.string().optional(),
+  ),
   // Un thème vide et un thème absent sont la même chose : `undefined`, donc pas de
   // thème. Le formulaire envoie "" quand le champ n'a pas été rempli.
   name: z.preprocess(

@@ -6,7 +6,8 @@ import type {
   TagModel,
   UserModel,
 } from "@/lib/generated/prisma/models";
-import type { CurrentSoiree } from "@/lib/soirees/current";
+import type { SoireeContext } from "@/lib/soirees/current";
+import { NO_GUILD } from "@/lib/soirees/scope";
 
 /**
  * Relations à charger avec une fiche pour pouvoir la sérialiser ou l'afficher.
@@ -25,7 +26,7 @@ import type { CurrentSoiree } from "@/lib/soirees/current";
  */
 export const MOD_VOTE_HISTORY_LENGTH = 7;
 
-export function modInclude(viewerDiscordId: string, currentSoiree: CurrentSoiree | null) {
+export function modInclude(viewerDiscordId: string, soiree: SoireeContext) {
   return {
     author: true,
     tags: { include: { tag: true }, orderBy: { tag: { name: "asc" } } },
@@ -48,8 +49,17 @@ export function modInclude(viewerDiscordId: string, currentSoiree: CurrentSoiree
     // La borne haute est la date de la soirée en cours, pas « les plus récentes » :
     // une soirée programmée dans trois semaines n'a pas eu lieu, ses zéros ne diraient
     // rien. Sans soirée en cours, la borne est maintenant — donc les soirées passées.
+    //
+    // Le serveur borne l'autre dimension : une fiche est commune à tout le monde, son
+    // histoire ne l'est pas. Les barres d'un membre racontent les soirées de son groupe,
+    // pas celles d'un autre serveur qui a joué la même voiture.
     soirees: {
-      where: { soiree: { date: { lte: currentSoiree?.date ?? new Date() } } },
+      where: {
+        soiree: {
+          guildId: soiree.guildId ?? NO_GUILD,
+          date: { lte: soiree.current?.date ?? new Date() },
+        },
+      },
       orderBy: { soiree: { date: "desc" } },
       take: MOD_VOTE_HISTORY_LENGTH,
       include: {

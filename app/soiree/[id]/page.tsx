@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { currentSoiree, startOfToday } from "@/lib/soirees/current";
+import { soireeContext, startOfToday } from "@/lib/soirees/current";
 import { serializeSoiree, soireeInclude } from "@/lib/soirees/serialize";
 import { countSoireeVoters } from "@/lib/soirees/vote";
 import { SoireeView } from "../SoireeView";
@@ -27,22 +27,25 @@ export default async function SoireeDetailPage(props: PageProps<"/soiree/[id]">)
 
   // La soirée en cours est demandée même pour lire une soirée passée : c'est elle qui
   // décide de ce qui est votable, et `soireeInclude` la transmet à `modInclude`.
-  const current = await currentSoiree();
+  const viewer = await soireeContext(session);
+  const current = viewer.current;
 
   const [soiree, voterCount, memberCount, actor] = await Promise.all([
     prisma.soiree.findUnique({
       where: { id },
-      include: soireeInclude(session.user.id, current),
+      include: soireeInclude(session.user.id, viewer),
     }),
     countSoireeVoters(id),
-    prisma.user.count(),
+    prisma.user.count({ where: { guildId: viewer.guildId } }),
     prisma.user.findUnique({
       where: { discordId: session.user.id },
       select: { role: true },
     }),
   ]);
 
-  if (!soiree) notFound();
+  // La soirée d'un autre serveur est introuvable, pas interdite : ce membre n'a rien à
+  // y lire, et il n'a pas non plus à apprendre qu'elle existe.
+  if (!soiree || soiree.guildId !== viewer.guildId) notFound();
 
   return (
     <SoireeView

@@ -5,16 +5,16 @@ import type {
   UserModel,
 } from "@/lib/generated/prisma/models";
 import { modInclude, serializeMod, type ApiMod, type ModWithRelations } from "@/lib/mods/serialize";
-import type { CurrentSoiree } from "./current";
+import type { SoireeContext } from "./current";
 
 /**
  * Relations à charger avec une soirée pour la sérialiser — même rôle que `modInclude`
  * pour les fiches : une seule construction, partagée par la route API et par la page.
  *
- * `current` n'est pas la soirée qu'on lit : c'est la soirée **en cours**, transmise
- * telle quelle à `modInclude`. `ApiMod.engagement` garde ainsi partout le même sens —
- * « cette fiche est-elle votable en ce moment ? » — y compris quand on affiche une
- * soirée passée, où la réponse doit être non.
+ * `viewer` ne décrit pas la soirée qu'on lit : c'est le serveur du membre et la soirée
+ * **en cours** de ce serveur, transmis tels quels à `modInclude`. `ApiMod.engagement`
+ * garde ainsi partout le même sens — « cette fiche est-elle votable en ce moment ? » —
+ * y compris quand on affiche une soirée passée, où la réponse doit être non.
  *
  * Le classement (US-G4) est fait par la base : trier côté serveur redonnerait le même
  * ordre, mais après avoir tout chargé.
@@ -31,13 +31,13 @@ const RANKING_ORDER: SoireeModOrderByWithRelationInput[] = [
   { createdAt: "asc" },
 ];
 
-export function soireeInclude(viewerDiscordId: string, current: CurrentSoiree | null) {
+export function soireeInclude(viewerDiscordId: string, viewer: SoireeContext) {
   return {
     createdBy: true,
     mods: {
       include: {
         engagedBy: true,
-        mod: { include: modInclude(viewerDiscordId, current) },
+        mod: { include: modInclude(viewerDiscordId, viewer) },
         _count: { select: { votes: true } },
         votes: { where: { user: { discordId: viewerDiscordId } }, select: { id: true } },
       },

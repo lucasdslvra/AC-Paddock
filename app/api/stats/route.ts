@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { sessionGuildId } from "@/lib/session-user";
 import { countSiteStats } from "@/lib/stats";
 
 /**
@@ -11,6 +12,9 @@ import { countSiteStats } from "@/lib/stats";
  *
  * Réservée aux membres connectés, comme le reste de l'API : les chiffres affichés
  * avant connexion sont ceux que le serveur a déjà rendus dans la page.
+ *
+ * Le compteur de soirées est celui du serveur Discord du membre : c'est le sien qu'il
+ * lit dans l'en-tête, pas la somme de tous les groupes.
  */
 export async function GET() {
   const session = await auth();
@@ -19,7 +23,7 @@ export async function GET() {
   }
 
   try {
-    return Response.json(await countSiteStats());
+    return Response.json(await countSiteStats(await sessionGuildId(session)));
   } catch (error) {
     console.error("GET /api/stats", error);
     return Response.json({ error: "Les compteurs n'ont pas pu être chargés." }, { status: 500 });

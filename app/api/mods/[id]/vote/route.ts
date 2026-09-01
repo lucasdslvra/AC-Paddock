@@ -1,6 +1,7 @@
+import type { Session } from "next-auth";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { upsertSessionUser } from "@/lib/session-user";
+import { sessionGuildId, upsertSessionUser } from "@/lib/session-user";
 import { currentSoireeId } from "@/lib/soirees/current";
 import { readVoteState } from "@/lib/soirees/vote";
 
@@ -18,8 +19,10 @@ import { readVoteState } from "@/lib/soirees/vote";
  * n'a aucune raison de connaître l'identifiant de la soirée du soir. Il tient une
  * fiche ; le serveur sait où on en est.
  */
-async function resolveEngagement(modId: string) {
-  const soireeId = await currentSoireeId();
+async function resolveEngagement(modId: string, session: Session) {
+  // La soirée en cours **du serveur de ce membre** : deux groupes peuvent jouer le même
+  // soir, et un vote n'appartient qu'à l'un des deux classements.
+  const soireeId = await currentSoireeId(await sessionGuildId(session));
 
   if (!soireeId) {
     return {
@@ -59,7 +62,7 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/mods/[id]/
   const { id } = await ctx.params;
 
   try {
-    const resolved = await resolveEngagement(id);
+    const resolved = await resolveEngagement(id, session);
     if ("error" in resolved) {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }
@@ -95,7 +98,7 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/mods/[id
   const { id } = await ctx.params;
 
   try {
-    const resolved = await resolveEngagement(id);
+    const resolved = await resolveEngagement(id, session);
     if ("error" in resolved) {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }

@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { recordDeletion } from "@/lib/admin/deletion-log";
 import { requireAdmin } from "@/lib/admin/guard";
 import { prisma } from "@/lib/prisma";
-import { currentSoiree } from "@/lib/soirees/current";
+import { soireeContext } from "@/lib/soirees/current";
 import { formatSoireeDate } from "@/lib/soirees/format";
 import { serializeSoiree, soireeInclude } from "@/lib/soirees/serialize";
 import { countSoireeVoters } from "@/lib/soirees/vote";
@@ -24,25 +24,27 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/soirees/[id
   try {
     // La soirée en cours est demandée même quand on lit une soirée passée : c'est elle
     // qui décide de ce qui est votable, et `soireeInclude` la passe à `modInclude`.
-    const current = await currentSoiree();
+    const viewer = await soireeContext(session);
 
     const [soiree, voterCount] = await Promise.all([
       prisma.soiree.findUnique({
         where: { id },
-        include: soireeInclude(session.user.id, current),
+        include: soireeInclude(session.user.id, viewer),
       }),
       countSoireeVoters(id),
     ]);
 
-    if (!soiree) {
+    // Une soirée d'un autre serveur n'existe pas pour ce membre : le même 404 que pour
+    // un identifiant inventé, sans lui apprendre qu'elle existe ailleurs.
+    if (!soiree || soiree.guildId !== viewer.guildId) {
       return Response.json({ error: "Cette soirée n'existe pas." }, { status: 404 });
     }
 
     return Response.json(
       serializeSoiree(soiree, {
-        isCurrent: soiree.id === current?.id,
+        isCurrent: soiree.id === viewer.current?.id,
         voterCount,
-        currentSoireeId: current?.id ?? null,
+        currentSoireeId: viewer.current?.id ?? null,
       }),
     );
   } catch (error) {
@@ -67,6 +69,11 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/soirees/[id
  * soirée créée à la mauvaise date, qui capte les votes de tout le monde). La suivante
  * devient alors la soirée en cours, et `currentSoiree` le voit sans qu'on ait rien à
  * basculer.
+ *
+ * Aucune restriction de serveur, contrairement à la lecture : c'est l'admin qui attribue
+ * les soirées à un serveur (US-G1), il faut donc qu'il puisse reprendre celles qu'il a
+ * posées ailleurs — y compris dans un serveur retiré depuis de la liste des autorisés,
+ * qui resterait sinon impossible à nettoyer.
  */
 export async function DELETE(_request: Request, ctx: RouteContext<"/api/soirees/[id]">) {
   const guard = await requireAdmin();

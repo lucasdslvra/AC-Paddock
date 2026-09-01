@@ -4,7 +4,7 @@ import { formatLinkLabel } from "@/lib/mods/format";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { prisma } from "@/lib/prisma";
 import { upsertSessionUser } from "@/lib/session-user";
-import { currentSoiree } from "@/lib/soirees/current";
+import { soireeContext } from "@/lib/soirees/current";
 
 /**
  * Retirer un lien secondaire d'une fiche.
@@ -54,13 +54,13 @@ export async function DELETE(
       detail: link.label ?? formatLinkLabel(link.url),
     });
 
-    const soiree = await currentSoiree();
+    const soiree = await soireeContext(session);
     const updated = await prisma.mod.findUniqueOrThrow({
       where: { id },
       include: modInclude(session.user.id, soiree),
     });
 
-    return Response.json(serializeMod(updated, soiree?.id ?? null));
+    return Response.json(serializeMod(updated, soiree.current?.id ?? null));
   } catch (error) {
     console.error(`DELETE /api/mods/${id}/links/${linkId}`, error);
     return Response.json({ error: "Ce lien n'a pas pu être retiré." }, { status: 500 });

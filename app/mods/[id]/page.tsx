@@ -7,7 +7,7 @@ import { canDeleteMod } from "@/lib/mods/permissions";
 import { modInclude } from "@/lib/mods/serialize";
 import { toModView } from "@/lib/mods/view";
 import { prisma } from "@/lib/prisma";
-import { currentSoiree } from "@/lib/soirees/current";
+import { soireeContext } from "@/lib/soirees/current";
 import { formatSoireeShortDay } from "@/lib/soirees/format";
 import { ModDetailView } from "./ModDetailView";
 
@@ -22,12 +22,13 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
   const session = await auth();
   if (!session?.user) redirect("/");
 
-  // US-G3 — c'est la soirée en cours qui décide si cette fiche est votable, et le
-  // panneau de vote doit pouvoir dire *pourquoi* elle ne l'est pas.
-  const soiree = await currentSoiree();
+  // US-G3 — c'est la soirée en cours du serveur de ce membre qui décide si cette fiche
+  // est votable, et le panneau de vote doit pouvoir dire *pourquoi* elle ne l'est pas.
+  const viewer = await soireeContext(session);
+  const soiree = viewer.current;
 
   const [record, actor, contributions, playedAt] = await Promise.all([
-    prisma.mod.findUnique({ where: { id }, include: modInclude(session.user.id, soiree) }),
+    prisma.mod.findUnique({ where: { id }, include: modInclude(session.user.id, viewer) }),
     // Pas de ligne User tant que le membre n'a rien créé : il n'est alors ni auteur
     // ni admin, et `canDeleteMod` répond non.
     prisma.user.findUnique({
@@ -40,7 +41,7 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
     // qu'après elle — elles ne dépendent que de son identifiant, et rendent une réponse
     // vide si elle n'existe pas.
     listModContributions(id),
-    listModPlayedAt(id),
+    listModPlayedAt(id, viewer.guildId),
   ]);
 
   // Le catalogue, la soirée et l'historique ne servent plus que de vraies fiches ; seul

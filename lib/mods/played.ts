@@ -2,6 +2,7 @@ import "server-only";
 import type { ModPlayedAt } from "@/lib/mock-data";
 import { prisma } from "@/lib/prisma";
 import { startOfToday } from "@/lib/soirees/current";
+import { NO_GUILD } from "@/lib/soirees/scope";
 import { formatSoireeShortDay } from "@/lib/soirees/format";
 
 /**
@@ -31,12 +32,23 @@ export interface ModPlayedAtFeed {
 
 const EMPTY_FEED: ModPlayedAtFeed = { entries: [], olderCount: 0 };
 
-export async function listModPlayedAt(modId: string, now?: Date): Promise<ModPlayedAtFeed> {
+export async function listModPlayedAt(
+  modId: string,
+  guildId: string | null,
+  now?: Date,
+): Promise<ModPlayedAtFeed> {
   // La borne est celle de `listPastSoirees` : une soirée est passée quand elle n'est
   // plus en cours, pas quand son heure exacte est dépassée. Sans ça, la soirée de ce
   // soir apparaîtrait ici comme « déjà jouée » pendant qu'on y joue — et le rang
   // affiché serait celui d'un vote encore ouvert.
-  const played = { modId, soiree: { date: { lt: startOfToday(now) } } };
+  //
+  // La fiche est commune à tous les serveurs, son passé ne l'est pas : « déjà jouée »
+  // veut dire « jouée chez nous ». Les soirées d'un autre groupe ne sont pas une
+  // information que ce membre peut lire, ni un rang qu'il peut situer.
+  const played = {
+    modId,
+    soiree: { guildId: guildId ?? NO_GUILD, date: { lt: startOfToday(now) } },
+  };
 
   const [engagements, total] = await Promise.all([
     prisma.soireeMod.findMany({

@@ -1,7 +1,9 @@
+import { auth } from "@/auth";
 import { readAdminConfig } from "@/lib/admin/config";
 import { listDeletions } from "@/lib/admin/deletion-log";
 import { readGuildAccess } from "@/lib/admin/guilds";
 import { listAdminMembers } from "@/lib/admin/members";
+import { sessionGuildId } from "@/lib/session-user";
 import { listModerationMods, listModerationTags } from "@/lib/admin/moderation";
 import { AdminView } from "./AdminView";
 
@@ -17,13 +19,18 @@ import { AdminView } from "./AdminView";
  * Le contrôle de rôle est dans `layout.tsx`, pas ici : il vaut pour toute la section.
  */
 export default async function AdminPage() {
+  // Le serveur de l'admin qui regarde : le panneau ACCÈS le marque, et le formulaire de
+  // création de soirée le propose par défaut. Le contrôle de rôle, lui, est dans le
+  // layout.
+  const viewerGuildId = await sessionGuildId(await auth());
+
   const [mods, tags, deletions, config, members, access] = await Promise.all([
     listModerationMods(),
     listModerationTags(),
     listDeletions(),
     readAdminConfig(),
     listAdminMembers(),
-    readGuildAccess(),
+    readGuildAccess(viewerGuildId),
   ]);
 
   return (

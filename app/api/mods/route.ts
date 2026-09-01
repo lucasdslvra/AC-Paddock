@@ -16,7 +16,7 @@ import { buildTagCreateWrite } from "@/lib/mods/tags-store";
 import { modUrlKey } from "@/lib/mods/url";
 import { prisma } from "@/lib/prisma";
 import { upsertSessionUser } from "@/lib/session-user";
-import { currentSoiree } from "@/lib/soirees/current";
+import { soireeContext } from "@/lib/soirees/current";
 import { isModImageUrl } from "@/lib/supabase/storage";
 
 /**
@@ -92,7 +92,7 @@ export async function GET(request: Request) {
   try {
     // La soirée en cours d'abord : c'est elle qui décide quelles fiches sont votables
     // (US-G3), et `modInclude` en a besoin pour construire sa jointure.
-    const soiree = await currentSoiree();
+    const soiree = await soireeContext(session);
 
     const [byType, mods, soireeRecord] = await Promise.all([
       // Un `groupBy` plutôt qu'un `count` : il donne d'un seul aller-retour les
@@ -108,9 +108,9 @@ export async function GET(request: Request) {
       }),
       // Le panneau « prochaine soirée » du catalogue, et de quoi expliquer un bouton
       // de vote éteint. `null` tant qu'aucune soirée n'est programmée.
-      soiree
+      soiree.current
         ? prisma.soiree.findUnique({
-            where: { id: soiree.id },
+            where: { id: soiree.current.id },
             include: { createdBy: true, _count: { select: { mods: true } } },
           })
         : null,
@@ -127,7 +127,7 @@ export async function GET(request: Request) {
     const total = query.type ? counts[query.type] : counts.all;
 
     const body: ModListResponse = {
-      mods: mods.map((mod) => serializeMod(mod, soiree?.id ?? null)),
+      mods: mods.map((mod) => serializeMod(mod, soiree.current?.id ?? null)),
       page: query.page,
       perPage: MODS_PER_PAGE,
       total,
@@ -202,7 +202,7 @@ export async function POST(request: Request) {
     // La session porte l'identité Discord, pas un id de ligne User : on
     // crée/rafraîchit l'auteur avant de poser la clé étrangère.
     const author = await upsertSessionUser(session.user);
-    const soiree = await currentSoiree();
+    const soiree = await soireeContext(session);
 
     // Les tags ne sont pas une colonne de `Mod` : on les sort du lot pour les écrire
     // comme des lignes `ModTag`, en créant au passage ceux qui n'existent pas encore.
@@ -223,14 +223,14 @@ export async function POST(request: Request) {
         // programmée, il n'y a rien à engager — la case du formulaire ne s'affiche même
         // pas dans ce cas.
         ...(engage &&
-          soiree && {
-            soirees: { create: { soireeId: soiree.id, engagedById: author.id } },
+          soiree.current && {
+            soirees: { create: { soireeId: soiree.current.id, engagedById: author.id } },
           }),
       },
       include: modInclude(session.user.id, soiree),
     });
 
-    return Response.json(serializeMod(mod, soiree?.id ?? null), { status: 201 });
+    return Response.json(serializeMod(mod, soiree.current?.id ?? null), { status: 201 });
   } catch (error) {
     console.error("POST /api/mods", error);
     return Response.json({ error: "La fiche n'a pas pu être enregistrée." }, { status: 500 });

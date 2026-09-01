@@ -73,7 +73,7 @@ export function AdminView({ mods, tags, deletions, config, members, access }: Ad
 
       <div className="flex flex-col gap-3">
         {/* US-G1 — cahier §2.6 : c'est l'admin/organisateur qui crée les soirées. */}
-        <SoireeCreateForm />
+        <SoireeCreateForm guilds={access.guilds} />
 
         <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
           <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">

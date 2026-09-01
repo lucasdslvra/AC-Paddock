@@ -65,8 +65,12 @@ export async function authorizedGuildIds(): Promise<Set<string>> {
  * membre lui-même), puis rien. Le widget public n'est pas interrogé ici : il faudrait
  * un appel réseau par serveur à chaque affichage de la page, pour un nom qu'on a déjà
  * la plupart du temps.
+ *
+ * `viewerGuildId` sert à marquer, dans la liste, le serveur par lequel celui qui
+ * regarde est entré : c'est celui que le formulaire de création de soirée propose par
+ * défaut, et le seul dont il puisse dire « le tien ».
  */
-export async function readGuildAccess(): Promise<ApiGuildAccess> {
+export async function readGuildAccess(viewerGuildId: string | null = null): Promise<ApiGuildAccess> {
   const configured = configuredGuildId();
 
   const [rows, seen] = await Promise.all([
@@ -99,6 +103,7 @@ export async function readGuildAccess(): Promise<ApiGuildAccess> {
     locked: row.locked,
     fromConfig: false,
     addedBy: row.addedBy.username,
+    isViewerGuild: row.guildId === viewerGuildId,
   }));
 
   if (configured) {
@@ -113,6 +118,7 @@ export async function readGuildAccess(): Promise<ApiGuildAccess> {
       locked: true,
       fromConfig: true,
       addedBy: null,
+      isViewerGuild: configured === viewerGuildId,
     });
   }
 

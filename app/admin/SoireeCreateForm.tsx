@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+import type { ApiAuthorizedGuild } from "@/lib/admin/settings";
 import { formatSoireeCountdown, formatSoireeDate } from "@/lib/soirees/format";
 import { SOIREE_NAME_MAX_LENGTH, type SoireeFieldErrors } from "@/lib/soirees/schema";
 import type { ApiSoireeSummary } from "@/lib/soirees/serialize";
@@ -16,15 +17,29 @@ import type { ApiSoireeSummary } from "@/lib/soirees/serialize";
  *
  * US-K2 — c'est aussi de là qu'on supprime une soirée : sa date fautive se voit ici, à
  * côté de celles qu'elle déplace.
+ *
+ * Depuis que plusieurs serveurs Discord peuvent se connecter, une soirée appartient à
+ * l'un d'eux (`Soiree.guildId`) : l'admin choisit lequel, et la liste au-dessous suit
+ * ce choix. Sans quoi il créerait une soirée pour un groupe en regardant le calendrier
+ * d'un autre — et « la soirée en cours » qu'il déplace ne serait pas celle qu'il voit.
  */
-export function SoireeCreateForm() {
+export function SoireeCreateForm({ guilds }: { guilds: ApiAuthorizedGuild[] }) {
   const router = useRouter();
+  // Le serveur visé : le sien par défaut, à défaut le premier de la liste. Les soirées
+  // qu'il organise sont presque toujours celles de son propre groupe.
+  const [guildId, setGuildId] = useState(
+    () => (guilds.find((guild) => guild.isViewerGuild) ?? guilds[0])?.guildId ?? "",
+  );
   const [name, setName] = useState("");
   const [date, setDate] = useState("");
   const [fieldErrors, setFieldErrors] = useState<SoireeFieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [soirees, setSoirees] = useState<ApiSoireeSummary[] | null>(null);
+  // La liste porte le serveur qu'elle décrit : changer de serveur doit afficher « … »,
+  // pas le calendrier du précédent le temps de la requête.
+  const [soirees, setSoirees] = useState<{ guildId: string; rows: ApiSoireeSummary[] } | null>(
+    null,
+  );
   // US-K2 — suppression d'une soirée : la ligne en attente de confirmation, celle dont
   // la requête est partie, et l'erreur éventuelle. Séparées de celles du formulaire de
   // création, qui parle d'autre chose.
@@ -36,13 +51,15 @@ export function SoireeCreateForm() {
   const [listVersion, setListVersion] = useState(0);
 
   useEffect(() => {
+    if (!guildId) return;
+
     const controller = new AbortController();
-    fetch("/api/soirees", { signal: controller.signal })
+    fetch(`/api/soirees?guild=${encodeURIComponent(guildId)}`, { signal: controller.signal })
       .then((response) => (response.ok ? response.json() : null))
-      .then((body: ApiSoireeSummary[] | null) => setSoirees(body ?? []))
+      .then((body: ApiSoireeSummary[] | null) => setSoirees({ guildId, rows: body ?? [] }))
       .catch(() => {});
     return () => controller.abort();
-  }, [listVersion]);
+  }, [guildId, listVersion]);
 
   /**
    * US-K2 — supprimer une soirée emporte ses engagements et les votes qui s'y
@@ -89,7 +106,11 @@ export function SoireeCreateForm() {
         // `datetime-local` rend « 2026-09-04T21:00 », sans fuseau : le navigateur et le
         // serveur sont dans le même, `new Date(...)` côté serveur lirait donc l'heure
         // en UTC. On envoie une ISO complète, construite ici, où le fuseau est connu.
-        body: JSON.stringify({ name, date: date ? new Date(date).toISOString() : "" }),
+        body: JSON.stringify({
+          guildId,
+          name,
+          date: date ? new Date(date).toISOString() : "",
+        }),
       });
 
       const body = await response.json().catch(() => null);
@@ -113,6 +134,9 @@ export function SoireeCreateForm() {
     }
   }
 
+  // Les soirées du serveur choisi, ou `null` tant que sa liste n'est pas arrivée.
+  const rows = soirees?.guildId === guildId ? soirees.rows : null;
+
   return (
     <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
       <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
@@ -120,6 +144,43 @@ export function SoireeCreateForm() {
       </div>
 
       <form onSubmit={handleSubmit} noValidate className="mt-[13px] flex flex-col gap-[11px]">
+        <div>
+          <label
+            htmlFor="soiree-guild"
+            className="font-mono text-[10px] tracking-[0.08em] text-[var(--color-text-muted)]"
+          >
+            SERVEUR — OBLIGATOIRE
+          </label>
+          <select
+            id="soiree-guild"
+            value={guildId}
+            onChange={(event) => setGuildId(event.target.value)}
+            aria-invalid={Boolean(fieldErrors.guildId)}
+            className="mt-[5px] w-full rounded-sm border bg-[var(--color-field)] px-[11px] py-[9px] font-mono text-xs text-[var(--color-foreground)] outline-none"
+            style={{
+              borderColor: fieldErrors.guildId ? "var(--color-danger)" : "var(--color-border-strong)",
+            }}
+          >
+            {guilds.map((guild) => (
+              <option key={guild.guildId} value={guild.guildId}>
+                {guild.name ?? guild.guildIdMasked}
+                {guild.isViewerGuild ? " · le tien" : ""}
+              </option>
+            ))}
+          </select>
+          {fieldErrors.guildId && (
+            <p className="mt-[5px] font-mono text-[10.5px] text-[var(--color-danger-text)]">
+              {fieldErrors.guildId}
+            </p>
+          )}
+          {guilds.length === 0 && (
+            <p className="mt-[5px] font-mono text-[10.5px] leading-[1.6] text-[var(--color-danger-text)]">
+              Aucun serveur autorisé : ouvre-en un dans le panneau ACCÈS avant de créer
+              une soirée.
+            </p>
+          )}
+        </div>
+
         <div>
           <label
             htmlFor="soiree-date"
@@ -179,7 +240,7 @@ export function SoireeCreateForm() {
 
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isSubmitting || guildId === ""}
           className="btn-solid rounded-sm px-[14px] py-2 font-sans text-xs font-semibold disabled:opacity-60"
           style={{ background: "var(--color-amber)", color: "var(--color-ink)" }}
         >
@@ -189,10 +250,15 @@ export function SoireeCreateForm() {
 
       <div className="mt-4 border-t border-[var(--color-border-hairline)] pt-3">
         <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
-          SOIRÉES · {soirees?.length ?? "…"}
+          SOIRÉES · {rows?.length ?? "…"}
+        </div>
+        <div className="mt-[3px] truncate font-mono text-[9.5px] text-[var(--color-text-faint)]">
+          {/* Le calendrier affiché est celui du serveur choisi au-dessus : « en cours »
+              y désigne sa soirée à lui, pas celle d'un autre groupe. */}
+          {guilds.find((guild) => guild.guildId === guildId)?.name ?? "serveur sélectionné"}
         </div>
         <div className="mt-2 flex flex-col gap-[7px]">
-          {soirees?.length === 0 && (
+          {rows?.length === 0 && (
             <p className="font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-muted)]">
               Aucune soirée encore. Tant qu&apos;il n&apos;y en a pas, personne ne peut voter.
             </p>
@@ -202,7 +268,7 @@ export function SoireeCreateForm() {
               {deleteError}
             </p>
           )}
-          {soirees?.map((soiree) => (
+          {rows?.map((soiree) => (
             <div key={soiree.id} className="flex items-baseline justify-between gap-3">
               <div className="min-w-0">
                 <div className="truncate font-sans text-[12px] font-medium">

@@ -132,6 +132,8 @@ export interface ApiAuthorizedGuild {
   fromConfig: boolean;
   /** Qui l'a ouvert. `null` pour le serveur du déploiement. */
   addedBy: string | null;
+  /** Vrai s'il s'agit du serveur par lequel le membre qui regarde est entré. */
+  isViewerGuild: boolean;
 }
 
 /** Le panneau « ACCÈS » en entier. */

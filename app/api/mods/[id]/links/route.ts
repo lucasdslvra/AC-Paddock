@@ -6,7 +6,7 @@ import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { modUrlKey } from "@/lib/mods/url";
 import { prisma } from "@/lib/prisma";
 import { upsertSessionUser } from "@/lib/session-user";
-import { currentSoiree } from "@/lib/soirees/current";
+import { soireeContext } from "@/lib/soirees/current";
 
 /**
  * Cahier §2.2 — ajouter un lien secondaire à une fiche (miroir, pack de textures, patch).
@@ -53,7 +53,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/mods/[id]/l
       // Ajouter un lien est souvent la première écriture d'un membre : sa ligne `User`
       // peut très bien ne pas exister encore.
       upsertSessionUser(session.user),
-      currentSoiree(),
+      soireeContext(session),
     ]);
 
     if (!mod) {
@@ -104,7 +104,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/mods/[id]/l
       include: modInclude(session.user.id, soiree),
     });
 
-    return Response.json(serializeMod(updated, soiree?.id ?? null), { status: 201 });
+    return Response.json(serializeMod(updated, soiree.current?.id ?? null), { status: 201 });
   } catch (error) {
     console.error(`POST /api/mods/${id}/links`, error);
     return Response.json({ error: "Ce lien n'a pas pu être ajouté." }, { status: 500 });

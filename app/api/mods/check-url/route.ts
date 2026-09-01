@@ -3,7 +3,7 @@ import type { UrlCheckResult } from "@/lib/mods/duplicates";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { normalizeModUrl } from "@/lib/mods/url";
 import { prisma } from "@/lib/prisma";
-import { currentSoiree } from "@/lib/soirees/current";
+import { soireeContext } from "@/lib/soirees/current";
 
 /**
  * US-D2 — le lien saisi est-il déjà sur une fiche ?
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     return Response.json({ match: null } satisfies UrlCheckResult);
   }
 
-  const soiree = await currentSoiree();
+  const soiree = await soireeContext(session);
 
   try {
     // Aucune fiche à écarter du résultat : le formulaire n'interroge cette route qu'à
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
     });
 
     return Response.json({
-      match: mod ? serializeMod(mod, soiree?.id ?? null) : null,
+      match: mod ? serializeMod(mod, soiree.current?.id ?? null) : null,
     } satisfies UrlCheckResult);
   } catch (error) {
     console.error("GET /api/mods/check-url", error);

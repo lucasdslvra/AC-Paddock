@@ -1,6 +1,7 @@
+import type { Session } from "next-auth";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { upsertSessionUser } from "@/lib/session-user";
+import { sessionGuildId, upsertSessionUser } from "@/lib/session-user";
 import { currentSoireeId } from "@/lib/soirees/current";
 import { readVoteState } from "@/lib/soirees/vote";
 
@@ -11,13 +12,15 @@ import { readVoteState } from "@/lib/soirees/vote";
  * elle n'est plus celle où l'on vote, ou le mod n'y est pas engagé. Le dernier est la
  * règle centrale de l'Epic G — seuls les mods engagés sont votables.
  */
-async function resolveEngagement(soireeId: string, modId: string) {
+async function resolveEngagement(soireeId: string, modId: string, session: Session) {
   const [engagement, currentId] = await Promise.all([
     prisma.soireeMod.findUnique({
       where: { soireeId_modId: { soireeId, modId } },
       select: { id: true },
     }),
-    currentSoireeId(),
+    // La soirée en cours du serveur de ce membre : la soirée d'un autre groupe n'est
+    // jamais « la sienne », et le premier refus ci-dessous s'en charge.
+    sessionGuildId(session).then(currentSoireeId),
   ]);
 
   if (soireeId !== currentId) {
@@ -58,7 +61,7 @@ export async function POST(
   const { id, modId } = await ctx.params;
 
   try {
-    const resolved = await resolveEngagement(id, modId);
+    const resolved = await resolveEngagement(id, modId, session);
     if ("error" in resolved) {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }
@@ -98,7 +101,7 @@ export async function DELETE(
   const { id, modId } = await ctx.params;
 
   try {
-    const resolved = await resolveEngagement(id, modId);
+    const resolved = await resolveEngagement(id, modId, session);
     if ("error" in resolved) {
       return Response.json({ error: resolved.error }, { status: resolved.status });
     }

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { upsertSessionUser } from "@/lib/session-user";
+import { sessionGuildId, upsertSessionUser } from "@/lib/session-user";
 import { currentSoireeId } from "@/lib/soirees/current";
 
 const engageSchema = z.object({
@@ -47,7 +47,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/soirees/[id
       // Engager est souvent la première écriture d'un membre : sa ligne `User` peut
       // très bien ne pas exister encore.
       upsertSessionUser(session.user),
-      currentSoireeId(),
+      // Rapportée au serveur du membre : la soirée d'un autre groupe n'est pas la
+      // sienne, et le refus ci-dessous vaut alors « plus ouverte aux engagements ».
+      sessionGuildId(session).then(currentSoireeId),
     ]);
 
     if (!soiree) {

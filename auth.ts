@@ -10,6 +10,8 @@ declare module "next-auth" {
     user: {
       id: string;
     } & DefaultSession["user"];
+    /** Le serveur Discord par lequel ce membre est entré (cahier §2.1). */
+    guildId?: string;
     guildName?: string;
   }
 }
@@ -19,6 +21,7 @@ declare module "next-auth/jwt" {
     discordId?: string;
     discordUsername?: string;
     discordAvatar?: string | null;
+    guildId?: string;
     guildName?: string;
   }
 }
@@ -110,6 +113,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         ]);
         const guild = guilds?.find((g) => authorized.has(g.id));
         if (guild) {
+          token.guildId = guild.id;
           token.guildName = guild.name;
         }
       }
@@ -121,6 +125,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.name = (token.discordUsername as string) ?? session.user.name;
         session.user.image = (token.discordAvatar as string | null) ?? session.user.image;
       }
+      session.guildId = token.guildId;
       session.guildName = token.guildName;
       return session;
     },

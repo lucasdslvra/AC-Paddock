@@ -64,3 +64,27 @@ export async function recordMemberLogin(member: {
     console.error("recordMemberLogin", error);
   }
 }
+
+/**
+ * Le serveur Discord du membre connecté — celui par lequel il est entré.
+ *
+ * C'est la clef de tout ce qui est propre à un groupe : la soirée en cours, son
+ * classement, son historique. La session la porte depuis que le jeton la retient ; pour
+ * une session ouverte avant, on retombe sur ce que sa dernière connexion a inscrit en
+ * base, puis sur le serveur du déploiement — le seul qui existait alors.
+ *
+ * `null` seulement si personne ne peut le dire : ni la session, ni la base, ni la
+ * configuration. Les appelants traitent ce cas comme « aucune soirée ne le concerne »,
+ * jamais comme « toutes ».
+ */
+export async function sessionGuildId(session: Session | null): Promise<string | null> {
+  if (!session?.user?.id) return null;
+  if (session.guildId) return session.guildId;
+
+  const member = await prisma.user.findUnique({
+    where: { discordId: session.user.id },
+    select: { guildId: true },
+  });
+
+  return member?.guildId ?? process.env.DISCORD_GUILD_ID ?? null;
+}

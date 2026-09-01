@@ -3,7 +3,7 @@ import { MIN_NAME_QUERY_LENGTH, SIMILAR_MODS_LIMIT } from "@/lib/mods/duplicates
 import { escapeLikeWildcards } from "@/lib/mods/like";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { prisma } from "@/lib/prisma";
-import { currentSoiree } from "@/lib/soirees/current";
+import { soireeContext } from "@/lib/soirees/current";
 
 /**
  * US-D1 — recherche floue sur le nom, pour repérer une fiche déjà existante avant d'en
@@ -37,7 +37,7 @@ export async function GET(request: Request) {
     return Response.json([]);
   }
 
-  const soiree = await currentSoiree();
+  const soiree = await soireeContext(session);
 
   try {
     // Deux requêtes plutôt qu'une : le SQL brut classe les fiches, `findMany` les
@@ -67,7 +67,7 @@ export async function GET(request: Request) {
       ranked
         .map(({ id }) => byId.get(id))
         .filter((mod) => mod !== undefined)
-        .map((mod) => serializeMod(mod, soiree?.id ?? null)),
+        .map((mod) => serializeMod(mod, soiree.current?.id ?? null)),
     );
   } catch (error) {
     console.error("GET /api/mods/search", error);

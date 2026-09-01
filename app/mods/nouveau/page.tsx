@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { ModForm } from "@/components/ModForm";
-import { currentSoiree } from "@/lib/soirees/current";
+import { soireeContext } from "@/lib/soirees/current";
 import { formatSoireeShortDay } from "@/lib/soirees/format";
 
 export default async function NouveauModPage() {
@@ -11,10 +11,11 @@ export default async function NouveauModPage() {
   const session = await auth();
   if (!session?.user) redirect("/");
 
-  // US-G2 — proposer une fiche et l'engager dans la foulée. La soirée est lue ici
-  // plutôt que dans le formulaire : c'est un composant client, et la seule chose qu'il
-  // en affiche (la date, le thème) est déjà connue au rendu de la page.
-  const soiree = await currentSoiree();
+  // US-G2 — proposer une fiche et l'engager dans la foulée, dans la soirée du serveur
+  // de ce membre. Elle est lue ici plutôt que dans le formulaire : c'est un composant
+  // client, et la seule chose qu'il en affiche (la date, le thème) est déjà connue au
+  // rendu de la page.
+  const { current: soiree } = await soireeContext(session);
 
   return (
     <ModForm

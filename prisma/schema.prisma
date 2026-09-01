@@ -283,6 +283,16 @@ model Soiree {
   name String?
   date DateTime
 
+  /// Le serveur Discord dont c'est la soirée. Une soirée se joue avec un groupe, et
+  /// depuis que plusieurs serveurs peuvent se connecter (`AuthorizedGuild`), « la
+  /// soirée en cours » n'a de sens que rapportée à l'un d'eux : sans cette colonne,
+  /// deux groupes voteraient dans le même classement sans jamais se croiser en jeu.
+  ///
+  /// Pas de clé étrangère vers `AuthorizedGuild` : le serveur du déploiement n'y a pas
+  /// de ligne (voir ce modèle), et une soirée doit survivre au retrait de son serveur
+  /// de la liste — l'archive raconte ce qui a été joué, pas qui a encore l'accès.
+  guildId String
+
   createdById String
   createdBy   User   @relation(fields: [createdById], references: [id])
 
@@ -290,9 +300,9 @@ model Soiree {
 
   createdAt DateTime @default(now())
 
-  /// L'historique (Epic I) et la résolution de la soirée en cours lisent tous deux dans
-  /// cet ordre.
-  @@index([date])
+  /// Toutes les lectures partent du serveur puis remontent les dates : la soirée en
+  /// cours (`currentSoiree`), l'historique (Epic I), la liste de l'espace admin.
+  @@index([guildId, date])
   @@index([createdById])
 }
 

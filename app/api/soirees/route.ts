@@ -1,7 +1,9 @@
 import { auth } from "@/auth";
+import { authorizedGuildIds } from "@/lib/admin/guilds";
 import { prisma } from "@/lib/prisma";
-import { upsertSessionUser } from "@/lib/session-user";
+import { sessionGuildId, upsertSessionUser } from "@/lib/session-user";
 import { currentSoireeId, startOfToday } from "@/lib/soirees/current";
+import { NO_GUILD } from "@/lib/soirees/scope";
 import { listPastSoirees } from "@/lib/soirees/past";
 import { canCreateSoiree } from "@/lib/soirees/permissions";
 import { soireeInputSchema, toSoireeFieldErrors } from "@/lib/soirees/schema";
@@ -25,14 +27,45 @@ export async function GET(request: Request) {
     return Response.json({ error: "Connexion requise." }, { status: 401 });
   }
 
+  const params = new URL(request.url).searchParams;
+
   // Seul `past=true` filtre : tout le reste (absent, `false`, une valeur inattendue)
   // laisse la liste complète, plutôt que de renvoyer une erreur pour un paramètre qui
   // n'est qu'une option d'affichage.
-  const past = new URL(request.url).searchParams.get("past") === "true";
+  const past = params.get("past") === "true";
+
+  // Chaque serveur a ses soirées : celles d'un autre groupe ne sont pas « moins
+  // récentes », elles ne le regardent pas.
+  //
+  // `?guild=` fait exception, et seulement pour un admin : c'est lui qui attribue les
+  // soirées (US-G1), donc lui seul a besoin de regarder le calendrier d'un serveur qui
+  // n'est pas le sien avant d'y en poser une. Le paramètre ne peut désigner qu'un
+  // serveur autorisé — pas un identifiant quelconque.
+  const requested = params.get("guild");
+  let guildId = await sessionGuildId(session);
+
+  if (requested && requested !== guildId) {
+    const [actor, authorized] = await Promise.all([
+      prisma.user.findUnique({
+        where: { discordId: session.user.id },
+        select: { role: true },
+      }),
+      authorizedGuildIds(),
+    ]);
+
+    if (actor?.role !== "ADMIN") {
+      return Response.json({ error: "Réservé aux admins." }, { status: 403 });
+    }
+    if (!authorized.has(requested)) {
+      return Response.json({ error: "Ce serveur n'est pas autorisé." }, { status: 404 });
+    }
+
+    guildId = requested;
+  }
 
   if (past) {
     try {
-      const body: ApiPastSoiree[] = await listPastSoirees();
+      const body: ApiPastSoiree[] = await listPastSoirees(guildId);
       return Response.json(body);
     } catch (error) {
       console.error("GET /api/soirees?past=true", error);
@@ -46,10 +79,11 @@ export async function GET(request: Request) {
   try {
     const [soirees, currentId] = await Promise.all([
       prisma.soiree.findMany({
+        where: { guildId: guildId ?? NO_GUILD },
         orderBy: { date: "desc" },
         include: { createdBy: true, _count: { select: { mods: true } } },
       }),
-      currentSoireeId(),
+      currentSoireeId(guildId),
     ]);
 
     const body: ApiSoireeSummary[] = soirees.map((soiree) => ({
@@ -121,8 +155,38 @@ export async function POST(request: Request) {
       );
     }
 
+    // À quel serveur cette soirée appartient. L'admin le choisit (US-G1 : c'est lui qui
+    // crée les soirées, et il peut en organiser pour plusieurs groupes) ; sans choix,
+    // c'est le serveur par lequel il est entré.
+    //
+    // Un serveur qui ne donne pas accès est refusé : la soirée y serait invisible de
+    // tous, y compris de celui qui vient de la créer.
+    const guildId = parsed.data.guildId ?? (await sessionGuildId(session));
+    if (!guildId) {
+      return Response.json(
+        { error: "Ton serveur Discord n'a pas pu être déterminé : reconnecte-toi." },
+        { status: 409 },
+      );
+    }
+
+    const authorized = await authorizedGuildIds();
+    if (!authorized.has(guildId)) {
+      return Response.json(
+        {
+          error: "Formulaire invalide.",
+          fieldErrors: { guildId: "Ce serveur ne donne pas accès à l'application." },
+        },
+        { status: 400 },
+      );
+    }
+
     const soiree = await prisma.soiree.create({
-      data: { name: parsed.data.name ?? null, date: parsed.data.date, createdById: actor.id },
+      data: {
+        name: parsed.data.name ?? null,
+        date: parsed.data.date,
+        guildId,
+        createdById: actor.id,
+      },
     });
 
     return Response.json({ id: soiree.id }, { status: 201 });

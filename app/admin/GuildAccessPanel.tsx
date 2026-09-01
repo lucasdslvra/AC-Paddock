@@ -268,6 +268,15 @@ function GuildLine({
           {guild.name ?? "nom inconnu"} · {guild.guildIdMasked}
         </span>
 
+        {guild.isViewerGuild && (
+          <span
+            className="flex-none font-mono text-[9.5px] text-[var(--color-text-faint)]"
+            title="Le serveur par lequel tu es entré."
+          >
+            le tien
+          </span>
+        )}
+
         {guild.fromConfig ? (
           <span
             className="flex-none font-mono text-[9.5px] text-[var(--color-text-faint)]"

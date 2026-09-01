@@ -1,5 +1,7 @@
 import "server-only";
+import type { Session } from "next-auth";
 import { prisma } from "@/lib/prisma";
+import { sessionGuildId } from "@/lib/session-user";
 
 /**
  * La soirée en cours : la prochaine à venir, celle du jour comprise.
@@ -15,6 +17,9 @@ import { prisma } from "@/lib/prisma";
  *
  * Plusieurs soirées à venir peuvent coexister — un organisateur qui planifie deux
  * semaines d'avance. C'est la plus proche qui est en cours ; les autres attendent.
+ *
+ * Tout cela se dit **par serveur** : chaque groupe a sa soirée en cours, et deux
+ * serveurs qui jouent le même soir ne partagent ni classement ni votes.
  */
 export function startOfToday(now: Date = new Date()): Date {
   const start = new Date(now);
@@ -37,15 +42,41 @@ export interface CurrentSoiree {
   name: string | null;
 }
 
-export async function currentSoiree(now?: Date): Promise<CurrentSoiree | null> {
+export async function currentSoiree(
+  guildId: string | null,
+  now?: Date,
+): Promise<CurrentSoiree | null> {
+  // Sans serveur connu, aucune soirée ne concerne ce membre. Renvoyer la prochaine
+  // toutes soirées confondues lui ferait voter dans le classement d'un autre groupe.
+  if (!guildId) return null;
+
   return prisma.soiree.findFirst({
-    where: { date: { gte: startOfToday(now) } },
+    where: { guildId, date: { gte: startOfToday(now) } },
     orderBy: { date: "asc" },
     select: { id: true, date: true, name: true },
   });
 }
 
 /** Le seul identifiant, pour les routes qui n'ont pas besoin de la date. */
-export async function currentSoireeId(now?: Date): Promise<string | null> {
-  return (await currentSoiree(now))?.id ?? null;
+export async function currentSoireeId(guildId: string | null, now?: Date): Promise<string | null> {
+  return (await currentSoiree(guildId, now))?.id ?? null;
+}
+
+/**
+ * Ce qu'il faut savoir du calendrier pour servir une requête : le serveur du membre, et
+ * la soirée en cours de ce serveur.
+ *
+ * Les deux voyagent ensemble parce qu'ils s'utilisent ensemble — `modInclude` borne
+ * l'historique d'une fiche aux soirées du serveur, et sa votabilité à la soirée en
+ * cours. Les passer séparément à chaque appel finirait par en désaccorder un.
+ */
+export interface SoireeContext {
+  /** `null` quand l'application ne sait pas d'où vient ce membre (voir `sessionGuildId`). */
+  guildId: string | null;
+  current: CurrentSoiree | null;
+}
+
+export async function soireeContext(session: Session | null, now?: Date): Promise<SoireeContext> {
+  const guildId = await sessionGuildId(session);
+  return { guildId, current: await currentSoiree(guildId, now) };
 }

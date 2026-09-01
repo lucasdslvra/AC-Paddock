@@ -12,7 +12,7 @@ import { modInclude, serializeMod } from "@/lib/mods/serialize";
 import { buildTagReplaceWrite } from "@/lib/mods/tags-store";
 import { prisma } from "@/lib/prisma";
 import { upsertSessionUser } from "@/lib/session-user";
-import { currentSoiree } from "@/lib/soirees/current";
+import { soireeContext } from "@/lib/soirees/current";
 import { deleteModImages, isModImageUrl, modImagePath } from "@/lib/supabase/storage";
 
 /**
@@ -57,7 +57,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/mods/[id]"
 
   const data = buildModUpdateData(payload as Record<string, unknown>, parsed.data);
 
-  const soiree = await currentSoiree();
+  const soiree = await soireeContext(session);
 
   try {
     // L'état d'avant, et pas seulement l'image : c'est de sa comparaison avec l'état
@@ -110,7 +110,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/mods/[id]"
       }
     }
 
-    return Response.json(serializeMod(mod, soiree?.id ?? null));
+    return Response.json(serializeMod(mod, soiree.current?.id ?? null));
   } catch (error) {
     console.error(`PATCH /api/mods/${id}`, error);
     return Response.json({ error: "La fiche n'a pas pu être enregistrée." }, { status: 500 });

@@ -676,6 +676,32 @@ fonction et le job. À exécuter **une fois** dans l'éditeur SQL de Supabase �
 pas une migration Prisma, parce que ça ne décrit pas le schéma dont l'application
 dépend et qu'un échec y bloquerait des migrations qui n'y sont pour rien.
 
+### Le vidage forcé, et le filet quotidien
+
+Deux choses tiennent la rétention en état, pour deux pannes différentes.
+
+`vercel.json` déclenche `/api/maintenance/expired-files` une fois par jour. C'est un
+filet, pas la règle : le plan Hobby de Vercel ne permet qu'un déclenchement quotidien, ce
+qui donne une fenêtre de 24 h à 48 h au lieu des 24 h du cahier §2.7. `pg_cron` reste la
+planification réelle — mais tant qu'il n'est pas en place, les fichiers s'effacent quand
+même, ce qui vaut mieux que jamais.
+
+`DELETE /api/admin/storage` (réservé aux admins) vide le bucket entièrement, sans
+condition d'âge, et remet à zéro les `fileUrl` de toutes les fiches. C'est le levier de
+secours : quota atteint et pas envie d'attendre l'expiration, ou tâche planifiée jamais
+mise en place et bucket rempli. Il porte sur le **bucket**, pas sur les fiches — les
+objets abandonnés entre la signature d'une URL et sa confirmation n'apparaissent dans
+aucune colonne, et ce sont eux qu'une reprise en main a le plus besoin d'emporter.
+
+Les fiches ne sont jamais touchées : nom, lien, description, tags, votes, historique. La
+même promesse que pour l'expiration ordinaire — vider le bucket fait disparaître des
+fichiers, jamais du catalogue.
+
+Le bouton de l'espace admin demande confirmation en deux temps, sans `window.confirm` :
+le premier clic transforme le bouton en une phrase qui dit ce qui va disparaître, le
+second exécute. Un vidage manuel écrit la même trace qu'un balayage automatique — sinon
+la pastille annoncerait « EN RETARD » juste après qu'on a vidé le bucket à la main.
+
 ### pg_net appelle l'application, pas Cloudflare
 
 Le cahier proposait que `pg_net` s'adresse directement à l'API R2. Supprimer un objet R2

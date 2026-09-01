@@ -5,6 +5,7 @@ import { DeletionJournal } from "@/app/admin/DeletionJournal";
 import { GuildAccessPanel } from "@/app/admin/GuildAccessPanel";
 import { ModerationPanel } from "@/app/admin/ModerationPanel";
 import { SoireeCreateForm } from "@/app/admin/SoireeCreateForm";
+import { StoragePanel } from "@/app/admin/StoragePanel";
 import { TagsPanel } from "@/app/admin/TagsPanel";
 import { UploadSizeForm } from "@/app/admin/UploadSizeForm";
 import type { DeletionLogPage } from "@/lib/admin/deletion-log";
@@ -16,8 +17,8 @@ import {
   type AdminTagRow,
   type ApiAdminConfig,
   type ApiGuildAccess,
+  type ApiStorageUsage,
 } from "@/lib/admin/settings";
-import { admin } from "@/lib/mock-data";
 
 interface AdminViewProps {
   mods: ModerationList<AdminModRow>;
@@ -26,6 +27,8 @@ interface AdminViewProps {
   config: ApiAdminConfig;
   members: ModerationList<AdminMemberRow>;
   access: ApiGuildAccess;
+  /** US-H1 — l'occupation du bucket. `null` si Cloudflare n'a pas pu être interrogé. */
+  storage: ApiStorageUsage | null;
 }
 
 /**
@@ -35,12 +38,20 @@ interface AdminViewProps {
  * sont dans `layout.tsx`, et il n'y a donc plus rien à vérifier à ce niveau. La mise en
  * page ne fait que répartir les panneaux, qui portent chacun leurs propres écritures.
  *
- * Ce qui reste de maquette : la rétention des fichiers, dont le cahier §2.7 fixe la
- * durée, non modifiable. Le reste est lu en base ou dans la configuration, « MEMBRES »
- * compris — le serveur affiché en face de chaque membre est celui devant lequel sa
- * dernière connexion l'a vérifié, pas celui qu'on suppose.
+ * Il n'y reste plus rien de maquette. Le serveur affiché en face de chaque membre est
+ * celui devant lequel sa dernière connexion l'a vérifié, pas celui qu'on suppose ; la
+ * rétention et l'occupation du bucket viennent de `StoragePanel`, qui lit l'un en base
+ * et l'autre chez Cloudflare.
  */
-export function AdminView({ mods, tags, deletions, config, members, access }: AdminViewProps) {
+export function AdminView({
+  mods,
+  tags,
+  deletions,
+  config,
+  members,
+  access,
+  storage,
+}: AdminViewProps) {
   return (
     <div className="grid grid-cols-1 gap-[18px] p-5 lg:grid-cols-[1fr_330px]">
       <div className="flex flex-col gap-[14px]">
@@ -81,28 +92,11 @@ export function AdminView({ mods, tags, deletions, config, members, access }: Ad
 
           <UploadSizeForm config={config} />
 
-          <div className="mt-4 border-t border-[var(--color-border-hairline)] pt-[14px]">
-            <div className="font-sans text-xs font-medium">Rétention des fichiers</div>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="font-mono text-[15px]">{admin.settings.retentionHours} h</span>
-              {/* Cahier §2.7 : « règle simple et fixe ». Le délai n'est pas un réglage,
-                  contrairement au plafond juste au-dessus. */}
-              <span className="font-mono text-[9.5px] text-[var(--color-text-muted)]">
-                après l&apos;upload · non modifiable
-              </span>
-            </div>
-            <div className="mt-[9px] flex items-center justify-between rounded-sm bg-[var(--color-border-hairline)] px-[11px] py-[9px]">
-              <span className="font-mono text-[10px] text-[var(--color-text-secondary)]">
-                dernier nettoyage : {admin.settings.lastCleanupLabel}
-              </span>
-              <span
-                className="px-[6px] py-[2px] font-mono text-[10px]"
-                style={{ background: "var(--color-amber)", color: "var(--color-ink)" }}
-              >
-                OK
-              </span>
-            </div>
-          </div>
+          <StoragePanel
+            usage={storage}
+            lastSweep={config.lastSweep}
+            sweepStale={config.sweepStale}
+          />
         </div>
 
         <TagsPanel tags={tags} />

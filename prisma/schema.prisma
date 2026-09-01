@@ -89,8 +89,10 @@ model Mod {
   description String?
   imageUrl    String?
 
-  /// Fichier uploadé (Epic H) : encore vide tant que US-H1 n'est pas faite,
-  /// mais présent dès maintenant pour coller au modèle du cahier §4.
+  /// Fichier uploadé sur Cloudflare R2 (Epic H). `fileUrl` est l'URL publique de
+  /// l'objet, `fileUploadedAt` le moment du dépôt — c'est de lui que courent les 24 h
+  /// du cahier §2.7, et c'est le balayage d'US-H3 qui remet les deux à NULL. La fiche,
+  /// elle, ne bouge pas.
   fileUrl        String?
   fileUploadedAt DateTime?
 

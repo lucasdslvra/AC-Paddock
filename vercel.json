@@ -3,6 +3,10 @@
     {
       "path": "/api/maintenance/orphan-images",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/maintenance/expired-files",
+      "schedule": "0 5 * * *"
     }
   ]
 }

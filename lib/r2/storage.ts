@@ -1,6 +1,7 @@
 import "server-only";
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
@@ -219,4 +220,58 @@ export async function totalStoredBytes(): Promise<number> {
 
 export async function deleteModFile(key: string): Promise<void> {
   await r2().send(new DeleteObjectCommand({ Bucket: modFilesBucket(), Key: key }));
+}
+
+/** Ce que S3 accepte de supprimer en une requête. */
+const DELETE_BATCH = 1000;
+
+/**
+ * Toutes les clés du bucket, y compris celles qu'aucune fiche ne référence.
+ *
+ * Sert au vidage forcé de l'espace admin : celui-ci porte sur le bucket, pas sur les
+ * fiches. Un objet abandonné entre la signature et la confirmation occupe de la place
+ * sans qu'aucune colonne ne le désigne — c'est précisément ce qu'un vidage doit
+ * emporter, et ce qu'une liste construite depuis la base ne trouverait pas.
+ */
+export async function listModFileKeys(): Promise<string[]> {
+  const keys: string[] = [];
+  let token: string | undefined;
+
+  do {
+    const page = await r2().send(
+      new ListObjectsV2Command({ Bucket: modFilesBucket(), ContinuationToken: token }),
+    );
+    for (const object of page.Contents ?? []) if (object.Key) keys.push(object.Key);
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
+
+  return keys;
+}
+
+/**
+ * Supprime des objets par paquets. Renvoie les clés que le bucket a refusé de retirer —
+ * vide si tout est parti.
+ *
+ * `DeleteObjects` est partiellement faillible : la requête réussit pendant que certaines
+ * clés échouent, dans `Errors`. Les traiter comme un succès laisserait croire un bucket
+ * vidé alors qu'il ne l'est pas.
+ */
+export async function deleteModFiles(keys: string[]): Promise<string[]> {
+  const failed: string[] = [];
+
+  for (let index = 0; index < keys.length; index += DELETE_BATCH) {
+    const batch = keys.slice(index, index + DELETE_BATCH);
+    const response = await r2().send(
+      new DeleteObjectsCommand({
+        Bucket: modFilesBucket(),
+        Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: true },
+      }),
+    );
+    for (const error of response.Errors ?? []) {
+      console.error(`Suppression refusée pour ${error.Key}`, error.Message);
+      if (error.Key) failed.push(error.Key);
+    }
+  }
+
+  return failed;
 }

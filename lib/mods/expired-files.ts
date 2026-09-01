@@ -1,4 +1,5 @@
 import "server-only";
+import { writeModFileSweep } from "@/lib/admin/config";
 import { prisma } from "@/lib/prisma";
 import { deleteModFile, modFileKeyFromUrl } from "@/lib/r2/storage";
 import { MOD_FILE_TTL_HOURS } from "./file";
@@ -83,10 +84,17 @@ export async function sweepExpiredModFiles(
     }
   }
 
-  return {
+  const result = {
     expired: expired.length,
     deleted,
     failed,
     reservations: await purgeExpiredReservations(now),
   };
+
+  // US-K1 — la trace que l'espace admin affiche. Sans elle, une tâche planifiée qui ne
+  // tourne plus ne se voit pas : le panneau annoncerait une rétention de 24 h sans que
+  // rien ne la fasse respecter.
+  await writeModFileSweep({ at: now.toISOString(), ...result });
+
+  return result;
 }

@@ -3,6 +3,7 @@ import { readAdminConfig } from "@/lib/admin/config";
 import { listDeletions } from "@/lib/admin/deletion-log";
 import { readGuildAccess } from "@/lib/admin/guilds";
 import { listAdminMembers } from "@/lib/admin/members";
+import { readStorageUsage } from "@/lib/mods/storage-quota";
 import { sessionGuildId } from "@/lib/session-user";
 import { listModerationMods, listModerationTags } from "@/lib/admin/moderation";
 import { AdminView } from "./AdminView";
@@ -24,13 +25,24 @@ export default async function AdminPage() {
   // layout.
   const viewerGuildId = await sessionGuildId(await auth());
 
-  const [mods, tags, deletions, config, members, access] = await Promise.all([
+  const [mods, tags, deletions, config, members, access, storage] = await Promise.all([
     listModerationMods(),
     listModerationTags(),
     listDeletions(),
     readAdminConfig(),
     listAdminMembers(),
     readGuildAccess(viewerGuildId),
+    // US-H1 — l'occupation du bucket. Seul appel sortant de la page, et le seul endroit
+    // où il se justifie : c'est une information d'exploitation, pas de navigation. Elle
+    // n'est surtout pas lue sur la fiche d'un mod, qui paierait alors un aller-retour
+    // vers Cloudflare à chaque ouverture.
+    //
+    // Un échec ne fait pas tomber l'espace admin : le panneau dit que l'occupation est
+    // indisponible, et la modération, elle, reste accessible.
+    readStorageUsage().catch((error) => {
+      console.error("Lecture de l'occupation du bucket", error);
+      return null;
+    }),
   ]);
 
   return (
@@ -41,6 +53,7 @@ export default async function AdminPage() {
       config={config}
       members={members}
       access={access}
+      storage={storage}
     />
   );
 }

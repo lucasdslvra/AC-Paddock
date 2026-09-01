@@ -1,5 +1,5 @@
 import "server-only";
-import { MAX_TOTAL_STORAGE_BYTES } from "@/lib/admin/settings";
+import { MAX_TOTAL_STORAGE_BYTES, type ApiStorageUsage } from "@/lib/admin/settings";
 import { prisma } from "@/lib/prisma";
 import { totalStoredBytes } from "@/lib/r2/storage";
 import { formatFileSize } from "./file";
@@ -20,17 +20,12 @@ import { formatFileSize } from "./file";
  * sur l'objet déposé (US-H2), et un dépassement y est refusé.
  */
 
-export interface StorageUsage {
-  /** Occupé dans le bucket, en octets. */
-  stored: number;
-  /** Retenu par les envois en cours, en octets. */
-  reserved: number;
-  /** `stored + reserved` — ce à quoi le plafond s'applique. */
-  used: number;
-  /** Ce qu'il reste, jamais négatif. */
-  free: number;
-  limit: number;
-}
+/**
+ * La forme est déclarée avec le reste du vocabulaire partagé (`ApiStorageUsage`) : le
+ * panneau de l'espace admin l'affiche, et c'est un composant client — il ne peut pas
+ * importer ce module-ci, qui traîne Prisma et le SDK S3.
+ */
+export type StorageUsage = ApiStorageUsage;
 
 /** Ce que le bucket porte, et ce que les envois en cours lui promettent. */
 export async function readStorageUsage(now: Date = new Date()): Promise<StorageUsage> {

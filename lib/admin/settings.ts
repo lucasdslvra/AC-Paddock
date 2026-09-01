@@ -8,6 +8,15 @@
 export const CONFIG_KEYS = {
   /** US-K3 — taille maximale du fichier de mod (le .zip) qu'un membre peut envoyer. */
   maxModFileMo: "mod_file_max_mo",
+  /**
+   * US-H3 — le compte rendu du dernier balayage d'expiration, en JSON.
+   *
+   * Pas un réglage, mais une trace : l'espace admin doit pouvoir dire quand le nettoyage
+   * est passé pour la dernière fois et ce qu'il a retiré — sans ça, une tâche planifiée
+   * qui ne tourne plus ne se voit pas. Rangée ici pour la raison qui a fait cette table :
+   * une donnée de plus ne doit pas coûter une migration.
+   */
+  lastModFileSweep: "mod_file_last_sweep",
 } as const;
 
 /**
@@ -63,6 +72,85 @@ export function parseModFileMo(input: unknown): number | null {
   return value;
 }
 
+/**
+ * US-H3 — ce qu'a fait le dernier balayage d'expiration. `null` tant qu'aucun n'a tourné.
+ */
+export interface ApiModFileSweep {
+  /** Quand, en ISO. */
+  at: string;
+  /** Fiches dont le fichier avait dépassé les 24 h. */
+  expired: number;
+  /** Fichiers effectivement retirés du bucket. */
+  deleted: number;
+  /** Fichiers qu'on n'a pas pu retirer — ils repasseront à l'heure suivante. */
+  failed: number;
+  /** Réservations de place périmées, ramassées au passage. */
+  reservations: number;
+}
+
+/**
+ * Relit un compte rendu de balayage écrit par `writeModFileSweep`.
+ *
+ * Défensif jusqu'au bout : la valeur est du texte libre dans `AppConfig`, elle a pu être
+ * écrite par une version antérieure ou modifiée à la main. Une valeur illisible se traite
+ * comme une absence — l'espace admin dira « aucun nettoyage enregistré », ce qui est
+ * moins faux que d'afficher des zéros.
+ */
+export function parseModFileSweep(value: string): ApiModFileSweep | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (typeof parsed !== "object" || parsed === null) return null;
+
+    const { at, expired, deleted, failed, reservations } = parsed as Record<string, unknown>;
+    if (typeof at !== "string" || Number.isNaN(Date.parse(at))) return null;
+
+    const count = (input: unknown) => (typeof input === "number" && input >= 0 ? input : 0);
+    return {
+      at,
+      expired: count(expired),
+      deleted: count(deleted),
+      failed: count(failed),
+      reservations: count(reservations),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Le balayage a-t-il sauté ? Il est prévu toutes les heures ; on laisse passer deux
+ * absences avant de le dire, parce qu'un retard isolé n'est pas une panne et qu'une
+ * pastille qui crie pour rien finit par ne plus être regardée.
+ *
+ * Calculé à la lecture et non au rendu : `Date.now()` dans un composant rendrait
+ * l'affichage non déterministe, ce que React interdit à juste titre.
+ */
+export const SWEEP_STALE_AFTER_MS = 3 * 3_600_000;
+
+export function isSweepStale(sweep: ApiModFileSweep | null, now: Date = new Date()): boolean {
+  if (!sweep) return false;
+  return now.getTime() - Date.parse(sweep.at) > SWEEP_STALE_AFTER_MS;
+}
+
+/**
+ * US-H1 — l'occupation du bucket Cloudflare, telle que l'espace admin l'affiche.
+ *
+ * Le type vit ici, avec le reste du vocabulaire partagé, et non dans le module serveur
+ * qui le calcule : l'espace admin est un composant client, et il ne doit pas importer
+ * quoi que ce soit de `lib/mods/storage-quota.ts`, qui traîne Prisma et le SDK S3.
+ */
+export interface ApiStorageUsage {
+  /** Occupé dans le bucket, en octets. */
+  stored: number;
+  /** Retenu par les envois en cours, en octets. */
+  reserved: number;
+  /** `stored + reserved` — ce à quoi le plafond s'applique. */
+  used: number;
+  /** Ce qu'il reste, jamais négatif. */
+  free: number;
+  limit: number;
+}
+
 /** Les réglages tels que l'API les expose. */
 export interface ApiAdminConfig {
   /** US-K3 — plafond d'upload courant, en mégaoctets. */
@@ -71,6 +159,10 @@ export interface ApiAdminConfig {
   maxModFileUpdatedAt: string | null;
   /** Qui l'a posé. `null` si la valeur est celle par défaut, ou l'auteur inconnu. */
   maxModFileUpdatedBy: string | null;
+  /** US-H3 — le dernier passage du nettoyage. `null` s'il n'a jamais tourné. */
+  lastSweep: ApiModFileSweep | null;
+  /** Vrai si ce passage est trop ancien pour une tâche horaire (`isSweepStale`). */
+  sweepStale: boolean;
 }
 
 /** Une entrée du journal des suppressions (US-K2), telle que l'API l'expose. */

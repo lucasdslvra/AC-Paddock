@@ -4,8 +4,11 @@ import {
   CONFIG_KEYS,
   DEFAULT_MOD_FILE_MO,
   MO,
+  isSweepStale,
   parseModFileMo,
+  parseModFileSweep,
   type ApiAdminConfig,
+  type ApiModFileSweep,
 } from "./settings";
 
 /**
@@ -17,12 +20,16 @@ import {
  * plutôt que de faire échouer un upload sur un réglage illisible.
  */
 export async function readAdminConfig(): Promise<ApiAdminConfig> {
-  const row = await prisma.appConfig.findUnique({
-    where: { key: CONFIG_KEYS.maxModFileMo },
-    include: { updatedBy: { select: { username: true } } },
-  });
+  const [row, sweepRow] = await Promise.all([
+    prisma.appConfig.findUnique({
+      where: { key: CONFIG_KEYS.maxModFileMo },
+      include: { updatedBy: { select: { username: true } } },
+    }),
+    prisma.appConfig.findUnique({ where: { key: CONFIG_KEYS.lastModFileSweep } }),
+  ]);
 
   const stored = row ? parseModFileMo(Number(row.value)) : null;
+  const lastSweep = sweepRow ? parseModFileSweep(sweepRow.value) : null;
 
   return {
     maxModFileMo: stored ?? DEFAULT_MOD_FILE_MO,
@@ -30,7 +37,36 @@ export async function readAdminConfig(): Promise<ApiAdminConfig> {
     // s'applique alors est la valeur par défaut, que personne n'a posée.
     maxModFileUpdatedAt: stored === null ? null : row!.updatedAt.toISOString(),
     maxModFileUpdatedBy: stored === null ? null : (row!.updatedBy?.username ?? null),
+    lastSweep,
+    // Décidé ici, où l'heure courante peut être lue sans rendre un affichage non
+    // déterministe (react-hooks/purity).
+    sweepStale: isSweepStale(lastSweep),
   };
+}
+
+/**
+ * US-H3 — inscrit le compte rendu du balayage qui vient de passer.
+ *
+ * Sans auteur : c'est une tâche planifiée qui écrit, pas un membre — `updatedById` est
+ * nul, et le formulaire des réglages ne l'affiche de toute façon que pour le plafond
+ * d'upload, qui lui est posé à la main.
+ *
+ * Ne relance pas d'erreur : un balayage réussi ne doit pas être rapporté comme un échec
+ * parce que sa trace n'a pas pu s'écrire. C'est l'inverse qui serait trompeur — l'espace
+ * admin afficherait alors un nettoyage plus ancien qu'il ne l'est, mais les fichiers, eux,
+ * sont bien partis.
+ */
+export async function writeModFileSweep(sweep: ApiModFileSweep): Promise<void> {
+  const value = JSON.stringify(sweep);
+  try {
+    await prisma.appConfig.upsert({
+      where: { key: CONFIG_KEYS.lastModFileSweep },
+      create: { key: CONFIG_KEYS.lastModFileSweep, value },
+      update: { value, updatedById: null },
+    });
+  } catch (error) {
+    console.error("Trace du balayage des fichiers expirés", error);
+  }
 }
 
 /**

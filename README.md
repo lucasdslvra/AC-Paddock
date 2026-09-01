@@ -483,6 +483,102 @@ encore** : la valeur est administrable et persistée, mais rien ne la consomme t
 l'Epic H n'est pas faite. C'est le seul point du backlog K qui reste en attente, et il
 attend une autre US.
 
+## Notifications Discord (US-L1, US-L2)
+
+Le cahier §1 donne la raison d'être de l'application : le groupe vivait sur des liens
+éparpillés dans Discord, et tout a été rapatrié ici. La notification est le chemin de
+retour — le salon reste l'endroit où l'on **apprend** qu'il se passe quelque chose, sans
+redevenir celui où on en discute. Trois annonces : une soirée programmée et une soirée
+annulée (US-L1), un mod proposé (US-L2).
+
+L'annulation n'est pas dans le backlog, qui ne parle que de la création. Elle y a
+pourtant plus sa place encore : quelqu'un a peut-être déjà bloqué sa soirée, et une
+soirée qui disparaît sans un mot se découvre en rouvrant une page vide. Elle ne part
+que pour une soirée **qui n'a pas encore commencé** — trier les anciennes est du
+rangement, et le groupe n'a rien à en apprendre. Le seuil est l'instant présent, pas le
+début du jour de `currentSoiree` : une soirée dont l'heure est passée a eu lieu, on ne
+l'annule plus à personne. Elle est aussi la seule des trois **sans lien** : la
+page a disparu avec la soirée, et un titre cliquable qui mène à un 404 est pire que pas
+de lien.
+
+Un webhook, pas un bot : le backlog laisse le choix, et un bot demanderait une
+application Discord, un jeton à faire tourner et un processus qui écoute. Il n'y a rien
+à écouter — l'application parle, Discord se contente de l'afficher.
+
+Trois modules, trois responsabilités :
+
+- [lib/discord/webhook.ts](lib/discord/webhook.ts) — le transport. Il ne sait qu'envoyer,
+  et **ne lève jamais** : la soirée ou la fiche est déjà écrite quand il part, un salon
+  injoignable ou un webhook supprimé n'ont pas à ressortir en 500 chez le membre.
+  L'échec reste dans les logs serveur, seul endroit d'où il puisse être corrigé. Un
+  délai de garde de 5 s empêche une invocation de rester ouverte sur un Discord muet ;
+- [lib/discord/notify.ts](lib/discord/notify.ts) — ce que les messages racontent ;
+- [lib/admin/guilds.ts](lib/admin/guilds.ts) — à quel salon les envoyer.
+
+**Après la réponse, pas pendant.** Les deux routes de création appellent leur
+notification dans un [`after()`](app/api/mods/route.ts) : le membre voit sa fiche ou sa
+soirée sans attendre que Discord réponde, et l'envoi survit quand même à la fin de la
+requête — `after` garde l'invocation ouverte, y compris en serverless.
+
+**Rien de ce qui part ne peut mentionner personne.** Le contenu vient de champs saisis
+par les membres — nom d'un mod, description, tags —, et un webhook a le droit de
+réveiller tout un serveur : chaque envoi porte donc `allowed_mentions: { parse: [] }`.
+Un `@everyone` dans un nom de fiche s'affiche, et ne notifie rien.
+
+**Le lien du message** est fabriqué à partir de l'hôte par lequel la requête vient
+d'entrer (`requestOrigin`), pas d'une variable d'environnement de plus : c'est
+exactement l'adresse que le membre a sous les yeux. Si elle est illisible, le message
+part sans lien plutôt que pas du tout.
+
+### Un salon par serveur (US-L2)
+
+Les annonces ne sont pas globales. Depuis que plusieurs serveurs ont accès, un webhook
+unique voudrait dire que le salon d'un groupe reçoit ce que fait l'autre — alors qu'ils
+ne se croisent nulle part ailleurs. `AuthorizedGuild` porte donc deux colonnes de plus
+(migration `20260901200000_guild_webhooks`) :
+
+- `webhookUrl` — le salon de ce groupe. Nul par défaut : ouvrir l'accès à un serveur ne
+  doit pas se mettre à écrire dans un salon dont personne n'a donné l'adresse ;
+- `notify` — l'interrupteur de ce salon, distinct de l'URL. Taire un groupe quelques
+  semaines ne doit pas coûter son adresse, qu'il faudrait retrouver ensuite.
+
+`guildWebhookUrl(guildId)` est la seule autorité sur « où envoyer », et répond `null`
+dans tous les cas où il n'y a rien à envoyer : pas de webhook, interrupteur fermé,
+serveur inconnu, base injoignable. Le salon est résolu **au moment de l'envoi** : couper
+les annonces d'un serveur ne rattrape pas ce qui est déjà parti, mais rien de ce qui est
+encore en vol ne passe outre.
+
+Qui est prévenu de quoi :
+
+| Annonce | Serveur visé | Pourquoi |
+| --- | --- | --- |
+| Soirée créée (US-L1) | celui de la soirée (`Soiree.guildId`) | Elle lui appartient déjà — un admin peut en programmer une pour un groupe dont il n'est pas. |
+| Soirée annulée (US-L1) | celui de la soirée | Même serveur, message inverse. Il dit ce qu'elle emportait — engagements et votes partent avec elle (`onDelete: Cascade`) — et rappelle que les fiches, elles, restent au catalogue. |
+| Mod proposé (US-L2) | celui de l'auteur | Un groupe est prévenu de ce que **les siens** proposent. Le catalogue reste commun : les autres verront la fiche, sans avoir été réveillés pour une proposition de gens qu'ils ne croiseront jamais en soirée. |
+
+Le serveur du déploiement fait exception, comme partout : il n'a pas de ligne en base —
+c'est ce qui rend impossible de se verrouiller dehors depuis l'espace admin — donc son
+salon reste dans `DISCORD_WEBHOOK_URL`, à côté de `DISCORD_GUILD_ID`. Pas de ligne, pas
+d'interrupteur non plus : pour lui, la présence de la variable **est** l'interrupteur.
+
+### Le webhook est un secret
+
+Qui l'a peut écrire dans le salon. Trois conséquences, toutes visibles dans le code :
+
+- **il ne ressort jamais du serveur.** `ApiAuthorizedGuild.webhook` n'en porte qu'une
+  forme tronquée (`maskWebhookUrl` : « discord.com/…/1403926…/•••• »), assez pour
+  vérifier qu'il y en a un et lequel, jamais assez pour le recopier. Conséquence directe
+  sur l'écran : on ne **modifie** pas un webhook, on en **pose un nouveau** — le champ
+  de saisie part toujours vide, parce qu'il n'a rien à pré-remplir ;
+- **l'URL est validée contre Discord** (`isDiscordWebhookUrl`), à l'entrée comme juste
+  avant l'envoi. Sans ce contrôle, l'espace admin devient un moyen de faire poster le
+  serveur vers n'importe quelle adresse, avec le contenu des fiches dedans. Un admin est
+  de confiance ; une confiance n'a pas à être une capacité ;
+- **il se renseigne à deux moments** : à l'ouverture de l'accès (`POST /api/admin/guilds`,
+  champ facultatif) et plus tard depuis la ligne du serveur (`PATCH
+  /api/admin/guilds/[id]`). C'est rarement au même moment qu'on a l'identifiant du
+  serveur et l'URL du webhook sous la main.
+
 ## Nettoyage des images orphelines
 
 Une image est déposée dans le bucket *avant* que la fiche existe. Deux mécanismes

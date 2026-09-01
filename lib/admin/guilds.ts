@@ -1,5 +1,6 @@
 import "server-only";
-import { fetchGuildWidgetName } from "@/lib/discord";
+import { configuredWebhookUrl, maskWebhookUrl } from "@/lib/discord/webhook";
+import { fetchGuildWidgetName } from "@/lib/discord/widget";
 import { prisma } from "@/lib/prisma";
 import type { ApiAuthorizedGuild, ApiGuildAccess } from "./settings";
 
@@ -81,6 +82,8 @@ export async function readGuildAccess(viewerGuildId: string | null = null): Prom
         guildId: true,
         name: true,
         locked: true,
+        webhookUrl: true,
+        notify: true,
         addedBy: { select: { username: true } },
       },
     }),
@@ -104,9 +107,16 @@ export async function readGuildAccess(viewerGuildId: string | null = null): Prom
     fromConfig: false,
     addedBy: row.addedBy.username,
     isViewerGuild: row.guildId === viewerGuildId,
+    // Tronqué, jamais entier : le jeton d'un webhook vaut droit d'écriture dans le
+    // salon, et l'écran n'a besoin que de dire « il y en a un, et lequel ».
+    webhook: row.webhookUrl ? maskWebhookUrl(row.webhookUrl) : null,
+    webhookFromConfig: false,
+    notify: row.notify,
   }));
 
   if (configured) {
+    const configuredWebhook = configuredWebhookUrl();
+
     guilds.unshift({
       // Pas de ligne en base : rien à modifier ni à supprimer, d'où l'identifiant nul.
       id: null,
@@ -119,6 +129,12 @@ export async function readGuildAccess(viewerGuildId: string | null = null): Prom
       fromConfig: true,
       addedBy: null,
       isViewerGuild: configured === viewerGuildId,
+      webhook: configuredWebhook ? maskWebhookUrl(configuredWebhook) : null,
+      webhookFromConfig: true,
+      // Ce serveur n'a pas de ligne : il n'a nulle part où ranger un interrupteur. La
+      // présence de `DISCORD_WEBHOOK_URL` en tient lieu, comme pour son accès —
+      // tout ce qui le concerne se règle au déploiement.
+      notify: configuredWebhook !== null,
     });
   }
 
@@ -133,12 +149,51 @@ export async function readGuildAccess(viewerGuildId: string | null = null): Prom
 export async function addAuthorizedGuild(input: {
   guildId: string;
   name: string | null;
+  /** US-L1/L2 — le salon de ce groupe, s'il est connu dès l'ouverture de l'accès. */
+  webhookUrl: string | null;
   actorId: string;
 }) {
   const name = input.name ?? (await fetchGuildWidgetName(input.guildId));
 
   return prisma.authorizedGuild.create({
-    data: { guildId: input.guildId, name, addedById: input.actorId },
+    data: {
+      guildId: input.guildId,
+      name,
+      webhookUrl: input.webhookUrl,
+      addedById: input.actorId,
+    },
     select: { id: true, guildId: true, name: true, locked: true },
   });
+}
+
+/**
+ * US-L1/L2 — le salon où prévenir ce serveur-là, ou `null` s'il n'y a rien à prévenir.
+ *
+ * C'est ici que se décide « par serveur et non global » : une soirée appartient à un
+ * serveur (`Soiree.guildId`), un mod est proposé par un membre entré par un serveur, et
+ * chacun n'est annoncé que dans le salon de ce serveur. Deux groupes qui partagent le
+ * catalogue ne partagent pas leurs salons.
+ *
+ * Trois façons de ne rien envoyer, toutes normales : pas de webhook renseigné, un
+ * interrupteur sur « non », ou un serveur inconnu de la liste. Une base injoignable
+ * donne le même résultat — sans savoir où écrire, on n'écrit pas ; c'est le seul cas où
+ * une annonce se perd sans que personne ne l'ait voulu, et il est dans les logs.
+ */
+export async function guildWebhookUrl(guildId: string | null): Promise<string | null> {
+  if (!guildId) return null;
+
+  // Le serveur du déploiement n'a pas de ligne : son salon est dans l'environnement,
+  // et `POST /api/admin/guilds` refuse qu'on lui en crée une.
+  if (guildId === configuredGuildId()) return configuredWebhookUrl();
+
+  try {
+    const row = await prisma.authorizedGuild.findUnique({
+      where: { guildId },
+      select: { webhookUrl: true, notify: true },
+    });
+    return row?.notify ? row.webhookUrl : null;
+  } catch (error) {
+    console.error("guildWebhookUrl", error);
+    return null;
+  }
 }

@@ -303,18 +303,14 @@ export const currentSession = {
 
 /**
  * Ce qui reste de maquette dans l'espace admin. Le tableau de modération, le journal
- * des suppressions, le plafond d'upload (US-K2/K3), le serveur autorisé et la liste des
- * membres sont désormais réels ; ne subsistent ici que la rétention des fichiers, dont
- * le cahier §2.7 fixe la durée « simple et fixe », et la notification Discord, qui
- * n'aura de sens que le jour où un webhook sera branché derrière.
+ * des suppressions, le plafond d'upload (US-K2/K3), les serveurs autorisés, la liste
+ * des membres et les notifications Discord (US-L1/L2) sont désormais réels ; ne
+ * subsiste ici que la rétention des fichiers, dont le cahier §2.7 fixe la durée
+ * « simple et fixe ».
  */
 export const admin = {
   settings: {
     retentionHours: 24,
     lastCleanupLabel: "07:00 · 3 fichiers",
-  },
-  access: {
-    notifyDiscord: true,
-    webhookChannel: "#salon-mods",
   },
 };

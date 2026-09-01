@@ -35,11 +35,10 @@ interface AdminViewProps {
  * sont dans `layout.tsx`, et il n'y a donc plus rien à vérifier à ce niveau. La mise en
  * page ne fait que répartir les panneaux, qui portent chacun leurs propres écritures.
  *
- * Ce qui reste de maquette : la rétention des fichiers (dont le cahier §2.7 fixe la
- * durée, non modifiable) et la notification Discord, qui n'a pas de webhook derrière
- * elle (panneau ACCÈS). Le reste est lu en base ou dans la configuration, « MEMBRES » compris — le
- * serveur affiché en face de chaque membre est celui devant lequel sa dernière
- * connexion l'a vérifié, pas celui qu'on suppose.
+ * Ce qui reste de maquette : la rétention des fichiers, dont le cahier §2.7 fixe la
+ * durée, non modifiable. Le reste est lu en base ou dans la configuration, « MEMBRES »
+ * compris — le serveur affiché en face de chaque membre est celui devant lequel sa
+ * dernière connexion l'a vérifié, pas celui qu'on suppose.
  */
 export function AdminView({ mods, tags, deletions, config, members, access }: AdminViewProps) {
   return (

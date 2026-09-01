@@ -97,14 +97,14 @@ model Mod {
   authorId String
   author   User   @relation(fields: [authorId], references: [id])
 
-  tags    ModTag[]
-  votes   Vote[]
+  tags          ModTag[]
+  votes         Vote[]
   /// Liens secondaires ajoutés par les membres (miroir, pack de textures, patch…).
   /// Le lien du cahier §2.2 reste `url` : c'est lui que porte le bouton de
   /// téléchargement et lui seul qui sert la détection de doublons (`urlKey`).
-  links   ModLink[]
+  links         ModLink[]
   /// Engagements de cette fiche dans des soirées (US-G2).
-  soirees SoireeMod[]
+  soirees       SoireeMod[]
   /// Ce que les membres y ont corrigé depuis sa création (cahier §2.2).
   contributions ModContribution[]
 
@@ -179,7 +179,7 @@ model ModContribution {
   modId String
   mod   Mod    @relation(fields: [modId], references: [id], onDelete: Cascade)
 
-  kind ContributionKind
+  kind   ContributionKind
   /// Ce sur quoi portait le geste, quand le genre ne suffit pas à le dire : le nom du
   /// tag ajouté, l'intitulé du lien retiré, l'ancien nom de la fiche. Le libellé complet
   /// est composé à l'affichage — le stocker figerait la formulation en base.
@@ -360,6 +360,24 @@ model AuthorizedGuild {
   /// sa prochaine connexion : le verrou est là pour que ça ne se fasse pas d'un clic
   /// distrait, et il se lève depuis le même écran.
   locked Boolean @default(false)
+
+  /// US-L1/L2 — le webhook du salon où ce groupe est prévenu : une soirée programmée
+  /// pour lui, un mod proposé par l'un des siens. Nul : ce groupe n'est prévenu de
+  /// rien, et c'est le cas au départ.
+  ///
+  /// Par serveur et non global : deux groupes n'ont aucune raison de lire les annonces
+  /// l'un de l'autre, et le salon de l'un n'est pas ouvert à l'autre. Le serveur du
+  /// déploiement n'a pas de ligne ici — son webhook reste dans `DISCORD_WEBHOOK_URL`,
+  /// comme son identifiant reste dans `DISCORD_GUILD_ID`.
+  ///
+  /// C'est un secret : qui l'a peut écrire dans le salon. Il ne ressort jamais tel quel
+  /// vers le navigateur, l'espace admin n'en voit qu'une forme tronquée.
+  webhookUrl String?
+
+  /// US-L2 — l'interrupteur des annonces de ce serveur. Distinct de `webhookUrl` pour
+  /// qu'on puisse taire un salon quelques semaines sans avoir à retrouver son URL
+  /// ensuite.
+  notify Boolean @default(true)
 
   addedById String
   addedBy   User   @relation(fields: [addedById], references: [id])

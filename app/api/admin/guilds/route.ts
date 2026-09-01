@@ -7,6 +7,7 @@ import {
   readGuildAccess,
 } from "@/lib/admin/guilds";
 import type { ApiGuildAccess } from "@/lib/admin/settings";
+import { isDiscordWebhookUrl, WEBHOOK_URL_ERROR } from "@/lib/discord/webhook";
 
 /** La liste des serveurs autorisés, pour l'espace admin (US-K1). */
 export async function GET() {
@@ -31,6 +32,10 @@ export async function GET() {
  *
  * Réservé aux admins, comme toute la section : ajouter un serveur, c'est ouvrir la
  * porte à tout un groupe.
+ *
+ * US-L1/L2 — le salon d'annonces de ce groupe (`webhookUrl`) se renseigne dès ici,
+ * facultativement : c'est le moment où on l'a sous la main. Il se pose aussi bien plus
+ * tard, depuis la ligne du serveur.
  */
 export async function POST(request: Request) {
   const guard = await requireAdmin();
@@ -50,6 +55,7 @@ export async function POST(request: Request) {
   const body = payload as Record<string, unknown>;
   const guildId = typeof body.guildId === "string" ? body.guildId.trim() : "";
   const rawName = typeof body.name === "string" ? body.name.trim() : "";
+  const rawWebhook = typeof body.webhookUrl === "string" ? body.webhookUrl.trim() : "";
 
   if (!isGuildId(guildId)) {
     return Response.json(
@@ -71,6 +77,16 @@ export async function POST(request: Request) {
     );
   }
 
+  if (rawWebhook !== "" && !isDiscordWebhookUrl(rawWebhook)) {
+    return Response.json(
+      {
+        error: "Formulaire invalide.",
+        fieldErrors: { webhookUrl: WEBHOOK_URL_ERROR },
+      },
+      { status: 400 },
+    );
+  }
+
   // Le serveur du déploiement autorise déjà l'accès : une ligne de plus ne changerait
   // rien, sinon donner l'illusion qu'on peut le retirer d'ici.
   if (guildId === configuredGuildId()) {
@@ -87,6 +103,7 @@ export async function POST(request: Request) {
     await addAuthorizedGuild({
       guildId,
       name: rawName || null,
+      webhookUrl: rawWebhook || null,
       actorId: guard.actor.id,
     });
   } catch (error) {

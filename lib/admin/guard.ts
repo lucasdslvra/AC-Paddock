@@ -14,6 +14,10 @@ import { prisma } from "@/lib/prisma";
  * changement de rôle ne garde aucun droit périmé — la même règle que partout ailleurs
  * (`DELETE /api/mods/[id]`, `POST /api/soirees`).
  *
+ * Le pseudo vient avec le rôle : les écritures d'admin se racontent — au journal des
+ * suppressions comme dans le salon Discord (US-L1) —, et le relire plus tard coûterait
+ * un aller-retour de plus pour une colonne déjà sur la ligne.
+ *
  * Renvoie soit l'acteur, soit la réponse à retourner telle quelle :
  *
  * ```ts
@@ -21,7 +25,12 @@ import { prisma } from "@/lib/prisma";
  * if (!guard.ok) return guard.response;
  * ```
  */
-export type AdminGuard = { ok: true; actor: Actor } | { ok: false; response: Response };
+/** L'acteur d'une écriture d'admin : de quoi vérifier son droit, et de quoi le nommer. */
+export type AdminActor = Actor & { username: string };
+
+export type AdminGuard =
+  | { ok: true; actor: AdminActor }
+  | { ok: false; response: Response };
 
 export async function requireAdmin(): Promise<AdminGuard> {
   const session = await auth();
@@ -35,7 +44,7 @@ export async function requireAdmin(): Promise<AdminGuard> {
   // Pas de ligne `User` tant que le membre n'a rien écrit : il n'est alors pas admin.
   const actor = await prisma.user.findUnique({
     where: { discordId: session.user.id },
-    select: { id: true, role: true },
+    select: { id: true, role: true, username: true },
   });
 
   if (actor?.role !== "ADMIN") {

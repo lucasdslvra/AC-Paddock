@@ -1,5 +1,7 @@
+import { after } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
+import { notifyModCreated, requestOrigin } from "@/lib/discord/notify";
 import type { ModOrderByWithRelationInput, ModWhereInput } from "@/lib/generated/prisma/models";
 import { escapeLikeWildcards } from "@/lib/mods/like";
 import {
@@ -229,6 +231,31 @@ export async function POST(request: Request) {
       },
       include: modInclude(session.user.id, soiree),
     });
+
+    // US-L2 — l'annonce dans le salon Discord, après la réponse : le membre qui vient
+    // de proposer sa fiche voit sa page sans attendre Discord, et un salon injoignable
+    // ne fait pas échouer une création. `after` garde l'invocation ouverte le temps de
+    // l'envoi, y compris en serverless.
+    const origin = requestOrigin(request);
+    after(() =>
+      notifyModCreated({
+        id: mod.id,
+        // Le serveur de l'auteur : c'est son groupe qui est prévenu de ce qu'il
+        // propose. La fiche, elle, entre au catalogue commun.
+        guildId: soiree.guildId,
+        name: mod.name,
+        type: mod.type,
+        url: mod.url,
+        description: mod.description,
+        imageUrl: mod.imageUrl,
+        tags: mod.tags.map((entry) => entry.tag.name),
+        author: author.username,
+        // La soirée n'est citée que si la fiche y a réellement été engagée : `engage`
+        // sans soirée programmée n'engage rien (voir la création juste au-dessus).
+        engagedIn: engage && soiree.current ? soiree.current : null,
+        origin,
+      }),
+    );
 
     return Response.json(serializeMod(mod, soiree.current?.id ?? null), { status: 201 });
   } catch (error) {

@@ -1,6 +1,8 @@
+import { after } from "next/server";
 import { auth } from "@/auth";
 import { recordDeletion } from "@/lib/admin/deletion-log";
 import { requireAdmin } from "@/lib/admin/guard";
+import { notifySoireeCancelled } from "@/lib/discord/notify";
 import { prisma } from "@/lib/prisma";
 import { soireeContext } from "@/lib/soirees/current";
 import { formatSoireeDate } from "@/lib/soirees/format";
@@ -74,6 +76,10 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/soirees/[id
  * les soirées à un serveur (US-G1), il faut donc qu'il puisse reprendre celles qu'il a
  * posées ailleurs — y compris dans un serveur retiré depuis de la liste des autorisés,
  * qui resterait sinon impossible à nettoyer.
+ *
+ * US-L1 — le salon du serveur concerné est prévenu, mais seulement d'une soirée encore
+ * à venir : c'est ce qu'« annulée » veut dire. Défaire une soirée dont l'heure est
+ * passée est un ménage d'archive — trier les anciennes ne doit rien annoncer du tout.
  */
 export async function DELETE(_request: Request, ctx: RouteContext<"/api/soirees/[id]">) {
   const guard = await requireAdmin();
@@ -84,7 +90,14 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/soirees/
   try {
     const soiree = await prisma.soiree.findUnique({
       where: { id },
-      select: { id: true, name: true, date: true, _count: { select: { mods: true } } },
+      // `guildId` : c'est le salon de ce serveur-là, et de lui seul, qui est prévenu.
+      select: {
+        id: true,
+        name: true,
+        date: true,
+        guildId: true,
+        _count: { select: { mods: true } },
+      },
     });
 
     if (!soiree) {
@@ -107,6 +120,27 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/soirees/
       asAdmin: true,
       actorId: guard.actor.id,
     });
+
+    // US-L1 — l'annonce part après la réponse, comme celle de la création : la
+    // suppression est faite, et Discord ne doit ni la retarder ni pouvoir la faire
+    // échouer.
+    //
+    // Le seuil est l'instant présent, et non le début du jour de `currentSoiree` : une
+    // soirée dont l'heure est passée a eu lieu, la défaire est du rangement. Ce n'est
+    // donc pas tout à fait « la soirée en cours » qu'on annonce, mais « une soirée qui
+    // n'a pas encore commencé » — la seule qu'on puisse encore annuler à quelqu'un.
+    if (soiree.date > new Date()) {
+      after(() =>
+        notifySoireeCancelled({
+          guildId: soiree.guildId,
+          name: soiree.name,
+          date: soiree.date,
+          cancelledBy: guard.actor.username,
+          modCount: soiree._count.mods,
+          voteCount,
+        }),
+      );
+    }
 
     return new Response(null, { status: 204 });
   } catch (error) {

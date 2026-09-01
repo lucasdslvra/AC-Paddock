@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { fetchGuildWidgetName } from "@/lib/discord";
+import { fetchGuildWidgetName } from "@/lib/discord/widget";
 import { countSiteStats, type SiteStats } from "@/lib/stats";
 import { LoginView } from "./LoginView";
 

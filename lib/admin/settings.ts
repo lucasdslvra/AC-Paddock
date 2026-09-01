@@ -134,6 +134,24 @@ export interface ApiAuthorizedGuild {
   addedBy: string | null;
   /** Vrai s'il s'agit du serveur par lequel le membre qui regarde est entré. */
   isViewerGuild: boolean;
+
+  /**
+   * US-L1/L2 — le salon où ce serveur est prévenu, sous forme tronquée
+   * (« discord.com/…/1403926…/•••• »). `null` : aucun webhook, ce groupe n'est prévenu
+   * de rien.
+   *
+   * Jamais l'URL complète : son jeton vaut droit d'écriture dans le salon, et il n'a
+   * aucune raison de traverser le réseau vers un navigateur. Renseigner un webhook, ici,
+   * c'est toujours en poser un nouveau — jamais modifier celui qu'on lit.
+   */
+  webhook: string | null;
+  /** Vrai si ce webhook vient de `DISCORD_WEBHOOK_URL` : il se change au déploiement. */
+  webhookFromConfig: boolean;
+  /**
+   * US-L2 — les annonces partent-elles vers ce serveur. Distinct de `webhook` : taire
+   * un salon ne coûte pas son adresse. Sans webhook, rien ne part quoi qu'il vaille.
+   */
+  notify: boolean;
 }
 
 /** Le panneau « ACCÈS » en entier. */

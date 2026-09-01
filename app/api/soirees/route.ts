@@ -1,5 +1,7 @@
+import { after } from "next/server";
 import { auth } from "@/auth";
 import { authorizedGuildIds } from "@/lib/admin/guilds";
+import { notifySoireeCreated, requestOrigin } from "@/lib/discord/notify";
 import { prisma } from "@/lib/prisma";
 import { sessionGuildId, upsertSessionUser } from "@/lib/session-user";
 import { currentSoireeId, startOfToday } from "@/lib/soirees/current";
@@ -188,6 +190,24 @@ export async function POST(request: Request) {
         createdById: actor.id,
       },
     });
+
+    // US-L1 — l'annonce dans le salon Discord, après la réponse : elle dépend d'un
+    // service tiers, et l'admin qui vient de créer la soirée n'a pas à attendre que
+    // Discord réponde pour voir sa soirée apparaître. `after` garde l'invocation
+    // ouverte le temps de l'envoi, y compris en serverless.
+    const origin = requestOrigin(request);
+    after(() =>
+      notifySoireeCreated({
+        id: soiree.id,
+        // Le salon prévenu est celui de ce serveur-là, pas de celui de l'admin : il
+        // peut programmer une soirée pour un groupe dont il n'est pas.
+        guildId: soiree.guildId,
+        name: soiree.name,
+        date: soiree.date,
+        createdBy: actor.username,
+        origin,
+      }),
+    );
 
     return Response.json({ id: soiree.id }, { status: 201 });
   } catch (error) {

@@ -454,3 +454,47 @@ model AppConfig {
 
   @@index([updatedById])
 }
+
+/// US-H1 — une place retenue dans le bucket Cloudflare, le temps qu'un envoi aboutisse.
+///
+/// Le quota global (`MAX_TOTAL_STORAGE_BYTES`) se vérifie au moment de signer l'URL
+/// d'écriture. Mais un objet n'apparaît dans le bucket qu'une fois l'envoi **terminé** :
+/// entre la signature et la fin du transfert — jusqu'à une heure pour 1 Go — il ne pèse
+/// rien de mesurable. Deux membres qui démarrent en même temps passeraient donc tous
+/// les deux le même contrôle, et le bucket finirait au-delà du plafond.
+///
+/// Une ligne est donc posée à la signature et retirée à la confirmation : elle compte
+/// dans le total tant que l'envoi est en vol. C'est ce qui fait que « 10 Go » veut dire
+/// quelque chose même quand plusieurs personnes envoient à la fois.
+model ModFileReservation {
+  id String @id @default(cuid())
+
+  /// La clé de l'objet que cet envoi va écrire — une URL signée, une réservation.
+  /// C'est aussi par elle que la confirmation retrouve la ligne à retirer.
+  key String @unique
+
+  /// La fiche visée. Sans relation ni cascade : une réservation ne survit de toute
+  /// façon pas à l'heure qui suit, et une fiche supprimée entre-temps laisse une ligne
+  /// que `expiresAt` emporte. Une clé étrangère ferait échouer la suppression d'une
+  /// fiche pendant qu'un envoi est en vol, ce qui serait pire.
+  modId String
+
+  /// Taille annoncée par le client, en octets. Elle n'engage que la réservation : la
+  /// taille réelle est relue sur l'objet déposé (US-H2), et c'est elle qui compte
+  /// ensuite dans le total, puisque l'objet est alors dans le bucket.
+  ///
+  /// `Int` tient jusqu'à ~2 Gio, et une réservation ne peut pas les atteindre : la
+  /// taille annoncée est refusée au-dessus du plafond par fichier (1 Gio au maximum,
+  /// `MAX_MOD_FILE_MO`) avant qu'on arrive ici. Leur **somme**, elle, dépasse la borne
+  /// — mais Postgres agrège un `integer` en `bigint`, et le total ne repasse jamais
+  /// par cette colonne.
+  bytes Int
+
+  createdAt DateTime @default(now())
+
+  /// Au-delà, la réservation ne compte plus : l'URL signée a expiré, l'envoi ne peut
+  /// plus aboutir. Les lignes périmées sont ramassées par le balayage horaire d'US-H3.
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}

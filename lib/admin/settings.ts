@@ -28,6 +28,26 @@ export const MAX_MOD_FILE_MO = 1024;
 export const DEFAULT_MOD_FILE_MO = 1024;
 
 export const MO = 1024 * 1024;
+export const GO = 1024 * MO;
+
+/**
+ * Le total que le bucket Cloudflare R2 a le droit de porter, tous fichiers confondus.
+ *
+ * Le plafond d'US-K3 borne **un** envoi ; il ne borne pas leur somme. Sans celui-ci, dix
+ * fichiers de 1 Go coexisteraient sans qu'aucune règle ne s'y oppose, et le palier
+ * gratuit de R2 — 10 Go — serait dépassé sans prévenir.
+ *
+ * Une constante et non un réglage administrable : ce n'est pas une préférence d'usage
+ * mais la limite du contrat avec l'hébergeur. La descendre est une décision qui se prend
+ * en connaissance du plan Cloudflare, pas depuis un curseur.
+ *
+ * Nuance à connaître si la marge devient étroite : ce sont ici des gibioctets (base
+ * 1024, comme tout le reste du projet), quand les 10 Go de Cloudflare sont des
+ * gigaoctets décimaux — soit 7 % de moins. Ça n'a pas d'importance en pratique, parce que
+ * R2 facture une **moyenne mensuelle** et que les fichiers ne vivent que 24 h : le
+ * plafond n'est atteint que par à-coups, jamais tenu sur un mois.
+ */
+export const MAX_TOTAL_STORAGE_BYTES = 10 * GO;
 
 /**
  * Ramène une saisie quelconque à un nombre de mégaoctets valide, ou `null`.

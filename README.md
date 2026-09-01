@@ -633,6 +633,37 @@ C'est aussi cette règle qui rend tenable le plafond de **1 Go** (`MAX_MOD_FILE_
 n'est jamais tout le catalogue qui pèse à la fois, mais la poignée de mods d'une soirée,
 et pendant 24 h au plus.
 
+### Le quota global du bucket
+
+Le plafond d'US-K3 borne **un** envoi ; il ne borne pas leur somme. `MAX_TOTAL_STORAGE_BYTES`
+(10 Go) borne ce que le bucket porte en tout, pour rester dans le palier gratuit de
+Cloudflare.
+
+L'occupation est mesurée sur le bucket (`totalStoredBytes`, un `ListObjectsV2`) et non
+déduite de la base : c'est ce que Cloudflare facture, et ça comprend ce que la base
+ignore — les objets d'envois abandonnés, ou qu'un retrait raté a laissés. Compter depuis
+les seules fiches sous-estimerait l'occupation, précisément quand on a besoin de la
+connaître.
+
+**La réservation.** Un objet n'apparaît dans le bucket qu'une fois l'envoi *terminé* —
+jusqu'à une heure pour 1 Go. Pendant ce temps un envoi en vol ne pèse rien de mesurable,
+et deux membres qui démarrent ensemble passeraient tous les deux le même contrôle. D'où
+`ModFileReservation` : une ligne posée à la signature, retirée à la confirmation, comptée
+dans le total tant que l'envoi est en vol. Les lignes périmées sont ignorées à la lecture
+et ramassées par le balayage horaire.
+
+La réservation lit puis écrit sans verrou : deux demandes rigoureusement simultanées
+peuvent lire le même total et réserver toutes les deux. C'est assumé — la fenêtre se
+compte en millisecondes, le dépassement possible est borné par un fichier, et le prix
+d'une transaction sérialisable ne se justifie pas contre ça. Sans réservation du tout, la
+fenêtre était d'une heure.
+
+`POST /api/mods/[id]/upload` refuse en **507** quand la place manque, avec un message qui
+dit combien il reste et que ça se libère tout seul — « c'est plein » n'indiquerait pas
+quoi faire. L'occupation n'est pas affichée sur la fiche : ça coûterait un appel à
+Cloudflare à chaque ouverture de page, pour une information qui n'est utile qu'au moment
+du refus.
+
 ### La planification
 
 Elle vit dans la base, pas dans `vercel.json` : le cahier §2.7 demande **plusieurs

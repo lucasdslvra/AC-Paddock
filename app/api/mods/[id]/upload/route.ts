@@ -10,6 +10,7 @@ import {
   uploadDisabledReason,
 } from "@/lib/mods/file";
 import { modInclude, serializeMod } from "@/lib/mods/serialize";
+import { releaseStorage, reserveStorage, storageFullMessage } from "@/lib/mods/storage-quota";
 import { prisma } from "@/lib/prisma";
 import {
   buildModFileKey,
@@ -19,6 +20,7 @@ import {
   modFilePublicUrl,
   presignModFileUpload,
   readModFileHead,
+  UPLOAD_URL_TTL_SECONDS,
   type StoredModFile,
 } from "@/lib/r2/storage";
 import { soireeContext } from "@/lib/soirees/current";
@@ -47,6 +49,12 @@ import { soireeContext } from "@/lib/soirees/current";
  * déposer sur une fiche que personne n'a engagée reviendrait à le voir expirer sans
  * avoir servi. C'est aussi ce qui borne ce que le bucket porte à un instant donné, et
  * rend tenable le plafond de 1 Go d'US-K3.
+ *
+ * Un second plafond, global celui-là, borne ce que le bucket porte en tout
+ * (`MAX_TOTAL_STORAGE_BYTES`) : sans lui, dix fichiers de 1 Go sortiraient du palier
+ * gratuit de Cloudflare sans qu'aucune règle ne s'y oppose. Comme un objet n'apparaît
+ * dans le bucket qu'une fois l'envoi terminé, la place est **retenue** dès la signature
+ * (lib/mods/storage-quota.ts) et rendue à la confirmation.
  *
  * US-H2 — la validation est en deux couches, parce qu'elles ne protègent pas de la même
  * chose. Avant de signer, la route relit l'extension et la taille annoncée : ça épargne
@@ -118,6 +126,20 @@ export async function POST(request: Request, ctx: RouteContext<"/api/mods/[id]/u
     }
 
     const key = buildModFileKey(id, filename);
+
+    // La place est retenue avant de signer : au retour de cette route, le membre part
+    // envoyer son fichier, et rien ne le recroisera avant la confirmation.
+    const expiresAt = new Date(Date.now() + UPLOAD_URL_TTL_SECONDS * 1000);
+    const reservation = await reserveStorage(key, id, size, expiresAt);
+    if (!reservation.ok) {
+      // 507 : la demande est valide, c'est la place qui manque. Le message dit combien
+      // il reste et que ça se libère tout seul — « c'est plein » n'indiquerait pas quoi
+      // faire.
+      return Response.json(
+        { error: storageFullMessage(reservation.usage) },
+        { status: 507 },
+      );
+    }
 
     return Response.json(
       {
@@ -241,6 +263,12 @@ export async function PUT(request: Request, ctx: RouteContext<"/api/mods/[id]/up
   const soiree = await soireeContext(session);
 
   try {
+    // La réservation a fait son office : ou bien l'objet est dans le bucket, où il compte
+    // désormais pour ce qu'il pèse vraiment, ou bien l'envoi a échoué et il n'y a rien à
+    // retenir. Libérée avant les refus qui suivent, pour qu'un fichier rejeté ne garde
+    // pas sa place jusqu'à l'expiration de l'URL signée.
+    await releaseStorage(key);
+
     const [existing, maxBytes] = await Promise.all([
       prisma.mod.findUnique({ where: { id }, select: { fileUrl: true } }),
       maxModFileBytes(),

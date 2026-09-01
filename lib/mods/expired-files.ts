@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { deleteModFile, modFileKeyFromUrl } from "@/lib/r2/storage";
 import { MOD_FILE_TTL_HOURS } from "./file";
+import { purgeExpiredReservations } from "./storage-quota";
 
 /**
  * US-H3 / cahier §2.7 — tout fichier déposé saute 24 h après son upload, quelle que
@@ -23,6 +24,12 @@ export interface ExpiredFilesSweepResult {
    * balayage suivant : c'est la raison pour laquelle `fileUrl` n'est pas vidé d'office.
    */
   failed: number;
+  /**
+   * Réservations de place périmées, retirées au passage (US-H1). Sans ce ménage elles
+   * s'accumuleraient : une lecture du quota les ignore déjà, mais la table grossirait
+   * indéfiniment d'envois abandonnés.
+   */
+  reservations: number;
 }
 
 /**
@@ -76,5 +83,10 @@ export async function sweepExpiredModFiles(
     }
   }
 
-  return { expired: expired.length, deleted, failed };
+  return {
+    expired: expired.length,
+    deleted,
+    failed,
+    reservations: await purgeExpiredReservations(now),
+  };
 }

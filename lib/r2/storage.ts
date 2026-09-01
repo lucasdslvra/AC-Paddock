@@ -3,6 +3,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -124,7 +125,7 @@ export function buildModFileKey(modId: string, filename: string): string {
  * 403 après vingt minutes d'envoi serait une façon particulièrement pénible de se
  * tromper — la marge ne coûte rien.
  */
-const UPLOAD_URL_TTL_SECONDS = 60 * 60;
+export const UPLOAD_URL_TTL_SECONDS = 60 * 60;
 
 /**
  * Une URL d'écriture à durée de vie courte, que le navigateur consomme en `PUT`.
@@ -186,6 +187,34 @@ export async function readModFileHead(key: string, bytes: number): Promise<Uint8
   );
 
   return response.Body ? await response.Body.transformToByteArray() : new Uint8Array();
+}
+
+/**
+ * Le total réellement occupé dans le bucket, en octets.
+ *
+ * Mesuré sur le bucket et non déduit de la base : c'est ce que Cloudflare facture, et ça
+ * comprend ce que la base ignore — les objets d'envois abandonnés entre la signature et
+ * la confirmation, ou qu'un retrait raté a laissés derrière. Compter à partir des seules
+ * fiches sous-estimerait donc l'occupation, précisément dans les cas où on a besoin de
+ * la connaître.
+ *
+ * Une passe de `ListObjectsV2` par millier d'objets. À l'échelle d'un groupe, dont les
+ * fichiers ne vivent que 24 h, c'est un seul appel.
+ */
+export async function totalStoredBytes(): Promise<number> {
+  let total = 0;
+  let token: string | undefined;
+
+  do {
+    const page = await r2().send(
+      new ListObjectsV2Command({ Bucket: modFilesBucket(), ContinuationToken: token }),
+    );
+    for (const object of page.Contents ?? []) total += object.Size ?? 0;
+    // `NextContinuationToken` n'est présent que si la page est tronquée.
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
+
+  return total;
 }
 
 export async function deleteModFile(key: string): Promise<void> {

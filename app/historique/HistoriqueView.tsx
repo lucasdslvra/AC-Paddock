@@ -5,7 +5,11 @@ import { StatBlock } from "@/components/StatBlock";
 import { formatSoireeDay, formatSoireeMonth } from "@/lib/soirees/format";
 import type { ApiPastSoiree } from "@/lib/soirees/serialize";
 
-/** Combien de mods du podium une ligne détaille, nom et score compris. */
+/**
+ * Combien de véhicules retenus une ligne détaille, nom et score compris. Le circuit
+ * retenu s'affiche en plus, toujours : il n'y en a qu'un (`RETAINED_COUNT.TRACK`), et
+ * c'est ce qui dit le plus d'une soirée passée.
+ */
 const PODIUM_SIZE = 3;
 
 /** Combien de vignettes une ligne montre avant de résumer le reste en « +N ». */
@@ -115,8 +119,8 @@ export function HistoriqueView({ soirees, memberCount }: HistoriqueViewProps) {
         <div className="flex flex-col gap-[9px] p-[18px_22px_22px]">
           <div className="hidden grid-cols-[150px_1fr_260px_92px] gap-4 px-[15px] pb-[7px] font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)] md:grid">
             <span>DATE / THÈME</span>
-            <span>PODIUM</span>
-            <span>MODS ENGAGÉS</span>
+            <span>RETENUS</span>
+            <span>VÉHICULES RETENUS</span>
             <span className="text-right">VOTANTS</span>
           </div>
 
@@ -136,11 +140,13 @@ function PastSoireeRow({
   soiree: ApiPastSoiree;
   memberCount: number;
 }) {
-  const podium = soiree.mods.slice(0, PODIUM_SIZE);
-  const thumbnails = soiree.mods.slice(0, THUMBNAILS);
-  // Comptés sur le total de la soirée, pas sur les mods chargés : la liste est bornée
-  // (`PAST_SOIREE_PREVIEW_MODS`), le compteur ne l'est pas.
-  const extra = soiree.modCount - thumbnails.length;
+  const podium = soiree.cars.slice(0, PODIUM_SIZE);
+  const thumbnails = soiree.cars.slice(0, THUMBNAILS);
+  // Comptés sur le total des engagements de la soirée, pas sur les mods chargés : la
+  // ligne ne montre que ce qui a été retenu (`pastSoireeInclude`), le compteur dit
+  // combien de propositions il y avait derrière. Le circuit retenu est affiché lui
+  // aussi : il ne compte donc pas dans le reste.
+  const extra = soiree.modCount - thumbnails.length - (soiree.track ? 1 : 0);
 
   return (
     <article className="grid grid-cols-1 items-center gap-4 rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[14px_15px] md:grid-cols-[150px_1fr_260px_92px]">
@@ -157,10 +163,28 @@ function PastSoireeRow({
       </div>
 
       <div className="flex flex-col gap-[5px]">
+        {/* Le circuit d'abord : il n'y en a qu'un, et c'est la première chose qu'on
+            cherche en relisant une soirée — sur quoi a-t-on roulé ? */}
+        {soiree.track && (
+          <div className="flex items-center gap-[9px]">
+            <span className="font-mono text-[9.5px] text-[var(--color-text-faint)]">circuit</span>
+            <Link
+              href={`/mods/${soiree.track.modId}`}
+              className="link-title font-sans text-[13px] font-medium"
+            >
+              {soiree.track.name}
+            </Link>
+            <span className="font-mono text-[9.5px] text-[var(--color-text-muted)]">
+              {soiree.track.votes} vote{soiree.track.votes > 1 ? "s" : ""}
+            </span>
+          </div>
+        )}
         {podium.length === 0 ? (
-          <span className="font-mono text-[10.5px] text-[var(--color-text-muted)]">
-            aucun mod engagé
-          </span>
+          !soiree.track && (
+            <span className="font-mono text-[10.5px] text-[var(--color-text-muted)]">
+              aucun mod retenu
+            </span>
+          )
         ) : (
           podium.map((entry, index) => (
             <div key={entry.modId} className="flex items-center gap-[9px]">

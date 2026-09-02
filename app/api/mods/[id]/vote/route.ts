@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { sessionGuildId, upsertSessionUser } from "@/lib/session-user";
 import { currentSoireeId } from "@/lib/soirees/current";
-import { readVoteState } from "@/lib/soirees/vote";
+import { castVote, readVoteState } from "@/lib/soirees/vote";
 
 /**
  * Voter pour un mod depuis le catalogue ou depuis sa fiche (US-F1), c'est-à-dire sans
@@ -33,7 +33,10 @@ async function resolveEngagement(modId: string, session: Session) {
 
   const engagement = await prisma.soireeMod.findUnique({
     where: { soireeId_modId: { soireeId, modId } },
-    select: { id: true },
+    // Le type de la fiche vient avec l'engagement : c'est lui qui désigne le quota du
+    // membre (8 véhicules, 3 circuits — `VOTE_QUOTA`), et le relire à part ferait un
+    // aller-retour de plus pour une colonne déjà sur le chemin.
+    select: { id: true, soireeId: true, mod: { select: { type: true } } },
   });
 
   if (!engagement) {
@@ -71,12 +74,19 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/mods/[id]/
     // bien ne pas exister encore.
     const voter = await upsertSessionUser(session.user);
 
-    // L'unicité `@@unique([userId, soireeModId])` fait le travail : deux clics partis
-    // en même temps ne produisent pas deux lignes, et re-voter répond le même état.
-    await prisma.vote.createMany({
-      data: { userId: voter.id, modId: id, soireeModId: resolved.engagement.id },
-      skipDuplicates: true,
+    // `castVote` porte la règle des quotas et l'idempotence : re-voter redit le même
+    // état, et le vote de trop est refusé — ici comme depuis la page soirée, puisque
+    // c'est la même ligne qui s'écrit.
+    const rejected = await castVote({
+      userId: voter.id,
+      modId: id,
+      type: resolved.engagement.mod.type,
+      soireeId: resolved.engagement.soireeId,
+      soireeModId: resolved.engagement.id,
     });
+    if (rejected) {
+      return Response.json({ error: rejected.error }, { status: rejected.status });
+    }
 
     return Response.json(await readVoteState(id, resolved.engagement.id, true));
   } catch (error) {

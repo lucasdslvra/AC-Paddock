@@ -1,6 +1,74 @@
 import "server-only";
+import type { ModType } from "@/lib/generated/prisma/enums";
 import type { VoteState } from "@/lib/mods/vote";
 import { prisma } from "@/lib/prisma";
+import { quotaReachedMessage, VOTE_QUOTA } from "./quota";
+
+/** Un vote refusé, dans la forme que les deux routes de vote rendent telle quelle. */
+export interface VoteRejection {
+  error: string;
+  status: 409;
+}
+
+/**
+ * Écrire le vote d'un membre sur un engagement, dans la limite de son quota du soir
+ * (`VOTE_QUOTA` : 8 véhicules, 3 circuits par soirée).
+ *
+ * Partagé par les deux routes de vote — celle du catalogue et celle de la page soirée
+ * écrivent la même ligne, et doivent donc compter la même chose. Rend `null` quand le
+ * vote est acquis (écrit à l'instant, ou déjà là), le refus sinon.
+ */
+export async function castVote(vote: {
+  userId: string;
+  modId: string;
+  /** Le type de la fiche : c'est lui qui désigne le quota à vérifier. */
+  type: ModType;
+  soireeId: string;
+  soireeModId: string;
+}): Promise<VoteRejection | null> {
+  // Une clé, pas une ligne : le quota est une *absence* de votes, il n'y a rien à
+  // verrouiller dans la table. Deux membres — ou le même sur l'autre type — ne hachent
+  // pas la même chaîne et ne s'attendent donc jamais.
+  const lockKey = `${vote.userId}:${vote.soireeId}:${vote.type}`;
+
+  return prisma.$transaction(async (tx) => {
+    // Le comptage et l'écriture qui suivent doivent être indivisibles : sans ce verrou,
+    // deux votes partis en même temps se comptent l'un l'autre comme absents, passent
+    // tous les deux le contrôle, et le membre place un neuvième véhicule. La contrainte
+    // d'unicité ne dit rien de ce cas-là — ce sont deux mods différents.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey})::bigint)`;
+
+    // Re-voter pour un mod déjà voté est le résultat voulu, pas un vote de plus : les
+    // routes sont idempotentes (réseau capricieux, double clic), et ce vote-là est déjà
+    // compté dans le quota. Le vérifier ici évite de refuser, à quota plein, un vote qui
+    // ne change rien.
+    const existing = await tx.vote.findFirst({
+      where: { userId: vote.userId, soireeModId: vote.soireeModId },
+      select: { id: true },
+    });
+    if (existing) return null;
+
+    const used = await tx.vote.count({
+      where: {
+        userId: vote.userId,
+        soireeMod: { soireeId: vote.soireeId },
+        mod: { type: vote.type },
+      },
+    });
+    if (used >= VOTE_QUOTA[vote.type]) {
+      return { error: quotaReachedMessage(vote.type), status: 409 as const };
+    }
+
+    // `modId` est écrit à côté de `soireeModId` bien qu'il en soit déductible : c'est la
+    // colonne sur laquelle le catalogue compte et trie (US-E4), et la seule qui rattache
+    // encore les votes hérités du MVP à une fiche.
+    await tx.vote.create({
+      data: { userId: vote.userId, modId: vote.modId, soireeModId: vote.soireeModId },
+    });
+
+    return null;
+  });
+}
 
 /**
  * L'état du vote après écriture, tel que les boutons doivent l'afficher (US-F2, US-G4).

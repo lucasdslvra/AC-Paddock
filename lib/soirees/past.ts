@@ -2,7 +2,13 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { startOfToday } from "./current";
 import { NO_GUILD } from "./scope";
-import { pastSoireeInclude, serializePastSoiree, type ApiPastSoiree } from "./serialize";
+import {
+  pastSoireeInclude,
+  RANKING_ORDER,
+  serializePastSoiree,
+  type ApiPastSoiree,
+  type PastSoireeModWithRelations,
+} from "./serialize";
 import { countVotersBySoiree } from "./vote";
 
 /**
@@ -33,9 +39,52 @@ export async function listPastSoirees(
     include: pastSoireeInclude,
   });
 
-  // En deux temps, et pas en `include` : le comptage dédoublonne par membre (un votant,
-  // pas six votes), ce qu'aucun `_count` ne sait faire.
-  const voters = await countVotersBySoiree(soirees.map((soiree) => soiree.id));
+  const ids = soirees.map((soiree) => soiree.id);
 
-  return soirees.map((soiree) => serializePastSoiree(soiree, voters.get(soiree.id) ?? 0));
+  // En deux temps, et pas en `include` : le comptage dédoublonne par membre (un votant,
+  // pas six votes), ce qu'aucun `_count` ne sait faire. Le circuit retenu se lit à part
+  // pour une autre raison — voir `retainedTracks`.
+  const [voters, tracks] = await Promise.all([countVotersBySoiree(ids), retainedTracks(ids)]);
+
+  return soirees.map((soiree) =>
+    serializePastSoiree(soiree, voters.get(soiree.id) ?? 0, tracks.get(soiree.id) ?? null),
+  );
+}
+
+/**
+ * Le circuit retenu de chaque soirée — le plus voté, et il n'y en a qu'un
+ * (`RETAINED_COUNT.TRACK`).
+ *
+ * Une requête à part de `pastSoireeInclude`, parce que Prisma ne sait pas prendre « les
+ * huit premiers véhicules **et** le premier circuit » dans une seule relation : un
+ * `take` sur le classement mêlé ramènerait, sur une soirée à vingt voitures, huit
+ * voitures et pas de circuit — alors que c'est le seul mod dont il n'y en a qu'un.
+ *
+ * Une seule requête pour toute la page, tous les circuits de toutes les soirées
+ * affichées. C'est bien moins que le classement complet : un soir se joue sur un
+ * circuit, on en propose une poignée. Et `votes: { some: {} }` écarte ceux que personne
+ * n'a votés — un circuit sans voix n'a pas été retenu.
+ */
+async function retainedTracks(
+  soireeIds: string[],
+): Promise<Map<string, PastSoireeModWithRelations>> {
+  if (soireeIds.length === 0) return new Map();
+
+  const engagements = await prisma.soireeMod.findMany({
+    where: { soireeId: { in: soireeIds }, mod: { is: { type: "TRACK" } }, votes: { some: {} } },
+    orderBy: RANKING_ORDER,
+    include: {
+      mod: { select: { id: true, name: true, imageUrl: true } },
+      _count: { select: { votes: true } },
+    },
+  });
+
+  // Le tri est global, mais il vaut soirée par soirée : à l'intérieur d'une même soirée,
+  // les circuits se présentent dans l'ordre du classement. Le premier vu pour une soirée
+  // est donc le sien.
+  const retained = new Map<string, PastSoireeModWithRelations>();
+  for (const engagement of engagements) {
+    if (!retained.has(engagement.soireeId)) retained.set(engagement.soireeId, engagement);
+  }
+  return retained;
 }

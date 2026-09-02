@@ -6,6 +6,7 @@ import type {
 } from "@/lib/generated/prisma/models";
 import { modInclude, serializeMod, type ApiMod, type ModWithRelations } from "@/lib/mods/serialize";
 import type { SoireeContext } from "./current";
+import { RETAINED_COUNT } from "./quota";
 
 /**
  * Relations à charger avec une soirée pour la sérialiser — même rôle que `modInclude`
@@ -26,7 +27,7 @@ import type { SoireeContext } from "./current";
  * Les ex æquo — le cas courant en début de soirée, tout le monde à zéro — se départagent
  * par ordre d'engagement, sans quoi la liste changerait d'ordre à chaque rechargement.
  */
-const RANKING_ORDER: SoireeModOrderByWithRelationInput[] = [
+export const RANKING_ORDER: SoireeModOrderByWithRelationInput[] = [
   { votes: { _count: "desc" } },
   { createdAt: "asc" },
 ];
@@ -96,7 +97,11 @@ export interface ApiSoiree {
   createdAt: string;
   /** Vrai s'il s'agit de la soirée en cours — celle où l'on vote (`currentSoiree`). */
   isCurrent: boolean;
-  /** Les mods engagés, déjà classés par votes décroissants. */
+  /**
+   * Les mods engagés, déjà classés par votes décroissants — véhicules et circuits
+   * mêlés. Les deux classements du soir se séparent à l'affichage (`rankSection`) :
+   * ils n'ont ni le même quota de votes ni le même nombre de places retenues.
+   */
   mods: ApiSoireeMod[];
   /** Membres distincts ayant voté dans cette soirée, pour « 5 / 8 ont voté ». */
   voterCount: number;
@@ -138,22 +143,29 @@ export interface ApiSoireeSummary {
 }
 
 /**
- * Combien de mods engagés une soirée passée montre dans la liste de l'historique.
+ * Ce qu'une soirée passée montre dans la liste de l'historique : ce qu'elle a retenu,
+ * et rien d'autre.
  *
- * L'historique (US-I1) tient sur une ligne par soirée : le podium en occupe trois, les
- * vignettes quelques-unes de plus, et le reste se résume en « +N » à partir de
- * `modCount`. Charger le classement complet de chaque soirée pour n'en afficher que le
- * haut coûterait d'autant plus cher que l'archive grossit — et c'est justement le seul
- * endroit qui grossit tout seul.
+ * L'archive ne se lit plus comme un classement en cours — la question n'est pas « qui
+ * mène ? » mais « qu'est-ce qui a été joué ce soir-là ? ». La ligne ne charge donc que
+ * les véhicules retenus (`RETAINED_COUNT.CAR`), et le circuit retenu vient à part : un
+ * `take` sur le classement mêlé pourrait ne ramener que des voitures, et la soirée
+ * s'afficherait sans son circuit — le seul mod dont il n'y en a qu'un.
+ *
+ * Le reste des engagements se résume en « +N » à partir de `modCount`. Charger le
+ * classement complet de chaque soirée pour n'en afficher que le haut coûterait d'autant
+ * plus cher que l'archive grossit — et c'est justement le seul endroit qui grossit tout
+ * seul.
+ *
+ * `votes: { some: {} }` écarte les engagements que personne n'a votés : ils n'ont pas
+ * été retenus, même quand la soirée comptait moins de huit voitures (`isRetained`).
  */
-export const PAST_SOIREE_PREVIEW_MODS = 8;
-
-/** Le haut du classement d'une soirée passée, tel que `listPastSoirees` le charge. */
 export const pastSoireeInclude = {
   createdBy: true,
   _count: { select: { mods: true } },
   mods: {
-    take: PAST_SOIREE_PREVIEW_MODS,
+    where: { mod: { is: { type: "CAR" } }, votes: { some: {} } },
+    take: RETAINED_COUNT.CAR,
     orderBy: RANKING_ORDER,
     // Pas de `modInclude` ici : la ligne n'affiche qu'un nom et une vignette. Charger
     // les tags, l'auteur et l'historique de votes de chaque mod de chaque soirée
@@ -165,14 +177,18 @@ export const pastSoireeInclude = {
   },
 } as const;
 
+/** Un engagement réduit à ce que l'historique en affiche — un nom, une vignette, un score. */
+export type PastSoireeModWithRelations = SoireeModModel & {
+  mod: { id: string; name: string; imageUrl: string | null };
+  _count: { votes: number };
+};
+
 /** Une soirée passée telle que `pastSoireeInclude` la ramène. */
 export type PastSoireeWithRelations = SoireeModel & {
   createdBy: UserModel;
   _count: { mods: number };
-  mods: (SoireeModModel & {
-    mod: { id: string; name: string; imageUrl: string | null };
-    _count: { votes: number };
-  })[];
+  /** Les véhicules retenus, du plus voté au moins voté. */
+  mods: PastSoireeModWithRelations[];
 };
 
 /** Un mod du haut de classement d'une soirée passée. */
@@ -186,13 +202,18 @@ export interface ApiPastSoireeMod {
 }
 
 /**
- * US-I1 — une soirée passée dans la liste de l'historique : le résumé commun, plus le
- * haut du classement et le nombre de votants. Les votes sont clos : ce qui compte n'est
- * plus « qui peut encore voter » mais « qu'est-ce qui est sorti ».
+ * US-I1 — une soirée passée dans la liste de l'historique : le résumé commun, plus ce
+ * que la soirée a retenu et le nombre de votants. Les votes sont clos : ce qui compte
+ * n'est plus « qui peut encore voter » mais « qu'est-ce qui est sorti ».
  */
 export interface ApiPastSoiree extends ApiSoireeSummary {
-  /** Au plus `PAST_SOIREE_PREVIEW_MODS` entrées, déjà classées. */
-  mods: ApiPastSoireeMod[];
+  /** Les véhicules retenus, du plus voté au moins voté — au plus `RETAINED_COUNT.CAR`. */
+  cars: ApiPastSoireeMod[];
+  /**
+   * Le circuit retenu — le plus voté, et il n'y en a qu'un (`RETAINED_COUNT.TRACK`).
+   * `null` quand la soirée n'a engagé aucun circuit, ou qu'aucun n'a reçu de vote.
+   */
+  track: ApiPastSoireeMod | null;
   /** Membres distincts ayant voté ce soir-là. */
   voterCount: number;
 }
@@ -200,7 +221,15 @@ export interface ApiPastSoiree extends ApiSoireeSummary {
 export function serializePastSoiree(
   soiree: PastSoireeWithRelations,
   voterCount: number,
+  track: PastSoireeModWithRelations | null,
 ): ApiPastSoiree {
+  const serializeEntry = (entry: PastSoireeModWithRelations): ApiPastSoireeMod => ({
+    modId: entry.mod.id,
+    name: entry.mod.name,
+    imageUrl: entry.mod.imageUrl,
+    votes: entry._count.votes,
+  });
+
   return {
     id: soiree.id,
     name: soiree.name,
@@ -210,12 +239,8 @@ export function serializePastSoiree(
     // que l'avenir. Le champ est là pour que la forme reste celle du résumé.
     isCurrent: false,
     modCount: soiree._count.mods,
-    mods: soiree.mods.map((entry) => ({
-      modId: entry.mod.id,
-      name: entry.mod.name,
-      imageUrl: entry.mod.imageUrl,
-      votes: entry._count.votes,
-    })),
+    cars: soiree.mods.map(serializeEntry),
+    track: track ? serializeEntry(track) : null,
     voterCount,
   };
 }

@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { sessionGuildId, upsertSessionUser } from "@/lib/session-user";
 import { currentSoireeId } from "@/lib/soirees/current";
-import { readVoteState } from "@/lib/soirees/vote";
+import { castVote, readVoteState } from "@/lib/soirees/vote";
 
 /**
  * L'engagement visé, une fois vérifié qu'on a le droit d'y voter (US-G3).
@@ -16,7 +16,9 @@ async function resolveEngagement(soireeId: string, modId: string, session: Sessi
   const [engagement, currentId] = await Promise.all([
     prisma.soireeMod.findUnique({
       where: { soireeId_modId: { soireeId, modId } },
-      select: { id: true },
+      // Le type de la fiche vient avec l'engagement : c'est lui qui désigne le quota du
+      // membre (8 véhicules, 3 circuits — `VOTE_QUOTA`).
+      select: { id: true, mod: { select: { type: true } } },
     }),
     // La soirée en cours du serveur de ce membre : la soirée d'un autre groupe n'est
     // jamais « la sienne », et le premier refus ci-dessous s'en charge.
@@ -41,13 +43,13 @@ async function resolveEngagement(soireeId: string, modId: string, session: Sessi
  *
  * Un membre, un vote par mod engagé, par soirée : c'est la contrainte
  * `@@unique([userId, soireeModId])` qui le garantit, pas une vérification préalable —
- * deux clics partis en même temps ne peuvent donc pas produire deux lignes.
- * `skipDuplicates` rend la route idempotente : re-voter ne change rien et répond le
- * même état, plutôt qu'une erreur pour un vote qui est déjà celui qu'on demande.
+ * deux clics partis en même temps ne peuvent donc pas produire deux lignes. La route
+ * reste idempotente : re-voter ne change rien et répond le même état, plutôt qu'une
+ * erreur pour un vote qui est déjà celui qu'on demande.
  *
- * `modId` est écrit à côté de `soireeModId` bien qu'il en soit déductible : c'est la
- * colonne sur laquelle le catalogue compte et trie (US-E4), et la seule qui rattache
- * encore les votes hérités du MVP à une fiche.
+ * Le nombre de votes, lui, est borné par type et par soirée (`VOTE_QUOTA` : 8 véhicules,
+ * 3 circuits) — c'est `castVote` qui compte et qui refuse, pour cette route comme pour
+ * celle du catalogue.
  */
 export async function POST(
   _request: Request,
@@ -70,10 +72,16 @@ export async function POST(
     // bien ne pas exister encore.
     const voter = await upsertSessionUser(session.user);
 
-    await prisma.vote.createMany({
-      data: { userId: voter.id, modId, soireeModId: resolved.engagement.id },
-      skipDuplicates: true,
+    const rejected = await castVote({
+      userId: voter.id,
+      modId,
+      type: resolved.engagement.mod.type,
+      soireeId: id,
+      soireeModId: resolved.engagement.id,
     });
+    if (rejected) {
+      return Response.json({ error: rejected.error }, { status: rejected.status });
+    }
 
     return Response.json(await readVoteState(modId, resolved.engagement.id, true));
   } catch (error) {

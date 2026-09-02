@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { EngageModPicker } from "@/components/EngageModPicker";
 import { MiniBarChart } from "@/components/MiniBarChart";
@@ -11,10 +11,19 @@ import { ProgressBar } from "@/components/ProgressBar";
 import { StatBlock } from "@/components/StatBlock";
 import { TagPill } from "@/components/TagPill";
 import { UserAvatar } from "@/components/UserAvatar";
-import { toUiModType } from "@/lib/mods/type";
+import type { ModType } from "@/lib/generated/prisma/enums";
+import { MOD_TYPES, toUiModType } from "@/lib/mods/type";
 import { apiModToView } from "@/lib/mods/view";
 import { useVote } from "@/lib/mods/useVote";
 import { formatSoireeCountdown, formatSoireeDate } from "@/lib/soirees/format";
+import {
+  modTypePlural,
+  quotaReachedMessage,
+  rankSection,
+  RETAINED_COUNT,
+  VOTE_QUOTA,
+  type Ranked,
+} from "@/lib/soirees/quota";
 import { PageLoader } from "@/components/PageLoader";
 import type { ApiSoiree, ApiSoireeMod } from "@/lib/soirees/serialize";
 import { useRequireAuth } from "@/lib/useRequireAuth";
@@ -41,6 +50,14 @@ interface SoireeViewProps {
   isPast?: boolean;
 }
 
+/** « VÉHICULES » / « CIRCUITS » — l'en-tête d'un des deux classements. */
+const SECTION_LABEL: Record<ModType, string> = { CAR: "VÉHICULES", TRACK: "CIRCUITS" };
+
+/** Les engagements pour lesquels ce membre a voté, par identifiant d'engagement. */
+function votedIdsOf(soiree: ApiSoiree | null): ReadonlySet<string> {
+  return new Set(soiree?.mods.filter((entry) => entry.hasVoted).map((entry) => entry.id) ?? []);
+}
+
 /**
  * Une ligne du classement (US-G3, US-G4).
  *
@@ -51,33 +68,58 @@ interface SoireeViewProps {
 function RankingRow({
   entry,
   rank,
+  retained,
   soireeId,
   canRemove,
   readOnly,
+  quotaReached,
+  onVoteChange,
   onChanged,
 }: {
   entry: ApiSoireeMod;
   rank: number;
+  /** Ce mod fait partie de ce que la soirée garde, au score de l'instant. */
+  retained: boolean;
   soireeId: string;
   canRemove: boolean;
   /** US-I2 — la soirée n'est plus celle en cours : la ligne devient un résultat. */
   readOnly: boolean;
+  /**
+   * Le quota de ce type est plein et ce mod n'en fait pas partie : le bouton reste
+   * visible mais éteint, avec la raison. Un vote déjà placé se retire toujours — c'est
+   * même la seule façon d'en libérer un.
+   */
+  quotaReached: boolean;
+  onVoteChange: (engagementId: string, hasVoted: boolean) => void;
   onChanged: () => void;
 }) {
+  // Le vote vit dans cette ligne, le quota se compte sur toute la soirée : la page a
+  // besoin d'être prévenue à chaque bascule, y compris optimiste.
+  const reportVote = useCallback(
+    (hasVoted: boolean) => onVoteChange(entry.id, hasVoted),
+    [entry.id, onVoteChange],
+  );
   // `useVote` est appelé même en lecture seule — un hook ne peut pas l'être sous
   // condition. Il ne coûte alors qu'un état local jamais touché : rien ne l'appelle,
   // puisque le bouton n'est pas peint.
-  const { soireeVotes, hasVoted, isPending, error, toggle } = useVote(entry.mod.id, {
-    votes: entry.mod.votes,
-    soireeVotes: entry.votes,
-    hasVoted: entry.hasVoted,
-  });
+  const { soireeVotes, hasVoted, isPending, error, toggle } = useVote(
+    entry.mod.id,
+    {
+      votes: entry.mod.votes,
+      soireeVotes: entry.votes,
+      hasVoted: entry.hasVoted,
+    },
+    reportVote,
+  );
   // `ApiMod.voteHistory` porte des comptes bruts ; c'est `apiModToView` qui sait les
   // traduire en hauteurs de barres, et la ligne s'appuie sur lui plutôt que de refaire
   // le calcul dans son coin.
   const history = apiModToView(entry.mod).voteHistory;
   const [isRemoving, setIsRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
+
+  // Le quota ne ferme jamais un vote déjà placé : le retirer est ce qui rend la main.
+  const isBlocked = quotaReached && !hasVoted;
 
   async function remove() {
     setIsRemoving(true);
@@ -105,8 +147,10 @@ function RankingRow({
       style={{
         background: "var(--color-surface)",
         borderColor: "var(--color-border)",
-        // Le premier du classement porte un liseré : c'est le mod qu'on installera.
-        borderLeft: rank === 1 ? "3px solid var(--color-amber)" : undefined,
+        // Le liseré marque ce que la soirée garde : les huit véhicules et le circuit
+        // les plus votés (`RETAINED_COUNT`). Sur la soirée en cours il se déplace au fil
+        // des votes — c'est une projection, pas encore un résultat.
+        borderLeft: retained ? "3px solid var(--color-amber)" : undefined,
       }}
     >
       <div className="font-mono text-xl leading-none">{String(rank).padStart(2, "0")}</div>
@@ -119,7 +163,6 @@ function RankingRow({
           {entry.mod.name}
         </Link>
         <div className="mt-[3px] flex flex-wrap items-center gap-[5px] font-mono text-[9.5px] text-[var(--color-text-muted)]">
-          <span>{toUiModType(entry.mod.type) === "vehicule" ? "véhicule" : "circuit"}</span>
           {entry.mod.tags.map((tag) => (
             <TagPill key={tag} label={tag} href={`/catalogue?tags=${tag}`} />
           ))}
@@ -156,8 +199,12 @@ function RankingRow({
           <button
             type="button"
             onClick={toggle}
+            disabled={isBlocked}
             aria-pressed={hasVoted}
             aria-busy={isPending}
+            // Le bouton éteint n'est pas une panne : la phrase dit pourquoi, et qu'il y
+            // a quelque chose à faire — retirer un vote ailleurs.
+            title={isBlocked ? quotaReachedMessage(entry.mod.type) : undefined}
             aria-label={
               hasVoted ? `Retirer mon vote pour ${entry.mod.name}` : `Voter pour ${entry.mod.name}`
             }
@@ -165,8 +212,8 @@ function RankingRow({
               hasVoted
                 ? "btn-solid bg-[var(--color-amber)] text-[var(--color-ink)]"
                 : "btn-outline border border-[var(--color-border-strong)]"
-            }`}
-            style={{ opacity: isPending ? 0.7 : 1 }}
+            } ${isBlocked ? "cursor-not-allowed" : ""}`}
+            style={{ opacity: isPending ? 0.7 : isBlocked ? 0.35 : 1 }}
           >
             {hasVoted ? "✓ voté" : "+1"}
           </button>
@@ -186,6 +233,111 @@ function RankingRow({
   );
 }
 
+/**
+ * Un des deux classements de la soirée : les véhicules, ou les circuits.
+ *
+ * Ils sont séparés parce qu'ils ne se jouent pas l'un contre l'autre — la soirée garde
+ * huit voitures **et** un circuit, et chacun vote pour les deux avec deux réserves
+ * distinctes (`VOTE_QUOTA`). Un classement unique ferait disputer au circuit une place
+ * de voiture, qu'il ne pourrait de toute façon pas prendre.
+ */
+function RankingSection({
+  type,
+  rows,
+  used,
+  soireeId,
+  readOnly,
+  isAdmin,
+  viewerDiscordId,
+  onVoteChange,
+  onChanged,
+}: {
+  type: ModType;
+  rows: Ranked<ApiSoireeMod>[];
+  /** Combien de votes de ce type ce membre a déjà placés ce soir. */
+  used: number;
+  soireeId: string;
+  readOnly: boolean;
+  isAdmin: boolean;
+  viewerDiscordId?: string | null;
+  onVoteChange: (engagementId: string, hasVoted: boolean) => void;
+  onChanged: () => void;
+}) {
+  const quota = VOTE_QUOTA[type];
+  const kept = RETAINED_COUNT[type];
+  const quotaReached = used >= quota;
+  // La barre se pose sous le dernier retenu, et non à la place fixe : un mod sans vote
+  // n'est pas retenu, même quand il reste de la place (`isRetained`).
+  const lastRetained = rows.reduce((last, row, index) => (row.retained ? index : last), -1);
+
+  return (
+    <section>
+      <div className="mb-[10px] flex flex-wrap items-baseline justify-between gap-2 border-b border-[var(--color-border-hairline)] pb-[6px]">
+        <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
+          {SECTION_LABEL[type]} · {rows.length} engagé{rows.length > 1 ? "s" : ""} ·{" "}
+          {kept > 1 ? `${kept} retenus` : "1 retenu"}
+        </div>
+        {!readOnly && (
+          <div
+            className="font-mono text-[10px]"
+            style={{
+              color: quotaReached ? "var(--color-amber)" : "var(--color-text-muted)",
+            }}
+          >
+            tes votes {used}/{quota}
+            {quotaReached && " · réserve épuisée"}
+          </div>
+        )}
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="rounded-sm border border-dashed border-[var(--color-border-dashed)] p-[14px] text-center font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-muted)]">
+          {readOnly
+            ? `Aucun ${type === "CAR" ? "véhicule" : "circuit"} n'a été engagé.`
+            : `Aucun ${type === "CAR" ? "véhicule" : "circuit"} engagé pour l'instant — prends-en un dans le catalogue, à droite.`}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-[7px]">
+          {rows.map((row, index) => (
+            <div key={row.entry.id} className="flex flex-col gap-[7px]">
+              <RankingRow
+                entry={row.entry}
+                rank={row.rank}
+                retained={row.retained}
+                soireeId={soireeId}
+                // Cahier §2.6, même règle que la suppression d'une fiche : celui qui a
+                // engagé le mod, ou un admin. Sinon n'importe qui effacerait les votes
+                // des autres d'un clic.
+                // Rien ne se retire d'une soirée qu'on ne fait plus que lire : le
+                // retrait emporte les votes reçus, et ceux-là sont le compte rendu.
+                canRemove={
+                  !readOnly && (isAdmin || row.entry.engagedBy.discordId === viewerDiscordId)
+                }
+                readOnly={readOnly}
+                quotaReached={quotaReached}
+                onVoteChange={onVoteChange}
+                onChanged={onChanged}
+              />
+              {/* La ligne de coupe : au-dessus, ce que la soirée garde. Elle ne s'affiche
+                  que s'il y a quelque chose en dessous — sinon elle ne sépare rien. */}
+              {index === lastRetained && index < rows.length - 1 && (
+                <div
+                  className="flex items-center gap-[9px] font-mono text-[9.5px] tracking-[0.1em] text-[var(--color-text-faint)]"
+                  aria-hidden
+                >
+                  <span className="h-px flex-1" style={{ background: "var(--color-amber)" }} />
+                  {readOnly ? "NON RETENUS" : "SOUS LA BARRE"}
+                  <span className="h-px flex-1" style={{ background: "var(--color-border)" }} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function SoireeView({
   soiree: initialSoiree,
   memberCount,
@@ -195,21 +347,77 @@ export function SoireeView({
   const { isLoading } = useRequireAuth();
   const { data: session } = useSession();
   const [soiree, setSoiree] = useState(initialSoiree);
+  /**
+   * Les engagements pour lesquels ce membre a voté, tenus au niveau de la page.
+   *
+   * Le vote se clique dans une ligne, mais le quota se compte sur toute la soirée : sans
+   * cet état commun, les compteurs « 6/8 » et les boutons éteints ne bougeraient qu'au
+   * rechargement suivant, alors que le bouton, lui, répond au doigt.
+   */
+  const [votedIds, setVotedIds] = useState<ReadonlySet<string>>(() => votedIdsOf(initialSoiree));
 
   /**
-   * Recharge la soirée après une écriture. Le classement est trié par la base (US-G4) :
-   * le refaire ici donnerait le même ordre, mais un vote parti d'un autre membre
-   * n'apparaîtrait jamais. Les compteurs, eux, bougent tout de suite côté navigateur —
-   * c'est `useVote` qui s'en charge, ce rechargement ne fait que remettre les lignes
-   * dans l'ordre.
+   * Recharge la soirée après une écriture — un engagement, un retrait. Les votes, eux,
+   * n'ont pas besoin d'elle : le classement est refait ici à chaque bascule
+   * (`rankSection`), à partir des scores tenus par l'interface. Ce rechargement sert à
+   * faire entrer ce que les **autres** ont fait.
    */
   const refresh = useCallback(() => {
     if (!soiree) return;
     void fetch(`/api/soirees/${soiree.id}`)
       .then((response) => (response.ok ? response.json() : null))
-      .then((body: ApiSoiree | null) => body && setSoiree(body))
+      .then((body: ApiSoiree | null) => {
+        if (!body) return;
+        setSoiree(body);
+        // La base fait foi de nouveau : ce que le serveur dit de mes votes remplace ce
+        // que la page en avait retenu.
+        setVotedIds(votedIdsOf(body));
+      })
       .catch(() => {});
   }, [soiree]);
+
+  const handleVoteChange = useCallback((engagementId: string, hasVoted: boolean) => {
+    setVotedIds((previous) => {
+      if (previous.has(engagementId) === hasVoted) return previous;
+      const next = new Set(previous);
+      if (hasVoted) next.add(engagementId);
+      else next.delete(engagementId);
+      return next;
+    });
+  }, []);
+
+  /**
+   * Le score de ce soir tel que l'interface le connaît : celui du serveur, corrigé du
+   * seul vote que la page peut avoir changé depuis — celui de ce membre. Les votes des
+   * autres n'arrivent qu'au rechargement, comme le compteur des lignes.
+   */
+  const liveVotes = useCallback(
+    (entry: ApiSoireeMod) =>
+      entry.votes + (votedIds.has(entry.id) ? 1 : 0) - (entry.hasVoted ? 1 : 0),
+    [votedIds],
+  );
+
+  const sections = useMemo(
+    () =>
+      MOD_TYPES.map((type) => ({
+        type,
+        rows: rankSection(soiree?.mods ?? [], type, (entry) => ({
+          type: entry.mod.type,
+          votes: liveVotes(entry),
+          engagedAt: entry.engagedAt,
+        })),
+      })),
+    [liveVotes, soiree],
+  );
+
+  /** Les votes placés par ce membre, par type — le numérateur des quotas. */
+  const used = useMemo(() => {
+    const tally: Record<ModType, number> = { CAR: 0, TRACK: 0 };
+    for (const entry of soiree?.mods ?? []) {
+      if (votedIds.has(entry.id)) tally[entry.mod.type] += 1;
+    }
+    return tally;
+  }, [soiree, votedIds]);
 
   if (isLoading) {
     return <PageLoader />;
@@ -255,7 +463,6 @@ export function SoireeView({
   }
 
   const date = new Date(soiree.date);
-  const myVoteCount = soiree.mods.filter((entry) => entry.hasVoted).length;
 
   /**
    * US-I2 — hors de la soirée en cours, la page est un compte rendu : ni vote, ni
@@ -265,8 +472,15 @@ export function SoireeView({
    * lieu.
    */
   const isReadOnly = !soiree.isCurrent;
-  // Le classement arrive trié par la base (US-G4) : le premier est le mod retenu.
-  const winner = soiree.mods[0];
+  // Ce que la soirée garde, les deux classements réunis : huit véhicules, un circuit.
+  // Le circuit en tête : il n'y en a qu'un, et c'est la première chose qu'on cherche en
+  // relisant une soirée — au bout d'une liste de huit voitures, il se manquerait.
+  const retained = [...sections]
+    .reverse()
+    .flatMap((section) => section.rows.filter((row) => row.retained));
+  const counts = Object.fromEntries(
+    sections.map((section) => [section.type, section.rows.length]),
+  ) as Record<ModType, number>;
   const eyebrow = soiree.isCurrent
     ? "SOIRÉE EN COURS"
     : isPast
@@ -290,8 +504,9 @@ export function SoireeView({
             {formatSoireeDate(date)}
           </h1>
           <div className="mt-[7px] font-mono text-[11px] text-[var(--color-text-secondary)]">
-            créée par {soiree.createdBy.username} · {soiree.mods.length} mod
-            {soiree.mods.length > 1 ? "s" : ""} engagé{soiree.mods.length > 1 ? "s" : ""}
+            créée par {soiree.createdBy.username} · {counts.CAR} véhicule
+            {counts.CAR > 1 ? "s" : ""} et {counts.TRACK} circuit
+            {counts.TRACK > 1 ? "s" : ""} engagé{soiree.mods.length > 1 ? "s" : ""}
           </div>
         </div>
         <div className="ml-auto flex items-end gap-[26px]">
@@ -329,28 +544,28 @@ export function SoireeView({
               <p className="mt-[6px] font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-muted)]">
                 {isReadOnly
                   ? "Elle s'est jouée sans passer par le vote, ou personne n'a rien proposé à temps."
-                  : "Seuls les mods engagés ici sont votables. Prends-en un dans le catalogue, à droite."}
+                  : "Autant de véhicules et de circuits qu'on veut : seuls les mods engagés ici sont votables. Prends-en un dans le catalogue, à droite."}
               </p>
             </div>
           ) : (
-            <div className="flex flex-col gap-[7px]">
-              {soiree.mods.map((entry, index) => (
-                <RankingRow
-                  key={entry.id}
-                  entry={entry}
-                  rank={index + 1}
-                  soireeId={soiree.id}
-                  // Cahier §2.6, même règle que la suppression d'une fiche : celui qui a
-                  // engagé le mod, ou un admin. Sinon n'importe qui effacerait les votes
-                  // des autres d'un clic.
-                  // Rien ne se retire d'une soirée qu'on ne fait plus que lire : le
-                  // retrait emporte les votes reçus, et ceux-là sont le compte rendu.
-                  canRemove={
-                    !isReadOnly && (isAdmin || entry.engagedBy.discordId === session?.user?.id)
-                  }
-                  readOnly={isReadOnly}
-                  onChanged={refresh}
-                />
+            <div className="flex flex-col gap-[22px]">
+              {sections.map((section) => (
+                // Une section vide n'apprend rien sur une soirée qu'on ne fait que lire.
+                // Sur la soirée en cours, si : il manque un circuit à choisir.
+                (!isReadOnly || section.rows.length > 0) && (
+                  <RankingSection
+                    key={section.type}
+                    type={section.type}
+                    rows={section.rows}
+                    used={used[section.type]}
+                    soireeId={soiree.id}
+                    readOnly={isReadOnly}
+                    isAdmin={isAdmin}
+                    viewerDiscordId={session?.user?.id}
+                    onVoteChange={handleVoteChange}
+                    onChanged={refresh}
+                  />
+                )
               ))}
             </div>
           )}
@@ -360,52 +575,70 @@ export function SoireeView({
           {/* US-I2 — une soirée qu'on ne fait que lire n'a rien à garnir. */}
           {!isReadOnly && <EngageModPicker soireeId={soiree.id} onEngaged={refresh} />}
 
-          {/* Le haut du classement, sorti de la liste : c'est la réponse à « qu'est-ce
-              qui a été retenu ce soir-là ? », et elle ne doit pas se chercher. */}
-          {isReadOnly && winner && (
+          {/* Ce que la soirée retient, sorti de la liste : c'est la réponse à
+              « qu'est-ce qui a été joué ce soir-là ? », et elle ne doit pas se
+              chercher entre deux classements. */}
+          {isReadOnly && retained.length > 0 && (
             <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[15px]">
               <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
-                MOD RETENU
+                MODS RETENUS
               </div>
-              <Link
-                href={`/mods/${winner.mod.id}`}
-                className="link-title mt-2 block font-sans text-[15px] font-semibold leading-tight"
-              >
-                {winner.mod.name}
-              </Link>
-              <div className="mt-[6px] font-mono text-[11px] text-[var(--color-text-secondary)]">
-                {winner.votes} vote{winner.votes > 1 ? "s" : ""} sur {soiree.voterCount}{" "}
-                votant{soiree.voterCount > 1 ? "s" : ""} · engagé par{" "}
-                {winner.engagedBy.username}
+              <div className="mt-2 flex flex-col gap-[7px]">
+                {retained.map((row) => (
+                  <div key={row.entry.id}>
+                    <Link
+                      href={`/mods/${row.entry.mod.id}`}
+                      className="link-title block font-sans text-[13.5px] font-semibold leading-tight"
+                    >
+                      {row.entry.mod.name}
+                    </Link>
+                    <div className="font-mono text-[10px] text-[var(--color-text-muted)]">
+                      {toUiModType(row.entry.mod.type) === "vehicule" ? "véhicule" : "circuit"} ·{" "}
+                      {row.entry.votes} vote{row.entry.votes > 1 ? "s" : ""} · engagé par{" "}
+                      {row.entry.engagedBy.username}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
           <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[15px]">
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
-              TON VOTE
+              {isReadOnly ? "TES VOTES" : "TA RÉSERVE DE VOTES"}
             </div>
-            <div className="mt-2 font-mono text-[11.5px] leading-[1.7] text-[var(--color-text-secondary)]">
+            <div className="mt-[10px] flex flex-col gap-[11px]">
+              {MOD_TYPES.map((type) => (
+                <div key={type}>
+                  <div className="flex items-baseline justify-between font-mono text-[11px]">
+                    <span className="text-[var(--color-text-secondary)]">
+                      {modTypePlural(type)}
+                    </span>
+                    <span>
+                      {used[type]} / {VOTE_QUOTA[type]}
+                    </span>
+                  </div>
+                  <div className="mt-[5px]">
+                    <ProgressBar percent={(used[type] / VOTE_QUOTA[type]) * 100} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-[11px] font-mono text-[10.5px] leading-[1.7] text-[var(--color-text-muted)]">
               {isReadOnly ? (
                 <>
-                  Tu avais voté pour {myVoteCount} mod{myVoteCount > 1 ? "s" : ""} sur{" "}
-                  {soiree.mods.length}. Les votes de cette soirée sont clos : elle ne se
-                  modifie plus.
+                  Les votes de cette soirée sont clos : elle ne se modifie plus. Elle a
+                  gardé ses {RETAINED_COUNT.CAR} véhicules les plus votés et son circuit.
                 </>
               ) : (
                 <>
-                  Tu as voté pour {myVoteCount} mod{myVoteCount > 1 ? "s" : ""} sur{" "}
-                  {soiree.mods.length}. Un vote par mod, tu peux le retirer à tout moment.
+                  {VOTE_QUOTA.CAR} votes pour les véhicules, {VOTE_QUOTA.TRACK} pour les
+                  circuits : la soirée garde les {RETAINED_COUNT.CAR} véhicules et le
+                  circuit les plus votés. Un vote se retire à tout moment pour le placer
+                  ailleurs.
                 </>
               )}
-            </div>
-            <div className="mt-[10px]">
-              <ProgressBar
-                percent={
-                  soiree.mods.length === 0 ? 0 : (myVoteCount / soiree.mods.length) * 100
-                }
-              />
-            </div>
+            </p>
           </div>
 
           {isReadOnly && (

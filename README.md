@@ -365,6 +365,77 @@ L'état local l'emporte ensuite sur les valeurs venues du serveur : la carte sur
 re-rendu du catalogue (changement de tri, de page) sans que le bouton ne retombe une
 seconde sur l'ancien compte.
 
+### Réserve de votes et mods retenus
+
+Une soirée accueille **autant de véhicules et de circuits qu'on veut** : engager reste
+sans limite, comme le veut le cahier §2.5. C'est le vote qui est contingenté, et c'est
+lui qui trie — si chacun pouvait voter pour tout, trente voitures ressortiraient trente
+fois à égalité.
+
+Deux réserves par membre et par soirée, et deux nombres de places, dans
+[lib/soirees/quota.ts](lib/soirees/quota.ts) :
+
+| Type | Votes par membre et par soirée | Mods retenus à la fin |
+| --- | --- | --- |
+| Véhicules | 8 (`VOTE_QUOTA.CAR`) | les 8 plus votés (`RETAINED_COUNT.CAR`) |
+| Circuits | 3 (`VOTE_QUOTA.TRACK`) | le plus voté (`RETAINED_COUNT.TRACK`) |
+
+Les deux côtés ne se ressemblent pas, et c'est voulu. Une soirée se joue avec une grille
+de voitures : chacun compose la sienne, la grille du soir est la somme des préférences.
+On ne roule en revanche que sur **un** circuit : les trois votes servent à dire « l'un de
+ces trois me va », pour qu'un second choix largement partagé l'emporte sur un premier
+choix isolé.
+
+Ce sont des constantes, pas des réglages d'`AppConfig` : les règles du jeu du groupe, pas
+un paramètre d'exploitation comme la taille des uploads.
+
+Un mod sans le moindre vote n'est jamais retenu, même quand la soirée compte moins
+d'engagements que de places (`isRetained`) : « les 8 véhicules les plus votés » ne veut
+pas dire « les 8 premiers de la liste ».
+
+#### Le refus, côté serveur
+
+`castVote` ([lib/soirees/vote.ts](lib/soirees/vote.ts)) porte la règle pour les deux
+routes de vote — celle du catalogue et celle de la page soirée écrivent la même ligne,
+elles doivent compter la même chose. Elle compte les votes déjà placés par ce membre,
+dans cette soirée, **sur ce type**, et refuse le vote de trop en 409 avec une phrase qui
+dit quoi faire : un quota plein se libère en retirant un vote.
+
+Le comptage et l'écriture tiennent dans une transaction ouverte par un verrou consultatif
+`pg_advisory_xact_lock`, haché sur `membre : soirée : type`. Sans lui, deux votes partis
+en même temps se comptent l'un l'autre comme absents, passent tous les deux le contrôle,
+et le membre place un neuvième véhicule — la contrainte `@@unique([userId, soireeModId])`
+ne dit rien de ce cas-là, ce sont deux mods différents. Le verrou ne gêne personne
+d'autre : deux membres, ou le même sur l'autre type, ne hachent pas la même clé.
+
+Re-voter pour un mod déjà voté reste idempotent et ne se compare à aucun quota : ce
+vote-là est déjà dedans.
+
+#### Les deux classements, côté page
+
+La page soirée affiche un classement par type — les places de véhicule et celle du
+circuit ne se disputent pas. `rankSection` (même fichier que les quotas) trie, numérote
+et marque ce qui est retenu ; un liseré ambre tient la ligne de coupe, et la section
+annonce « tes votes 6/8 ».
+
+Le tri est refait côté page, alors que la base le rend déjà trié (`RANKING_ORDER`) :
+c'est que le membre vote sans recharger. Ses votes bougent avant la réponse du serveur,
+et la barre des retenus doit bouger avec eux, sinon elle dit le contraire du bouton qu'on
+vient de cliquer. Les scores des **autres**, eux, n'arrivent qu'au rechargement, comme
+les compteurs. Le vote vit dans une ligne du classement mais le quota se compte sur toute
+la soirée : `useVote` prévient donc la page à chaque bascule (`onChange`), y compris sur
+la valeur optimiste et sur son annulation.
+
+Depuis le catalogue ou une fiche, où rien n'affiche de réserve, le refus arrive sous le
+bouton — c'est la même phrase que celle du bouton éteint de la page soirée.
+
+L'historique (US-I1) ne montre plus le haut d'un classement mêlé mais ce que chaque
+soirée a retenu : les véhicules dans `pastSoireeInclude`, le circuit par une requête à
+part (`retainedTracks`, [lib/soirees/past.ts](lib/soirees/past.ts)). Prisma ne sait pas
+prendre « les huit premiers véhicules **et** le premier circuit » dans une seule relation,
+et un `take` sur le classement mêlé aurait affiché une soirée sans son circuit — le seul
+mod dont il n'y en a qu'un.
+
 ## Stockage des images (US-B2)
 
 Les images d'aperçu des mods vont dans un bucket Supabase Storage nommé `mod-images`,

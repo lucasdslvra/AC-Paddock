@@ -44,8 +44,18 @@ export interface VoteControl {
  *
  * Le hook ne sait pas si le mod est votable : c'est à l'appelant de ne pas peindre un
  * bouton actif quand `ApiMod.engagement` est nul. Le serveur refuse de toute façon.
+ *
+ * `onChange` est prévenu à chaque fois que le vote de ce membre bascule — y compris sur
+ * la valeur optimiste et sur son annulation. La page soirée s'en sert pour tenir le
+ * compte de ses quotas (8 véhicules, 3 circuits) : le vote vit dans le hook, une ligne
+ * du classement, alors que le quota se compte sur toute la soirée. Sans ce signal, les
+ * compteurs et les boutons éteints ne bougeraient qu'au rechargement suivant.
  */
-export function useVote(modId: string, initial: VoteInitial): VoteControl {
+export function useVote(
+  modId: string,
+  initial: VoteInitial,
+  onChange?: (hasVoted: boolean) => void,
+): VoteControl {
   const [local, setLocal] = useState<VoteState | null>(null);
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +79,7 @@ export function useVote(modId: string, initial: VoteInitial): VoteControl {
       soireeVotes: Math.max(0, soireeVotes + step),
       hasVoted: next,
     });
+    onChange?.(next);
 
     void (async () => {
       try {
@@ -81,19 +92,23 @@ export function useVote(modId: string, initial: VoteInitial): VoteControl {
         if (!response.ok) {
           const body = await response.json().catch(() => null);
           setLocal(previous);
+          onChange?.(previous?.hasVoted ?? initial.hasVoted);
           setError(body?.error ?? "Ton vote n'a pas pu être pris en compte.");
           return;
         }
 
-        setLocal((await response.json()) as VoteState);
+        const state = (await response.json()) as VoteState;
+        setLocal(state);
+        onChange?.(state.hasVoted);
       } catch {
         setLocal(previous);
+        onChange?.(previous?.hasVoted ?? initial.hasVoted);
         setError("Impossible de joindre le serveur. Réessaie dans un instant.");
       } finally {
         setIsPending(false);
       }
     })();
-  }, [hasVoted, isPending, local, modId, soireeVotes, votes]);
+  }, [hasVoted, initial.hasVoted, isPending, local, modId, onChange, soireeVotes, votes]);
 
   return { votes, soireeVotes, hasVoted, isPending, error, toggle };
 }

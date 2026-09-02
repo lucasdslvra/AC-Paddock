@@ -436,6 +436,69 @@ prendre « les huit premiers véhicules **et** le premier circuit » dans une se
 et un `take` sur le classement mêlé aurait affiché une soirée sans son circuit — le seul
 mod dont il n'y en a qu'un.
 
+### L'heure du soir : fermeture du vote, fenêtre de retrait
+
+Le vote ne peut pas rester ouvert jusqu'au départ — il faut le temps d'installer ce qui
+sort. Trois moments, dans [lib/soirees/phase.ts](lib/soirees/phase.ts) :
+
+```
+… vote ouvert …┃ 30 min ┃ ── départ ── 2 h ──┃ … archive …
+               ▲                             ▲
+         vote clos,                    retrait clos
+       retrait ouvert
+```
+
+| Phase | Quand | Ce qui est possible |
+| --- | --- | --- |
+| `OPEN` | jusqu'à T−30 min | voter, engager, retirer un engagement |
+| `LOCKED` | T−30 min → T+2 h | télécharger les mods retenus |
+| `OVER` | après T+2 h | rien — la soirée se relit |
+
+Un seul basculement, pas deux réglages qui pourraient se croiser : **ce qui n'est plus
+votable est téléchargeable**. Et le retrait dure deux heures après le départ, pour le
+retardataire et pour celui dont l'installation a raté.
+
+À ne pas confondre avec « la soirée en cours » (`currentSoiree`), qui se compte en jours :
+la soirée de ce soir reste la soirée en cours jusqu'au lendemain, alors que son vote a
+fermé à 20 h 30. Ce sont deux bornes différentes, et elles répondent à deux questions
+différentes.
+
+Le serveur applique ces bornes partout où l'on écrit : les deux routes de vote (POST et
+DELETE — retirer un vote après la fermeture déplacerait le classement autant qu'en
+ajouter un), l'engagement d'un mod, et son retrait. Le retrait fait exception pour les
+admins : la modération (cahier §2.6) doit pouvoir faire disparaître un contenu à
+n'importe quelle heure.
+
+Côté page, la soirée porte une horloge : `now` descend du rendu serveur — sans quoi le
+premier rendu du navigateur différerait — puis la page prend le relais toutes les 15 s.
+La bascule se voit donc sans rechargement : les boutons de vote s'éteignent, le panneau
+de retrait apparaît. La fiche détail, elle, calcule sa raison au rendu (`voteClosedReason`)
+et laisse le serveur reprendre un onglet resté ouvert. Le catalogue garde son bouton : le
+refus arrive alors sous la carte, avec l'heure de fermeture.
+
+### Le retrait des mods retenus
+
+Un bouton, et les 8 véhicules + le circuit partent l'un après l'autre
+([components/SoireeDownloadPanel.tsx](components/SoireeDownloadPanel.tsx)).
+
+Pas d'archive construite par le serveur : `Mod.fileUrl` est l'URL publique de l'objet sur
+Cloudflare R2, et le navigateur va la chercher directement — comme au dépôt, le fichier ne
+transite jamais par l'application. Un `.zip` de neuf mods aurait fait passer jusqu'à 1 Go
+par fichier dans une fonction Vercel qui plafonne bien en dessous, en temps comme en
+volume, pour un budget d'hébergement nul (cahier §1). Le « d'un coup » se joue donc côté
+navigateur.
+
+D'où deux détails qui n'en sont pas : les clics sont **espacés** (lancés dans la même
+boucle, les navigateurs n'en retiennent qu'un), et le panneau prévient que le navigateur
+demandera l'autorisation de télécharger plusieurs fichiers — sans la phrase, un refus
+distrait ressemblerait à une panne du bouton.
+
+Les mods retenus dont le fichier manque ou a expiré (cahier §2.7 : 24 h) ne sont pas
+passés sous silence : ils sont listés avec leur lien externe. Une soirée où trois voitures
+sur huit n'ont pas été déposées doit se voir avant le départ, pas se découvrir au moment
+de rouler. Le dépôt, lui, reste ouvert pendant toute la fenêtre — c'est justement le
+moment où l'on s'aperçoit qu'un fichier manque.
+
 ## Stockage des images (US-B2)
 
 Les images d'aperçu des mods vont dans un bucket Supabase Storage nommé `mod-images`,

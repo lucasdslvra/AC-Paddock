@@ -59,7 +59,16 @@ interface ModDetailViewProps {
    * sert deux fois : elle distingue « pas engagé » de « aucune soirée » dans le panneau
    * de vote, et c'est elle qu'on engage la fiche depuis le bloc d'actions.
    */
-  currentSoiree?: { id: string; dateLabel: string } | null;
+  currentSoiree?: {
+    id: string;
+    dateLabel: string;
+    /**
+     * Pourquoi le vote du soir est fermé (30 min avant le départ), `null` tant qu'il est
+     * ouvert. Le panneau éteint alors son bouton et affiche cette phrase — la même que
+     * celle que la route rendrait en 409.
+     */
+    voteClosedReason: string | null;
+  } | null;
   /**
    * US-H1/US-K3 — le plafond d'upload du moment, en octets, tel que l'espace admin
    * l'a réglé. Il descend du serveur avec la page : la fiche l'affiche au membre avant
@@ -94,18 +103,23 @@ function VotePanel({
   mod,
   viewer,
   hasCurrentSoiree,
+  voteClosedReason,
 }: {
   mod: Mod;
   viewer?: { name?: string | null; image?: string | null };
   hasCurrentSoiree: boolean;
+  /** Voir `ModDetailViewProps.currentSoiree` — `null` quand le vote est ouvert. */
+  voteClosedReason: string | null;
 }) {
   const { soireeVotes, hasVoted, isPending, error, toggle } = useVote(mod.id, {
     votes: mod.totalVotes,
     soireeVotes: mod.engagement?.votes ?? 0,
     hasVoted: mod.hasVoted ?? false,
   });
-  // US-G3 — seuls les mods engagés dans la soirée en cours sont votables.
+  // US-G3 — seuls les mods engagés dans la soirée en cours sont votables, et seulement
+  // tant que le vote du soir est ouvert : il ferme 30 min avant le départ.
   const isEngaged = mod.engagement != null;
+  const canVote = isEngaged && voteClosedReason === null;
   const others = soireeVotes - (hasVoted ? 1 : 0);
 
   return (
@@ -123,7 +137,7 @@ function VotePanel({
         </div>
         <MiniBarChart values={mod.voteHistory} height={36} dimmed={mod.totalVotes === 0} />
       </div>
-      {isEngaged ? (
+      {canVote ? (
         <button
           type="button"
           onClick={toggle}
@@ -142,7 +156,7 @@ function VotePanel({
         /* Pas de bouton éteint : il annoncerait un score qui n'existe pas. À la place,
            la raison — elle n'est pas la même selon qu'une soirée est ouverte ou non. */
         <p className="mt-4 rounded-sm border border-dashed border-[var(--color-border-dashed)] p-3 text-center font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-muted)]">
-          {voteDisabledReason(hasCurrentSoiree)}
+          {voteDisabledReason(hasCurrentSoiree, voteClosedReason)}
         </p>
       )}
       {error && (
@@ -566,7 +580,12 @@ export function ModDetailView({
         </div>
 
         <div className="flex flex-col gap-3">
-          <VotePanel mod={mod} viewer={session?.user} hasCurrentSoiree={currentSoiree !== null} />
+          <VotePanel
+            mod={mod}
+            viewer={session?.user}
+            hasCurrentSoiree={currentSoiree !== null}
+            voteClosedReason={currentSoiree?.voteClosedReason ?? null}
+          />
 
           {mod.primaryLink && (
             <a
@@ -622,6 +641,7 @@ export function ModDetailView({
                   modId={mod.id}
                   soiree={currentSoiree}
                   isEngaged={mod.engagement != null}
+                  closedReason={currentSoiree?.voteClosedReason ?? null}
                 />
               )}
               {canDelete ? (

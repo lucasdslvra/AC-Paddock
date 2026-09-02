@@ -2,7 +2,8 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { sessionGuildId, upsertSessionUser } from "@/lib/session-user";
-import { currentSoireeId } from "@/lib/soirees/current";
+import { currentSoiree } from "@/lib/soirees/current";
+import { isVoteOpen, voteClosedMessage } from "@/lib/soirees/phase";
 
 const engageSchema = z.object({
   modId: z.string().min(1, "Choisis un mod à engager."),
@@ -41,7 +42,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/soirees/[id
   }
 
   try {
-    const [soiree, mod, member, currentId] = await Promise.all([
+    const [soiree, mod, member, current] = await Promise.all([
       prisma.soiree.findUnique({ where: { id }, select: { id: true } }),
       prisma.mod.findUnique({ where: { id: parsed.data.modId }, select: { id: true } }),
       // Engager est souvent la première écriture d'un membre : sa ligne `User` peut
@@ -49,7 +50,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/soirees/[id
       upsertSessionUser(session.user),
       // Rapportée au serveur du membre : la soirée d'un autre groupe n'est pas la
       // sienne, et le refus ci-dessous vaut alors « plus ouverte aux engagements ».
-      sessionGuildId(session).then(currentSoireeId),
+      sessionGuildId(session).then((guildId) => currentSoiree(guildId)),
     ]);
 
     if (!soiree) {
@@ -58,11 +59,17 @@ export async function POST(request: Request, ctx: RouteContext<"/api/soirees/[id
     if (!mod) {
       return Response.json({ error: "Cette fiche n'existe pas." }, { status: 404 });
     }
-    if (soiree.id !== currentId) {
+    if (soiree.id !== current?.id) {
       return Response.json(
         { error: "Cette soirée n'est plus ouverte aux engagements." },
         { status: 409 },
       );
+    }
+    // L'engagement se ferme avec le vote, 30 min avant le départ : un mod engagé après
+    // coup n'est plus votable, il n'entrerait dans le classement que pour y rester à
+    // zéro — et le groupe est en train de télécharger ce que ce classement a retenu.
+    if (!isVoteOpen(current.date)) {
+      return Response.json({ error: voteClosedMessage(current.date) }, { status: 409 });
     }
 
     // `skipDuplicates` s'appuie sur `@@unique([soireeId, modId])` : engager deux fois

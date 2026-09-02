@@ -10,6 +10,7 @@ import { toModView } from "@/lib/mods/view";
 import { prisma } from "@/lib/prisma";
 import { soireeContext } from "@/lib/soirees/current";
 import { formatSoireeShortDay } from "@/lib/soirees/format";
+import { isVoteOpen, voteClosedMessage } from "@/lib/soirees/phase";
 import { ModDetailView } from "./ModDetailView";
 
 export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
@@ -70,7 +71,19 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
       hasPendingDraft={hasPendingDraft}
       contributions={feed}
       playedAt={played}
-      currentSoiree={soiree ? { id: soiree.id, dateLabel: formatSoireeShortDay(soiree.date) } : null}
+      currentSoiree={
+        soiree
+          ? {
+              id: soiree.id,
+              dateLabel: formatSoireeShortDay(soiree.date),
+              // Le vote ferme 30 min avant le départ : la fiche éteint alors son bouton
+              // plutôt que d'envoyer un vote que la route refusera. Calculé au rendu,
+              // donc juste au chargement — un onglet resté ouvert depuis la veille se
+              // fait reprendre par le serveur, avec la même phrase.
+              voteClosedReason: isVoteOpen(soiree.date) ? null : voteClosedMessage(soiree.date),
+            }
+          : null
+      }
       maxModFileBytes={maxFileBytes}
     />
   );

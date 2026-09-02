@@ -2,18 +2,20 @@ import type { Session } from "next-auth";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { sessionGuildId, upsertSessionUser } from "@/lib/session-user";
-import { currentSoireeId } from "@/lib/soirees/current";
+import { currentSoiree } from "@/lib/soirees/current";
+import { isVoteOpen, voteClosedMessage } from "@/lib/soirees/phase";
 import { castVote, readVoteState } from "@/lib/soirees/vote";
 
 /**
  * L'engagement visé, une fois vérifié qu'on a le droit d'y voter (US-G3).
  *
- * Trois refus possibles, et ils ne disent pas la même chose : la soirée n'existe pas,
- * elle n'est plus celle où l'on vote, ou le mod n'y est pas engagé. Le dernier est la
- * règle centrale de l'Epic G — seuls les mods engagés sont votables.
+ * Quatre refus possibles, et ils ne disent pas la même chose : la soirée n'existe pas,
+ * elle n'est plus celle où l'on vote, son vote a fermé (30 min avant le départ), ou le
+ * mod n'y est pas engagé. Le dernier est la règle centrale de l'Epic G — seuls les mods
+ * engagés sont votables.
  */
 async function resolveEngagement(soireeId: string, modId: string, session: Session) {
-  const [engagement, currentId] = await Promise.all([
+  const [engagement, current] = await Promise.all([
     prisma.soireeMod.findUnique({
       where: { soireeId_modId: { soireeId, modId } },
       // Le type de la fiche vient avec l'engagement : c'est lui qui désigne le quota du
@@ -22,11 +24,16 @@ async function resolveEngagement(soireeId: string, modId: string, session: Sessi
     }),
     // La soirée en cours du serveur de ce membre : la soirée d'un autre groupe n'est
     // jamais « la sienne », et le premier refus ci-dessous s'en charge.
-    sessionGuildId(session).then(currentSoireeId),
+    sessionGuildId(session).then((guildId) => currentSoiree(guildId)),
   ]);
 
-  if (soireeId !== currentId) {
+  if (soireeId !== current?.id) {
     return { error: "Le vote de cette soirée est clos.", status: 409 as const };
+  }
+  // Le vote ferme 30 min avant le départ, la soirée restant « en cours » jusqu'au
+  // lendemain : c'est le moment où le classement se fige et où le retrait s'ouvre.
+  if (!isVoteOpen(current.date)) {
+    return { error: voteClosedMessage(current.date), status: 409 as const };
   }
   if (!engagement) {
     return {

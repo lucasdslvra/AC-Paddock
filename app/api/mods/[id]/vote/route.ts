@@ -2,7 +2,8 @@ import type { Session } from "next-auth";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { sessionGuildId, upsertSessionUser } from "@/lib/session-user";
-import { currentSoireeId } from "@/lib/soirees/current";
+import { currentSoiree } from "@/lib/soirees/current";
+import { isVoteOpen, voteClosedMessage } from "@/lib/soirees/phase";
 import { castVote, readVoteState } from "@/lib/soirees/vote";
 
 /**
@@ -22,17 +23,24 @@ import { castVote, readVoteState } from "@/lib/soirees/vote";
 async function resolveEngagement(modId: string, session: Session) {
   // La soirée en cours **du serveur de ce membre** : deux groupes peuvent jouer le même
   // soir, et un vote n'appartient qu'à l'un des deux classements.
-  const soireeId = await currentSoireeId(await sessionGuildId(session));
+  const soiree = await currentSoiree(await sessionGuildId(session));
 
-  if (!soireeId) {
+  if (!soiree) {
     return {
       error: "Aucune soirée n'est programmée : le vote rouvrira avec la prochaine.",
       status: 409 as const,
     };
   }
 
+  // Le vote ferme 30 min avant le départ (`VOTE_CLOSES_BEFORE_MS`) : passé cette heure,
+  // le classement est figé et les mods retenus se téléchargent. La soirée reste « en
+  // cours » jusqu'au lendemain — c'est bien deux choses différentes.
+  if (!isVoteOpen(soiree.date)) {
+    return { error: voteClosedMessage(soiree.date), status: 409 as const };
+  }
+
   const engagement = await prisma.soireeMod.findUnique({
-    where: { soireeId_modId: { soireeId, modId } },
+    where: { soireeId_modId: { soireeId: soiree.id, modId } },
     // Le type de la fiche vient avec l'engagement : c'est lui qui désigne le quota du
     // membre (8 véhicules, 3 circuits — `VOTE_QUOTA`), et le relire à part ferait un
     // aller-retour de plus pour une colonne déjà sur le chemin.

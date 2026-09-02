@@ -10,6 +10,11 @@ interface EngageModButtonProps {
   soiree: { id: string; dateLabel: string } | null;
   /** Vrai si la fiche est déjà engagée dans cette soirée (`ApiMod.engagement`). */
   isEngaged: boolean;
+  /**
+   * Pourquoi la soirée n'accepte plus d'engagement — son vote a fermé 30 min avant le
+   * départ, et l'engagement se ferme avec lui. `null` tant qu'elle en accepte.
+   */
+  closedReason?: string | null;
 }
 
 /**
@@ -24,7 +29,12 @@ interface EngageModButtonProps {
  * — deux choses que la fiche ne sait pas dire. Elle renvoie donc au classement, où la
  * ligne porte son bouton « retirer » et le nom de celui qui a engagé.
  */
-export function EngageModButton({ modId, soiree, isEngaged }: EngageModButtonProps) {
+export function EngageModButton({
+  modId,
+  soiree,
+  isEngaged,
+  closedReason = null,
+}: EngageModButtonProps) {
   const router = useRouter();
   // L'engagement qui vient d'être fait : le `router.refresh()` rapportera la même chose,
   // mais plus tard, et le bouton ne doit pas rester « à engager » entre-temps.
@@ -67,6 +77,16 @@ export function EngageModButton({ modId, soiree, isEngaged }: EngageModButtonPro
     return (
       <span className="rounded-sm border border-dashed border-[var(--color-border-dashed)] px-3 py-[9px] text-center font-mono text-[10.5px] leading-[1.5] text-[var(--color-text-muted)]">
         Aucune soirée programmée — rien où engager cette fiche pour l&apos;instant.
+      </span>
+    );
+  }
+
+  // Le classement est figé : engager maintenant ajouterait une ligne que personne ne
+  // pourra voter. La fiche déjà engagée, elle, garde son lien vers le classement.
+  if (closedReason && !engaged) {
+    return (
+      <span className="rounded-sm border border-dashed border-[var(--color-border-dashed)] px-3 py-[9px] text-center font-mono text-[10.5px] leading-[1.5] text-[var(--color-text-muted)]">
+        {closedReason}
       </span>
     );
   }

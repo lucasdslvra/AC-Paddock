@@ -17,6 +17,11 @@ const SOIREE_SHORT_DAY_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
   month: "long",
 });
 
+const SOIREE_TIME_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 const SOIREE_MONTH_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
   month: "long",
   year: "numeric",
@@ -71,4 +76,13 @@ export function formatSoireeCountdown(date: Date, now: Date = new Date()): strin
   if (days === 0) return "ce soir";
   if (days === 1) return "demain";
   return `dans ${days} jours`;
+}
+
+/**
+ * « 20:30 » — une heure seule, sans sa date. Sert aux bornes du soir : l'heure de
+ * fermeture du vote, celle de fermeture du retrait. La date, elle, est déjà en titre de
+ * la page — la répéter à chaque phrase la ferait perdre.
+ */
+export function formatSoireeTime(date: Date): string {
+  return SOIREE_TIME_FORMATTER.format(date);
 }

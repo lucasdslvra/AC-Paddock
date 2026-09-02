@@ -56,6 +56,10 @@ export default async function SoireeDetailPage(props: PageProps<"/soiree/[id]">)
       })}
       memberCount={memberCount}
       isAdmin={actor?.role === "ADMIN"}
+      // L'heure du serveur, pour que le premier rendu du navigateur soit le même : la
+      // page a une horloge (fermeture du vote, fenêtre de retrait) et prend le relais
+      // ensuite.
+      now={new Date().toISOString()}
       // Calculé ici, pas dans le rendu client : la même borne que `currentSoiree`, et
       // une seule horloge — celle du serveur.
       isPast={soiree.date < startOfToday()}

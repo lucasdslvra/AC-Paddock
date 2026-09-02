@@ -27,9 +27,19 @@ export interface VoteState {
 /**
  * US-G3 — pourquoi un bouton de vote est éteint. Le cas n'est pas rare : hors soirée,
  * *aucun* mod n'est votable, et il faut le dire plutôt que d'afficher un bouton mort.
+ *
+ * Trois raisons, dans cet ordre : il n'y a pas de soirée ; il y en a une mais son vote a
+ * fermé (30 min avant le départ, `voteClosedMessage`) ; le mod n'y est pas engagé. La
+ * fermeture passe devant l'engagement parce qu'engager n'y changerait plus rien —
+ * l'inverse enverrait le membre garnir une liste close.
  */
-export function voteDisabledReason(hasCurrentSoiree: boolean): string {
-  return hasCurrentSoiree
-    ? "Ce mod n'est pas engagé dans la soirée en cours."
-    : "Aucune soirée n'est programmée : le vote rouvrira avec la prochaine.";
+export function voteDisabledReason(
+  hasCurrentSoiree: boolean,
+  /** La phrase de `voteClosedMessage` quand le vote du soir a fermé, `null` sinon. */
+  voteClosedReason?: string | null,
+): string {
+  if (!hasCurrentSoiree) {
+    return "Aucune soirée n'est programmée : le vote rouvrira avec la prochaine.";
+  }
+  return voteClosedReason ?? "Ce mod n'est pas engagé dans la soirée en cours.";
 }

@@ -2,9 +2,13 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { EngageModPicker } from "@/components/EngageModPicker";
+import {
+  SoireeDownloadPanel,
+  type SoireeDownloadItem,
+} from "@/components/SoireeDownloadPanel";
 import { MiniBarChart } from "@/components/MiniBarChart";
 import { ModThumbnail } from "@/components/ModThumbnail";
 import { ProgressBar } from "@/components/ProgressBar";
@@ -15,7 +19,8 @@ import type { ModType } from "@/lib/generated/prisma/enums";
 import { MOD_TYPES, toUiModType } from "@/lib/mods/type";
 import { apiModToView } from "@/lib/mods/view";
 import { useVote } from "@/lib/mods/useVote";
-import { formatSoireeCountdown, formatSoireeDate } from "@/lib/soirees/format";
+import { formatSoireeCountdown, formatSoireeDate, formatSoireeTime } from "@/lib/soirees/format";
+import { downloadClosesAt, soireePhase, voteClosesAt } from "@/lib/soirees/phase";
 import {
   modTypePlural,
   quotaReachedMessage,
@@ -48,7 +53,17 @@ interface SoireeViewProps {
    * programmée plus loin que la prochaine n'est ni passée ni ouverte au vote.
    */
   isPast?: boolean;
+  /**
+   * L'instant du rendu serveur, en ISO. La page a une horloge — le vote ferme 30 min
+   * avant le départ, le retrait deux heures après — et `new Date()` au premier rendu
+   * client donnerait un HTML différent de celui du serveur. Il part donc du serveur,
+   * puis la page prend le relais toute seule (`CLOCK_TICK_MS`).
+   */
+  now?: string;
 }
+
+/** À quelle cadence la page relit l'heure : assez fin pour que la bascule se voie. */
+const CLOCK_TICK_MS = 15_000;
 
 /** « VÉHICULES » / « CIRCUITS » — l'en-tête d'un des deux classements. */
 const SECTION_LABEL: Record<ModType, string> = { CAR: "VÉHICULES", TRACK: "CIRCUITS" };
@@ -343,10 +358,15 @@ export function SoireeView({
   memberCount,
   isAdmin = false,
   isPast = false,
+  now: serverNow,
 }: SoireeViewProps) {
   const { isLoading } = useRequireAuth();
   const { data: session } = useSession();
   const [soiree, setSoiree] = useState(initialSoiree);
+  // Part de l'heure du serveur pour que le premier rendu client soit le même, puis suit
+  // l'horloge du navigateur : la fermeture du vote et l'ouverture du retrait se voient
+  // sans rechargement.
+  const [now, setNow] = useState(() => (serverNow ? new Date(serverNow) : new Date()));
   /**
    * Les engagements pour lesquels ce membre a voté, tenus au niveau de la page.
    *
@@ -375,6 +395,11 @@ export function SoireeView({
       })
       .catch(() => {});
   }, [soiree]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), CLOCK_TICK_MS);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleVoteChange = useCallback((engagementId: string, hasVoted: boolean) => {
     setVotedIds((previous) => {
@@ -463,15 +488,22 @@ export function SoireeView({
   }
 
   const date = new Date(soiree.date);
+  // Où en est la soirée : on vote, le classement est figé et les mods se retirent, ou
+  // c'est fini (lib/soirees/phase.ts). Le serveur applique exactement les mêmes bornes.
+  const phase = soireePhase(date, now);
+  const voteCloseLabel = formatSoireeTime(voteClosesAt(date));
 
   /**
    * US-I2 — hors de la soirée en cours, la page est un compte rendu : ni vote, ni
-   * engagement, ni retrait. La condition est `isCurrent` et non `isPast`, parce que le
-   * serveur refuse déjà d'écrire ailleurs que dans la soirée en cours — une soirée
-   * programmée plus loin est donc à lire, elle aussi, même si elle n'a pas encore eu
-   * lieu.
+   * engagement, ni retrait de mod. La condition tenait à `isCurrent` et non à `isPast`,
+   * parce que le serveur refuse déjà d'écrire ailleurs que dans la soirée en cours —
+   * une soirée programmée plus loin est donc à lire, elle aussi.
+   *
+   * S'y ajoute la fermeture du vote, 30 min avant le départ : la soirée reste « en
+   * cours » toute la journée, mais son classement est figé bien avant. La page bascule
+   * alors d'elle-même, sans rechargement — c'est l'horloge qui la fait tourner.
    */
-  const isReadOnly = !soiree.isCurrent;
+  const isReadOnly = !soiree.isCurrent || phase !== "OPEN";
   // Ce que la soirée garde, les deux classements réunis : huit véhicules, un circuit.
   // Le circuit en tête : il n'y en a qu'un, et c'est la première chose qu'on cherche en
   // relisant une soirée — au bout d'une liste de huit voitures, il se manquerait.
@@ -481,6 +513,23 @@ export function SoireeView({
   const counts = Object.fromEntries(
     sections.map((section) => [section.type, section.rows.length]),
   ) as Record<ModType, number>;
+  /**
+   * Ce que le bouton de retrait va chercher : le fichier déposé quand il y en a un et
+   * qu'il n'a pas expiré (cahier §2.7), le lien externe de la fiche à défaut. C'est
+   * `apiModToView` qui sait lire l'un et l'autre — la même lecture que le panneau
+   * « fichier » de la fiche.
+   */
+  const downloadItems: SoireeDownloadItem[] = retained.map((row) => {
+    const file = apiModToView(row.entry.mod).fileUpload;
+    return {
+      modId: row.entry.mod.id,
+      name: row.entry.mod.name,
+      type: row.entry.mod.type,
+      file: file?.href && !file.expired ? { filename: file.filename, href: file.href } : null,
+      href: row.entry.mod.url,
+    };
+  });
+
   const eyebrow = soiree.isCurrent
     ? "SOIRÉE EN COURS"
     : isPast
@@ -515,6 +564,16 @@ export function SoireeView({
             value={isPast ? "terminée" : formatSoireeCountdown(date)}
             valueSize={22}
           />
+          {/* Le vote ne va pas jusqu'au départ : il ferme 30 min avant, pour laisser
+              le temps d'installer ce qui a été retenu. L'heure est écrite, pas
+              seulement « ouvert » — c'est elle qu'on regarde en fin d'après-midi. */}
+          {!isPast && (
+            <StatBlock
+              label="VOTE"
+              value={phase === "OPEN" ? `→ ${voteCloseLabel}` : `clos ${voteCloseLabel}`}
+              valueSize={22}
+            />
+          )}
           <StatBlock
             label="ONT VOTÉ"
             value={`${soiree.voterCount} / ${memberCount}`}
@@ -530,7 +589,11 @@ export function SoireeView({
               {isReadOnly ? "CLASSEMENT FINAL" : "CLASSEMENT EN DIRECT"}
             </div>
             <div className="font-mono text-[10px] text-[var(--color-text-muted)]">
-              {isReadOnly ? "les votes sont clos" : "mise à jour à chaque vote"}
+              {!isReadOnly
+                ? "mise à jour à chaque vote"
+                : soiree.isCurrent
+                  ? `vote fermé à ${voteCloseLabel}`
+                  : "les votes sont clos"}
             </div>
           </div>
 
@@ -572,8 +635,20 @@ export function SoireeView({
         </div>
 
         <div className="flex flex-col gap-3">
-          {/* US-I2 — une soirée qu'on ne fait que lire n'a rien à garnir. */}
+          {/* US-I2 — une soirée qu'on ne fait que lire n'a rien à garnir. Passé la
+              fermeture du vote non plus : le classement est figé, on télécharge. */}
           {!isReadOnly && <EngageModPicker soireeId={soiree.id} onEngaged={refresh} />}
+
+          {/* La fenêtre de retrait : de la fermeture du vote à deux heures après le
+              départ. Le bouton n'existe qu'à l'intérieur — avant, le classement peut
+              encore bouger et on téléchargerait peut-être le mauvais mod ; après, les
+              fichiers ont de toute façon commencé à expirer. */}
+          {phase === "LOCKED" && downloadItems.length > 0 && (
+            <SoireeDownloadPanel
+              items={downloadItems}
+              closesAtLabel={formatSoireeTime(downloadClosesAt(date))}
+            />
+          )}
 
           {/* Ce que la soirée retient, sorti de la liste : c'est la réponse à
               « qu'est-ce qui a été joué ce soir-là ? », et elle ne doit pas se
@@ -627,8 +702,11 @@ export function SoireeView({
             <p className="mt-[11px] font-mono text-[10.5px] leading-[1.7] text-[var(--color-text-muted)]">
               {isReadOnly ? (
                 <>
-                  Les votes de cette soirée sont clos : elle ne se modifie plus. Elle a
-                  gardé ses {RETAINED_COUNT.CAR} véhicules les plus votés et son circuit.
+                  {soiree.isCurrent
+                    ? `Le vote a fermé à ${voteCloseLabel}, 30 minutes avant le départ. `
+                    : "Les votes de cette soirée sont clos : elle ne se modifie plus. "}
+                  Elle a gardé ses {RETAINED_COUNT.CAR} véhicules les plus votés et son
+                  circuit.
                 </>
               ) : (
                 <>

@@ -60,6 +60,10 @@ export default async function SoireePage() {
       })}
       memberCount={memberCount}
       isAdmin={actor?.role === "ADMIN"}
+      // L'heure du serveur, pour que le premier rendu du navigateur soit le même : la
+      // page a une horloge (fermeture du vote, fenêtre de retrait) et prend le relais
+      // ensuite.
+      now={new Date().toISOString()}
     />
   );
 }

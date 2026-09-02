@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { isVoteOpen, voteClosedMessage } from "@/lib/soirees/phase";
 
 /**
  * Retirer un mod d'une soirée. Le backlog ne le demande pas, mais un sélecteur qui
@@ -26,7 +27,9 @@ export async function DELETE(
     const [engagement, actor] = await Promise.all([
       prisma.soireeMod.findUnique({
         where: { soireeId_modId: { soireeId: id, modId } },
-        select: { id: true, engagedById: true },
+        // La date de la soirée vient avec l'engagement : c'est elle qui dit si le
+        // classement est encore mouvant ou déjà figé (voir plus bas).
+        select: { id: true, engagedById: true, soiree: { select: { date: true } } },
       }),
       // Le rôle n'est pas dans la session : on le relit en base, ce qui évite qu'une
       // session ouverte avant un changement de rôle garde d'anciens droits.
@@ -46,6 +49,19 @@ export async function DELETE(
       return Response.json(
         { error: "Seuls le membre qui a engagé ce mod et les admins peuvent le retirer." },
         { status: 403 },
+      );
+    }
+
+    // Le retrait se ferme avec le vote, 30 min avant le départ : il emporte les votes
+    // reçus, donc il déplacerait le classement pendant que le groupe télécharge ce que
+    // ce classement a retenu. L'admin en est excepté — la modération (cahier §2.6) doit
+    // pouvoir faire disparaître un contenu à n'importe quelle heure.
+    if (actor.role !== "ADMIN" && !isVoteOpen(engagement.soiree.date)) {
+      return Response.json(
+        {
+          error: `${voteClosedMessage(engagement.soiree.date)} Demande à un admin de retirer ce mod.`,
+        },
+        { status: 409 },
       );
     }
 

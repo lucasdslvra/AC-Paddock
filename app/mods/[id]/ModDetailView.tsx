@@ -266,7 +266,7 @@ export function ModDetailView({
     return (
       <div className="flex min-h-screen flex-col">
         <BreadcrumbHeader crumbs={[{ label: "Catalogue", href: "/catalogue" }, { label: "Fiche introuvable" }]} />
-        <div className="p-8">
+        <div className="p-4 sm:p-8">
           <p className="font-sans text-sm">Cette fiche n&apos;existe pas ou a été supprimée.</p>
           <Link
             href="/catalogue"
@@ -315,14 +315,14 @@ export function ModDetailView({
           la saisie repart d'où elle s'était arrêtée. */}
       {hasPendingDraft && (
         <div
-          className="mx-[20px] mt-[20px] flex flex-wrap items-center justify-between gap-3 rounded-sm border bg-[var(--color-surface)] p-3"
+          className="mx-4 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-sm border bg-[var(--color-surface)] p-3 sm:mx-[20px] sm:mt-[20px]"
           style={{
             borderColor: "var(--color-border-strong)",
             borderLeft: "3px solid var(--color-amber)",
           }}
           role="status"
         >
-          <div className="min-w-[240px] flex-1">
+          <div className="min-w-0 flex-1 sm:min-w-[240px]">
             <div className="font-sans text-[13px] font-semibold">
               Ta fiche en cours t&apos;attend
             </div>
@@ -343,17 +343,17 @@ export function ModDetailView({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-[18px] p-[20px] lg:grid-cols-[1fr_336px]">
+      <div className="grid grid-cols-1 gap-[18px] p-4 sm:p-[20px] lg:grid-cols-[1fr_336px]">
         <div className="flex flex-col gap-[14px]">
           <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)]">
-            <div className="p-5 pb-4">
+            <div className="p-4 pb-4 sm:p-5">
               <div className="flex items-center gap-[9px]">
                 <TypeBadge type={mod.type} as="pill" />
                 <span className="font-mono text-[10px] text-[var(--color-text-muted)]">
                   fiche #{mod.id.slice(0, 3).toUpperCase()} · créée le {mod.createdAtLabel}
                 </span>
               </div>
-              <h1 className="mt-[10px] text-pretty font-sans text-[32px] font-bold leading-[1.05] tracking-[-0.03em]">
+              <h1 className="mt-[10px] text-pretty font-sans text-[25px] font-bold leading-[1.08] tracking-[-0.03em] sm:text-[32px] sm:leading-[1.05]">
                 {mod.name}
               </h1>
               {editing === "tags" ? (
@@ -377,9 +377,11 @@ export function ModDetailView({
               )}
             </div>
             <div
-              className="relative flex items-end justify-between overflow-hidden border-y border-[var(--color-border)] px-[14px] py-[10px]"
+              // L'aperçu garde son cadre paysage, mais pas sa hauteur fixe : 250 px sur
+              // un écran de téléphone, c'est un tiers de la page avant d'avoir lu la
+              // description.
+              className="relative flex h-[170px] items-end justify-between overflow-hidden border-y border-[var(--color-border)] px-[14px] py-[10px] sm:h-[250px]"
               style={{
-                height: 250,
                 backgroundImage: previewUrl
                   ? undefined
                   : "repeating-linear-gradient(135deg, var(--color-placeholder-a) 0 7px, var(--color-placeholder-b) 7px 14px)",
@@ -413,7 +415,7 @@ export function ModDetailView({
               )}
             </div>
             {editing === "image" && (
-              <div className="border-b border-[var(--color-border)] p-5">
+              <div className="border-b border-[var(--color-border)] p-4 sm:p-5">
                 <ModInlineImageEdit
                   modId={mod.id}
                   currentImageUrl={mod.imageUrl ?? null}
@@ -422,7 +424,7 @@ export function ModDetailView({
                 />
               </div>
             )}
-            <div className="p-5">
+            <div className="p-4 sm:p-5">
               <div className="flex items-baseline justify-between">
                 <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
                   DESCRIPTION
@@ -484,7 +486,7 @@ export function ModDetailView({
               {editing !== "url" && editing !== "links" && (
                 <div className="mt-[14px] flex flex-wrap gap-2 border-t border-[var(--color-border-hairline)] pt-[14px]">
                   {mod.primaryLink ? (
-                    <div className="flex min-w-[150px] flex-col gap-[3px] rounded-sm border border-[var(--color-border)] px-3 py-[9px]">
+                    <div className="flex min-w-0 max-w-full flex-1 flex-col gap-[3px] rounded-sm border border-[var(--color-border)] px-3 py-[9px] sm:min-w-[150px] sm:flex-none">
                       <span className="flex items-baseline gap-3 font-mono text-[10px] tracking-[0.08em] text-[var(--color-text-muted)]">
                         LIEN PRINCIPAL
                         {editHref && (
@@ -498,7 +500,7 @@ export function ModDetailView({
                           </button>
                         )}
                       </span>
-                      <span className="font-mono text-[11px]">{mod.primaryLink.url}</span>
+                      <span className="truncate font-mono text-[11px]">{mod.primaryLink.url}</span>
                     </div>
                   ) : (
                     /* Cahier §2.2 — le lien est facultatif, et celle-ci n'en a pas. */
@@ -512,7 +514,7 @@ export function ModDetailView({
                       href={link.href ?? `https://${link.url}`}
                       target="_blank"
                       rel="noreferrer noopener"
-                      className="btn-outline flex min-w-[150px] max-w-full flex-col gap-[3px] rounded-sm border border-[var(--color-border)] px-3 py-[9px]"
+                      className="btn-outline flex min-w-0 max-w-full flex-1 flex-col gap-[3px] rounded-sm border border-[var(--color-border)] px-3 py-[9px] sm:min-w-[150px] sm:flex-none"
                     >
                       <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--color-text-muted)]">
                         {link.label.toUpperCase()} ↗
@@ -550,7 +552,10 @@ export function ModDetailView({
                 {contributions.entries.map((entry, index) => (
                   <div
                     key={`${entry.author}-${index}`}
-                    className="grid grid-cols-[100px_1fr_92px] items-center gap-3 border-b border-[var(--color-border-hairline)] py-2 last:border-b-0"
+                    // Trois colonnes fixes tiennent mal sur 320 px de large : sous `sm`
+                    // les trois valeurs coulent sur la même ligne, et passent à la ligne
+                    // d'elles-mêmes si l'action est longue.
+                    className="flex flex-wrap items-baseline gap-x-3 gap-y-[2px] border-b border-[var(--color-border-hairline)] py-2 last:border-b-0 sm:grid sm:grid-cols-[100px_1fr_92px] sm:items-center sm:gap-3"
                   >
                     <span className="truncate font-mono text-[10px]">{entry.author}</span>
                     <span className="font-sans text-xs text-[var(--color-text-secondary)]">{entry.action}</span>

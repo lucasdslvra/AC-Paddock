@@ -158,7 +158,11 @@ function RankingRow({
 
   return (
     <article
-      className="grid grid-cols-[38px_48px_1fr_auto] items-center gap-[13px] rounded-sm border p-[11px_14px] md:grid-cols-[38px_48px_1fr_110px_auto]"
+      // Sur un téléphone, le rang, la vignette et le nom tiennent la première ligne, et
+      // les actions passent dessous (`col-span-3` plus bas) : côte à côte, « retirer »
+      // et le bouton de vote ne laissaient qu'une poignée de pixels au nom du mod, qui
+      // est pourtant ce qu'on vient lire.
+      className="grid grid-cols-[30px_44px_1fr] items-center gap-x-[10px] gap-y-[9px] rounded-sm border p-[11px_12px] md:grid-cols-[38px_48px_1fr_110px_auto] md:gap-[13px] md:p-[11px_14px]"
       style={{
         background: "var(--color-surface)",
         borderColor: "var(--color-border)",
@@ -168,7 +172,7 @@ function RankingRow({
         borderLeft: retained ? "3px solid var(--color-amber)" : undefined,
       }}
     >
-      <div className="font-mono text-xl leading-none">{String(rank).padStart(2, "0")}</div>
+      <div className="font-mono text-lg leading-none md:text-xl">{String(rank).padStart(2, "0")}</div>
       <ModThumbnail src={entry.mod.imageUrl ?? undefined} name={entry.mod.name} size={42} />
       <div className="min-w-0">
         <Link
@@ -197,7 +201,7 @@ function RankingRow({
       <div className="hidden w-[110px] md:block">
         <MiniBarChart values={history} height={26} dimmed={soireeVotes === 0} />
       </div>
-      <div className="flex items-center gap-[9px]">
+      <div className="col-span-3 flex items-center justify-end gap-[9px] md:col-span-1">
         {canRemove && (
           <button
             type="button"
@@ -454,11 +458,11 @@ export function SoireeView({
     return (
       <div className="flex min-h-screen flex-col">
         <AppHeader active="soiree" />
-        <div className="p-8">
+        <div className="p-4 sm:p-8">
           <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
             SOIRÉE EN COURS
           </div>
-          <h1 className="mt-2 font-sans text-[32px] font-bold leading-none tracking-[-0.035em]">
+          <h1 className="mt-2 text-pretty font-sans text-[26px] font-bold leading-[1.08] tracking-[-0.035em] sm:text-[32px] sm:leading-none">
             Aucune soirée n&apos;est programmée.
           </h1>
           <p className="mt-3 max-w-[520px] font-mono text-[11.5px] leading-[1.7] text-[var(--color-text-secondary)]">
@@ -467,7 +471,7 @@ export function SoireeView({
             Un admin en crée une depuis l&apos;espace admin, puis chacun y engage les mods
             qu&apos;il veut essayer.
           </p>
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 flex flex-wrap gap-2">
             <Link
               href="/catalogue"
               className="btn-solid rounded-sm px-[14px] py-2 font-sans text-xs font-semibold"
@@ -543,13 +547,13 @@ export function SoireeView({
         cta={isReadOnly ? undefined : { label: "Proposer un mod", href: "/mods/nouveau" }}
       />
 
-      <div className="flex flex-wrap items-end gap-7 border-b border-[var(--color-border)] px-[22px] py-[18px]">
+      <div className="flex flex-wrap items-end gap-x-7 gap-y-4 border-b border-[var(--color-border)] px-4 py-4 sm:px-[22px] sm:py-[18px]">
         <div>
           <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
             {eyebrow}
             {soiree.name && ` · THÈME ${soiree.name.toUpperCase()}`}
           </div>
-          <h1 className="mt-2 font-sans text-[38px] font-bold leading-none tracking-[-0.035em]">
+          <h1 className="mt-2 text-pretty font-sans text-[26px] font-bold leading-[1.05] tracking-[-0.035em] sm:text-[38px] sm:leading-none">
             {formatSoireeDate(date)}
           </h1>
           <div className="mt-[7px] font-mono text-[11px] text-[var(--color-text-secondary)]">
@@ -558,7 +562,9 @@ export function SoireeView({
             {counts.TRACK > 1 ? "s" : ""} engagé{soiree.mods.length > 1 ? "s" : ""}
           </div>
         </div>
-        <div className="ml-auto flex items-end gap-[26px]">
+        {/* Les trois compteurs prennent toute la largeur sous `sm` : serrés contre le
+            bord droit d'un téléphone, ils passeraient à la ligne un par un. */}
+        <div className="flex w-full items-end justify-between gap-4 sm:ml-auto sm:w-auto sm:justify-start sm:gap-[26px]">
           <StatBlock
             label={isPast ? "STATUT" : "IL RESTE"}
             value={isPast ? "terminée" : formatSoireeCountdown(date)}
@@ -582,7 +588,7 @@ export function SoireeView({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-[18px] p-[18px] lg:grid-cols-[1fr_320px]">
+      <div className="grid grid-cols-1 gap-[18px] p-4 sm:p-[18px] lg:grid-cols-[1fr_320px]">
         <div>
           <div className="mb-[10px] flex items-baseline justify-between">
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">

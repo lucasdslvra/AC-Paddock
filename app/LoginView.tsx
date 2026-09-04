@@ -71,7 +71,7 @@ export function LoginView({ guildName, stats }: LoginViewProps) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-[var(--color-border)] px-[22px] py-[14px]">
+      <header className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3 sm:px-[22px] sm:py-[14px]">
         <div className="flex items-center gap-[11px]">
           <div className="flex h-[26px] w-[26px] items-center justify-center bg-[var(--color-emphasis-bg)]">
             <span className="font-mono text-[11px] font-semibold text-[var(--color-emphasis-icon)]">P</span>
@@ -83,12 +83,12 @@ export function LoginView({ guildName, stats }: LoginViewProps) {
         <ThemeToggle />
       </header>
 
-      <div className="grid flex-1 grid-cols-1 items-center gap-10 px-8 py-12 md:grid-cols-2 md:px-16">
+      <div className="grid flex-1 grid-cols-1 items-center gap-10 px-5 py-10 sm:px-8 sm:py-12 md:grid-cols-2 md:px-16">
         <div>
           <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
             WIKI MODS ASSETTO CORSA
           </div>
-          <h1 className="mt-3 text-pretty font-sans text-4xl font-bold leading-[1.02] tracking-[-0.035em] md:text-[46px]">
+          <h1 className="mt-3 text-pretty font-sans text-[32px] font-bold leading-[1.05] tracking-[-0.035em] sm:text-4xl sm:leading-[1.02] md:text-[46px]">
             On arrête de
             <br />
             chercher le lien
@@ -99,7 +99,7 @@ export function LoginView({ guildName, stats }: LoginViewProps) {
             Une fiche par mod, complétée par tout le monde. Tu proposes, on vote, et vendredi soir
             on sait déjà ce qu&apos;on installe.
           </p>
-          <div className="mt-[26px] flex gap-[26px] border-t border-[var(--color-border)] pt-[18px]">
+          <div className="mt-[26px] flex flex-wrap gap-x-[26px] gap-y-4 border-t border-[var(--color-border)] pt-[18px]">
             <StatBlock label="MODS" value={stats?.mods ?? "—"} order="value-first" />
             <StatBlock label="VOTES" value={stats?.votes ?? "—"} order="value-first" />
             <StatBlock label="SOIRÉES" value={stats?.soirees ?? "—"} order="value-first" />
@@ -107,7 +107,7 @@ export function LoginView({ guildName, stats }: LoginViewProps) {
         </div>
 
         <div className="flex flex-col gap-[14px]">
-          <div className="rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-[26px]">
+          <div className="rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-5 sm:p-[26px]">
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
               CONNEXION
             </div>

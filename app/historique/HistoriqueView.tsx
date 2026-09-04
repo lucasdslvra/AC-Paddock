@@ -51,12 +51,12 @@ export function HistoriqueView({ soirees, memberCount }: HistoriqueViewProps) {
     <div className="flex min-h-screen flex-col">
       <AppHeader active="historique" />
 
-      <div className="flex flex-wrap items-end gap-[30px] border-b border-[var(--color-border)] p-[22px] pb-[18px]">
+      <div className="flex flex-wrap items-end gap-x-[30px] gap-y-4 border-b border-[var(--color-border)] p-4 sm:p-[22px] sm:pb-[18px]">
         <div>
           <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
             ARCHIVES
           </div>
-          <h1 className="mt-2 font-sans text-[36px] font-bold leading-none tracking-[-0.035em]">
+          <h1 className="mt-2 text-pretty font-sans text-[26px] font-bold leading-[1.05] tracking-[-0.035em] sm:text-[36px] sm:leading-none">
             {soirees.length === 0
               ? "Aucune soirée passée"
               : `${soirees.length} soirée${soirees.length > 1 ? "s" : ""} jouée${
@@ -71,9 +71,13 @@ export function HistoriqueView({ soirees, memberCount }: HistoriqueViewProps) {
         </div>
 
         {sparkline.length > 0 && (
-          // Les votants soirée après soirée. Une barre par soirée, la plus récente en
-          // ambre : c'est celle à laquelle les autres se comparent.
-          <div className="ml-auto flex h-[52px] items-end gap-[3px]" aria-hidden>
+          /* Les votants soirée après soirée. Une barre par soirée, la plus récente en
+             ambre : c'est celle à laquelle les autres se comparent.
+
+             Retirée sous `sm` : quatorze barres de 14 px ne tiennent pas sur un
+             téléphone, et les rétrécir en ferait un trait sans lecture possible. Les
+             deux compteurs à côté disent l'essentiel. */
+          <div className="ml-auto hidden h-[52px] items-end gap-[3px] sm:flex" aria-hidden>
             {sparkline.map((soiree, index) => (
               <div
                 key={soiree.id}
@@ -93,14 +97,14 @@ export function HistoriqueView({ soirees, memberCount }: HistoriqueViewProps) {
           </div>
         )}
 
-        <div className={`flex gap-[22px] ${sparkline.length > 0 ? "" : "ml-auto"}`}>
+        <div className={`flex gap-[22px] ${sparkline.length > 0 ? "sm:ml-0" : ""} ml-auto`}>
           <StatBlock label="MODS ENGAGÉS" value={totalMods} order="value-first" />
           <StatBlock label="VOTANTS / SOIRÉE" value={averageVoters} order="value-first" />
         </div>
       </div>
 
       {soirees.length === 0 ? (
-        <div className="m-[22px] rounded-sm border border-dashed border-[var(--color-border-dashed)] p-8 text-center">
+        <div className="m-4 rounded-sm border border-dashed border-[var(--color-border-dashed)] p-5 text-center sm:m-[22px] sm:p-8">
           <p className="font-sans text-sm font-semibold">
             Aucune soirée n&apos;a encore eu lieu.
           </p>
@@ -116,7 +120,7 @@ export function HistoriqueView({ soirees, memberCount }: HistoriqueViewProps) {
           </Link>
         </div>
       ) : (
-        <div className="flex flex-col gap-[9px] p-[18px_22px_22px]">
+        <div className="flex flex-col gap-[9px] p-4 sm:p-[18px_22px_22px]">
           <div className="hidden grid-cols-[150px_1fr_260px_92px] gap-4 px-[15px] pb-[7px] font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)] md:grid">
             <span>DATE / THÈME</span>
             <span>RETENUS</span>
@@ -149,7 +153,7 @@ function PastSoireeRow({
   const extra = soiree.modCount - thumbnails.length - (soiree.track ? 1 : 0);
 
   return (
-    <article className="grid grid-cols-1 items-center gap-4 rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[14px_15px] md:grid-cols-[150px_1fr_260px_92px]">
+    <article className="grid grid-cols-1 items-center gap-3 rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[13px_14px] sm:gap-4 md:grid-cols-[150px_1fr_260px_92px] md:p-[14px_15px]">
       <div>
         <Link
           href={`/soiree/${soiree.id}`}
@@ -212,7 +216,9 @@ function PastSoireeRow({
         )}
       </div>
 
-      <div className="flex gap-[5px]">
+      {/* Les vignettes débordent d'un écran étroit dès qu'il y en a cinq plus le « +N » :
+          elles se replient plutôt que de pousser la carte hors de la page. */}
+      <div className="flex flex-wrap gap-[5px]">
         {thumbnails.map((entry) => (
           <ModThumbnail
             key={entry.modId}

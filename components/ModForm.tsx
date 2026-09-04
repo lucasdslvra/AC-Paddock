@@ -304,8 +304,8 @@ export function ModForm({ mod, currentSoiree = null }: ModFormProps) {
         }
       />
 
-      <form id={FORM_ID} onSubmit={handleSubmit} noValidate className="grid grid-cols-1 gap-[18px] p-5 lg:grid-cols-[1fr_320px]">
-        <div className="flex flex-col gap-[18px] rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+      <form id={FORM_ID} onSubmit={handleSubmit} noValidate className="grid grid-cols-1 gap-[18px] p-4 sm:p-5 lg:grid-cols-[1fr_320px]">
+        <div className="flex flex-col gap-[18px] rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:p-5">
           {/* US-D3 — retour depuis une fiche existante : la saisie est là, intacte. */}
           {isDraftRestored && (
             <div
@@ -344,7 +344,7 @@ export function ModForm({ mod, currentSoiree = null }: ModFormProps) {
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
               TYPE — OBLIGATOIRE
             </div>
-            <div className="mt-2 flex gap-[7px]">
+            <div className="mt-2 flex flex-wrap gap-[7px]">
               {MOD_TYPES_UI.map((option) => (
                 <button
                   key={option}

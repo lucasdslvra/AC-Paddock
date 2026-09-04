@@ -42,14 +42,19 @@ export function AppHeader({ active = null, variant = "default", subtitle, stats,
       // raison de dépendre d'où l'on en est dans la page. `sticky` et non `fixed` :
       // l'en-tête garde sa place dans le flux, et rien en dessous n'a à compenser sa
       // hauteur. Le fond est opaque, sans quoi le contenu défilerait au travers.
-      className="sticky top-0 z-40 flex items-center gap-5 border-b px-[22px] py-[14px]"
+      //
+      // `flex-wrap` : sur un téléphone, les onglets passent à la ligne sous la marque
+      // et les actions (voir `order-last` sur le <nav>). Tout tenir sur une seule ligne
+      // demanderait de rogner soit les onglets, soit « Proposer un mod » — or c'est
+      // précisément ce que l'en-tête est là pour offrir.
+      className="sticky top-0 z-40 flex flex-wrap items-center gap-x-3 gap-y-3 border-b px-4 py-3 sm:gap-x-5 sm:px-[22px] sm:py-[14px]"
       style={
         isAdmin
           ? { background: "#17181c", color: "#fbfaf7", borderColor: "transparent" }
           : { background: "var(--color-surface)", borderColor: "var(--color-border)" }
       }
     >
-      <div className="flex items-center gap-[11px]">
+      <div className="flex flex-none items-center gap-[11px]">
         <div
           className="flex h-[26px] w-[26px] items-center justify-center"
           style={{ background: isAdmin ? "var(--color-amber)" : "var(--color-emphasis-bg)" }}
@@ -73,45 +78,62 @@ export function AppHeader({ active = null, variant = "default", subtitle, stats,
 
       {isAdmin ? (
         <>
-          <span className="font-mono text-[10px] tracking-[0.1em]" style={{ border: "1px solid rgba(255,255,255,.28)", padding: "3px 7px" }}>
+          {/* Le bandeau « ESPACE ADMIN » est un rappel, pas une commande : sur un
+              téléphone il céderait sa place au lien de sortie, qui, lui, sert. */}
+          <span
+            className="hidden font-mono text-[10px] tracking-[0.1em] sm:inline-block"
+            style={{ border: "1px solid rgba(255,255,255,.28)", padding: "3px 7px" }}
+          >
             ESPACE ADMIN
           </span>
-          <Link href="/catalogue" className="ml-2 font-sans text-xs font-medium text-[#9aa0a6] hover:text-[#fbfaf7]">
+          <Link
+            href="/catalogue"
+            className="font-sans text-xs font-medium whitespace-nowrap text-[#9aa0a6] hover:text-[#fbfaf7] sm:ml-2"
+          >
             Retour au catalogue
           </Link>
         </>
       ) : (
-        <nav className="ml-[14px] flex gap-1">
-          {NAV_ITEMS.filter((item) => !item.adminOnly || isAdminMember).map((item) => (
-            <Link
-              key={item.key}
-              href={item.href}
-              className={`rounded-sm px-3 py-[6px] font-sans text-xs font-medium ${
-                active === item.key
-                  ? "btn-solid"
-                  : "btn-outline text-[var(--color-text-secondary)] hover:text-[var(--color-foreground)]"
-              }`}
-              // La couleur de l'onglet inactif passe par une classe, pas par `style` :
-              // un `style` inline l'emporterait sur le survol.
-              style={
-                active === item.key
-                  ? {
-                      background: "var(--color-emphasis-bg)",
-                      color: "var(--color-emphasis-text)",
-                    }
-                  : undefined
-              }
-            >
-              {item.label}
-            </Link>
-          ))}
+        /* Les onglets passent en pleine largeur sous la marque tant que la fenêtre est
+           étroite, et défilent à l'horizontale s'ils débordent : quatre sections en
+           `text-xs` tiennent sur la plupart des téléphones, pas sur tous. Les marges
+           négatives font courir la zone de défilement jusqu'aux bords de l'en-tête —
+           sans elles, le dernier onglet resterait coincé sous le rembourrage. */
+        <nav className="order-last -mx-4 w-full overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:order-none md:mx-0 md:ml-[14px] md:w-auto md:overflow-visible md:px-0">
+          <div className="flex gap-1">
+            {NAV_ITEMS.filter((item) => !item.adminOnly || isAdminMember).map((item) => (
+              <Link
+                key={item.key}
+                href={item.href}
+                className={`flex-none rounded-sm px-3 py-[6px] font-sans text-xs font-medium whitespace-nowrap ${
+                  active === item.key
+                    ? "btn-solid"
+                    : "btn-outline text-[var(--color-text-secondary)] hover:text-[var(--color-foreground)]"
+                }`}
+                // La couleur de l'onglet inactif passe par une classe, pas par `style` :
+                // un `style` inline l'emporterait sur le survol.
+                style={
+                  active === item.key
+                    ? {
+                        background: "var(--color-emphasis-bg)",
+                        color: "var(--color-emphasis-text)",
+                      }
+                    : undefined
+                }
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
         </nav>
       )}
 
-      <div className="ml-auto flex items-center gap-4">
+      <div className="ml-auto flex flex-none items-center gap-3 sm:gap-4">
+        {/* Les compteurs du site sont une respiration, pas une commande : ils sortent
+            les premiers quand la place manque. */}
         {stats && stats.length > 0 && (
           <div
-            className="flex gap-[14px] border-r pr-4"
+            className="hidden gap-[14px] border-r pr-4 md:flex"
             style={{ borderColor: isAdmin ? "rgba(255,255,255,.2)" : "var(--color-border)" }}
           >
             {stats.map((stat) => (
@@ -126,7 +148,7 @@ export function AppHeader({ active = null, variant = "default", subtitle, stats,
         )}
 
         {isAdmin && (
-          <span className="font-mono text-xs" style={{ color: "#c3c8cd" }}>
+          <span className="hidden font-mono text-xs md:inline" style={{ color: "#c3c8cd" }}>
             {session?.user?.name ?? "…"} · admin
           </span>
         )}
@@ -138,7 +160,7 @@ export function AppHeader({ active = null, variant = "default", subtitle, stats,
         {cta && !isAdmin && (
           <Link
             href={cta.href}
-            className="btn-solid rounded-sm px-[14px] py-2 font-sans text-xs font-semibold"
+            className="btn-solid rounded-sm px-3 py-2 font-sans text-xs font-semibold whitespace-nowrap sm:px-[14px]"
             style={{ background: "var(--color-amber)", color: "var(--color-ink)" }}
           >
             {cta.label}

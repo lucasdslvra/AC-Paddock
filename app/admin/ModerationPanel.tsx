@@ -71,7 +71,7 @@ export function ModerationPanel({ mods, tagCount }: ModerationPanelProps) {
 
   return (
     <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] px-[18px] py-[15px]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-4 sm:px-[18px] sm:py-[15px]">
         <div>
           <div className="font-sans text-[15px] font-semibold">Modération du catalogue</div>
           <div className="mt-[2px] font-mono text-[9.5px] text-[var(--color-text-muted)]">
@@ -79,7 +79,7 @@ export function ModerationPanel({ mods, tagCount }: ModerationPanelProps) {
             {tagCount > 1 ? "s" : ""} · suppression possible sur tout contenu
           </div>
         </div>
-        <label className="flex items-center gap-2 rounded-sm border border-[var(--color-border-strong)] px-[10px] py-[7px]">
+        <label className="flex min-w-0 flex-1 items-center gap-2 rounded-sm border border-[var(--color-border-strong)] px-[10px] py-[7px] sm:flex-none">
           <span aria-hidden className="font-mono text-[10px] text-[var(--color-text-faint)]">
             ⌕
           </span>
@@ -88,7 +88,7 @@ export function ModerationPanel({ mods, tagCount }: ModerationPanelProps) {
             onChange={(event) => setFilter(event.target.value)}
             placeholder="filtrer"
             aria-label="Filtrer les fiches par nom ou auteur"
-            className="w-[120px] bg-transparent font-mono text-[11px] text-[var(--color-foreground)] outline-none placeholder:text-[var(--color-text-faint)]"
+            className="w-full min-w-0 bg-transparent font-mono text-[11px] sm:w-[120px] text-[var(--color-foreground)] outline-none placeholder:text-[var(--color-text-faint)]"
           />
         </label>
       </div>
@@ -103,7 +103,9 @@ export function ModerationPanel({ mods, tagCount }: ModerationPanelProps) {
         </p>
       )}
 
-      <div className="grid grid-cols-[1fr_110px_92px_78px_140px] gap-[14px] border-b border-[var(--color-border-hairline)] px-[18px] py-[9px] font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
+      {/* Les en-têtes de colonnes ne survivent pas au repli des lignes en cartes :
+          sous `md`, chaque valeur se donne son propre libellé. */}
+      <div className="hidden grid-cols-[1fr_110px_92px_78px_140px] gap-[14px] border-b border-[var(--color-border-hairline)] px-[18px] py-[9px] font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)] md:grid">
         <span>FICHE</span>
         <span>AUTEUR</span>
         <span>CRÉÉE</span>
@@ -126,7 +128,7 @@ export function ModerationPanel({ mods, tagCount }: ModerationPanelProps) {
         return (
           <div
             key={row.id}
-            className="grid grid-cols-[1fr_110px_92px_78px_140px] items-center gap-[14px] border-b border-[var(--color-border-hairline)] px-[18px] py-[11px] last:border-b-0"
+            className="grid grid-cols-1 gap-[9px] border-b border-[var(--color-border-hairline)] px-4 py-3 last:border-b-0 md:grid-cols-[1fr_110px_92px_78px_140px] md:items-center md:gap-[14px] md:px-[18px] md:py-[11px]"
           >
             <div className="flex min-w-0 items-center gap-[10px]">
               <ModThumbnail src={row.imageUrl ?? undefined} name={row.name} size={28} />
@@ -147,13 +149,22 @@ export function ModerationPanel({ mods, tagCount }: ModerationPanelProps) {
                 )}
               </div>
             </div>
-            <span className="truncate font-mono text-[10.5px] text-[var(--color-text-secondary)]">
-              {row.author}
-            </span>
-            <span className="font-mono text-[10.5px] text-[var(--color-text-muted)]">
-              {formatCreatedAt(new Date(row.createdAt))}
-            </span>
-            <span className="font-mono text-xs">{row.votes}</span>
+            {/* Trois colonnes sur un écran large ; sur un téléphone, une seule ligne de
+                métadonnées sous le nom — empilées, elles feraient trois fois la hauteur
+                de la fiche qu'elles décrivent. `md:contents` rend ce conteneur
+                transparent pour la grille, qui retrouve alors ses colonnes. */}
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 md:contents">
+              <span className="truncate font-mono text-[10.5px] text-[var(--color-text-secondary)]">
+                {row.author}
+              </span>
+              <span className="font-mono text-[10.5px] text-[var(--color-text-muted)]">
+                {formatCreatedAt(new Date(row.createdAt))}
+              </span>
+              <span className="font-mono text-xs">
+                {row.votes}
+                <span className="md:hidden"> vote{row.votes > 1 ? "s" : ""}</span>
+              </span>
+            </div>
 
             <div className="flex justify-end gap-[6px]">
               {isPending ? (

@@ -21,6 +21,7 @@ import {
 import { useModCatalogue } from "@/lib/mods/useCatalogue";
 import { apiModToView } from "@/lib/mods/view";
 import { formatSoireeDate } from "@/lib/soirees/format";
+import { useMediaQuery } from "@/lib/useMediaQuery";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import { useSiteStats } from "@/lib/useSiteStats";
 import { ActiveFilterBar, type ActiveFilter } from "./ActiveFilterBar";
@@ -37,6 +38,9 @@ const TYPE_FILTERS: { key: ModType | null; label: string }[] = [
   { key: "TRACK", label: "Circuits" },
 ];
 
+/** Cible d'`aria-controls` : le bouton replié doit pouvoir désigner le panneau. */
+const FILTERS_PANEL_ID = "catalogue-filters";
+
 /** US-E4 — les tris de la route, sous les mots de l'interface. */
 const SORT_LABELS: Record<ModSort, string> = {
   date: "date d'ajout",
@@ -50,6 +54,19 @@ export function CatalogueView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [knownTags, setKnownTags] = useState<AvailableTag[]>([]);
+  /**
+   * Le panneau de filtres est une colonne à partir de `lg`, et un tiroir replié en
+   * dessous : sur un téléphone, il pousserait la première fiche à un écran et demi du
+   * haut de page. Ouvert, il remplace la liste plutôt que de la coiffer — on filtre,
+   * puis on regarde.
+   */
+  const [areFiltersOpen, setAreFiltersOpen] = useState(false);
+  /**
+   * Le même seuil que `lg:` ci-dessous, mais lisible en JavaScript : deux réglages ne
+   * se déduisent pas d'une classe CSS — la racine du défilement et l'élément qu'on
+   * ramène en haut changent de nature selon que la colonne défile ou que la page défile.
+   */
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
   // Les compteurs de l'en-tête portent sur tout le site, pas sur la page affichée :
   // ils viennent de leur propre route, et non de la réponse filtrée du catalogue.
   const stats = useSiteStats();
@@ -79,10 +96,11 @@ export function CatalogueView() {
   const { data, mods: loadedMods, isLoading, isLoadingMore, hasMore, loadMore, hasFailed, retry } =
     useModCatalogue(query);
 
-  // La colonne de droite est le seul bloc qui défile : l'en-tête et le panneau de
-  // filtres restent en place. C'est donc elle — et non la fenêtre — que l'observateur
-  // du bas de liste doit surveiller, et elle qu'il faut ramener en haut au changement
-  // de filtre.
+  // Sur un grand écran, la colonne de droite est le seul bloc qui défile : l'en-tête et
+  // le panneau de filtres restent en place. C'est donc elle — et non la fenêtre — que
+  // l'observateur du bas de liste doit surveiller, et elle qu'il faut ramener en haut au
+  // changement de filtre. Sous `lg`, la coque tombe et c'est la page qui défile : les
+  // deux mécanismes basculent alors sur la fenêtre (`isDesktop`).
   const listRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -96,8 +114,9 @@ export function CatalogueView() {
   // Filtres changés : on remonte en haut de la liste. Rester à mi-hauteur d'une liste
   // qu'on vient de remplacer donne l'impression d'avoir sauté les premiers résultats.
   useEffect(() => {
-    listRef.current?.scrollTo({ top: 0 });
-  }, [filtersKey]);
+    if (isDesktop) listRef.current?.scrollTo({ top: 0 });
+    else window.scrollTo({ top: 0 });
+  }, [filtersKey, isDesktop]);
 
   // US-E1 — le défilement continu : une sentinelle en bas de grille, et la page
   // suivante part quand elle approche. `rootMargin` la déclenche 400 px avant qu'elle
@@ -115,11 +134,12 @@ export function CatalogueView() {
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) loadMore();
       },
-      { root: listRef.current, rootMargin: "400px" },
+      // `root: null` = la fenêtre, qui est bien ce qui défile sous `lg`.
+      { root: isDesktop ? listRef.current : null, rootMargin: "400px" },
     );
     observer.observe(target);
     return () => observer.disconnect();
-  }, [hasMore, isLoadingMore, hasFailed, loadMore]);
+  }, [hasMore, isLoadingMore, hasFailed, loadMore, isDesktop]);
 
   // Le champ garde sa propre valeur pendant la frappe : passer par l'URL à chaque
   // lettre lancerait une requête par caractère (US-E3).
@@ -215,16 +235,23 @@ export function CatalogueView() {
     })),
   ];
 
+  const activeFilterCount = activeFilters.length;
+
   // US-G1/G3 — la soirée en cours vient avec la liste (`ModListResponse`) : c'est elle
   // qui rend les fiches votables, et le panneau ci-dessous l'annonce.
   const currentSoiree = data?.currentSoiree ?? null;
 
   return (
-    /* Coque d'application : la fenêtre ne défile pas, la colonne de droite si. C'est ce
-       qui tient l'en-tête et le panneau de filtres en place pendant qu'on déroule le
-       catalogue — et ce qui donne à la sentinelle du défilement continu une racine à
-       observer (`listRef`). */
-    <div className="flex h-screen flex-col overflow-hidden">
+    /* Coque d'application, à partir de `lg` : la fenêtre ne défile pas, la colonne de
+       droite si. C'est ce qui tient l'en-tête et le panneau de filtres en place pendant
+       qu'on déroule le catalogue — et ce qui donne à la sentinelle du défilement continu
+       une racine à observer (`listRef`).
+
+       Sous `lg`, la coque tombe : une hauteur bloquée à `100vh` se bat avec la barre
+       d'adresse des navigateurs mobiles, qui se rétracte au défilement, et deux zones
+       de défilement imbriquées sur un écran de téléphone ne laissent plus voir ni
+       l'une ni l'autre. La page défile alors comme une page. */
+    <div className="flex min-h-screen flex-col lg:h-screen lg:overflow-hidden">
       <AppHeader
         active="catalogue"
         subtitle={session?.guildName ?? "serveur"}
@@ -235,10 +262,34 @@ export function CatalogueView() {
         cta={{ label: "Proposer un mod", href: "/mods/nouveau" }}
       />
 
-      <div className="grid min-h-0 flex-1 grid-cols-[236px_1fr]">
+      {/* Le bouton n'existe que là où le panneau est replié. Le compte des critères
+          actifs est écrit dessus : replié, le panneau ne peut plus dire lui-même qu'il
+          filtre, et une liste courte sans explication se lit comme un catalogue vide. */}
+      <button
+        type="button"
+        onClick={() => setAreFiltersOpen((current) => !current)}
+        aria-expanded={areFiltersOpen}
+        aria-controls={FILTERS_PANEL_ID}
+        className="btn-outline flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3 font-mono text-[11px] text-[var(--color-text-secondary)] lg:hidden"
+      >
+        <span>
+          {areFiltersOpen ? "▾" : "▸"} FILTRES
+          {activeFilterCount > 0 && ` · ${activeFilterCount} ACTIF${activeFilterCount > 1 ? "S" : ""}`}
+        </span>
+        <span className="text-[var(--color-text-faint)]">
+          {data === null ? "…" : `${total} résultat${total > 1 ? "s" : ""}`}
+        </span>
+      </button>
+
+      <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[236px_1fr]">
         {/* Le panneau défile pour lui-même : un vocabulaire de tags un peu fourni ne
             doit pas emmener la liste des mods avec lui. */}
-        <aside className="flex h-full flex-col gap-5 overflow-y-auto border-r border-[var(--color-border)] p-[18px]">
+        <aside
+          id={FILTERS_PANEL_ID}
+          className={`${
+            areFiltersOpen ? "flex" : "hidden"
+          } flex-col gap-5 overflow-y-auto border-b border-[var(--color-border)] p-4 lg:flex lg:h-full lg:border-b-0 lg:border-r lg:p-[18px]`}
+        >
           <div className="flex items-center gap-2 rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-[11px] py-[9px]">
             <span className="font-mono text-[11px] text-[var(--color-text-faint)]">⌕</span>
             <input
@@ -349,7 +400,7 @@ export function CatalogueView() {
           </div>
         </aside>
 
-        <div ref={listRef} className="h-full overflow-y-auto p-[18px]">
+        <div ref={listRef} className="p-4 lg:h-full lg:overflow-y-auto lg:p-[18px]">
           <div className="mb-[14px] flex items-baseline justify-between gap-4">
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
               {/* Tant que la première réponse n'est pas là, annoncer « 0 RÉSULTATS »

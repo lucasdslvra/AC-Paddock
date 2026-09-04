@@ -113,97 +113,102 @@ export function ModerationPanel({ mods, tagCount }: ModerationPanelProps) {
         <span className="text-right">ACTION</span>
       </div>
 
-      {rows.length === 0 && (
-        <p className="px-[18px] py-[14px] font-mono text-[10.5px] text-[var(--color-text-muted)]">
-          {mods.total === 0
-            ? "Le catalogue est vide."
-            : "Aucune fiche ne correspond à ce filtre."}
-        </p>
-      )}
+      {/* La liste est bornée à `MODERATION_MOD_LIMIT` fiches, ce qui fait quand même
+          une page interminable : elle défile dans son propre cadre pour que l'en-tête,
+          le filtre et le journal qui suit restent atteignables. */}
+      <div className="max-h-[480px] overflow-y-auto overscroll-contain">
+        {rows.length === 0 && (
+          <p className="px-[18px] py-[14px] font-mono text-[10.5px] text-[var(--color-text-muted)]">
+            {mods.total === 0
+              ? "Le catalogue est vide."
+              : "Aucune fiche ne correspond à ce filtre."}
+          </p>
+        )}
 
-      {rows.map((row) => {
-        const isPending = pendingId === row.id;
-        const isDeleting = deletingId === row.id;
+        {rows.map((row) => {
+          const isPending = pendingId === row.id;
+          const isDeleting = deletingId === row.id;
 
-        return (
-          <div
-            key={row.id}
-            className="grid grid-cols-1 gap-[9px] border-b border-[var(--color-border-hairline)] px-4 py-3 last:border-b-0 md:grid-cols-[1fr_110px_92px_78px_140px] md:items-center md:gap-[14px] md:px-[18px] md:py-[11px]"
-          >
-            <div className="flex min-w-0 items-center gap-[10px]">
-              <ModThumbnail src={row.imageUrl ?? undefined} name={row.name} size={28} />
-              <div className="min-w-0">
-                <Link
-                  href={`/mods/${row.id}`}
-                  className="block truncate font-sans text-[13px] font-medium hover:underline"
-                >
-                  {row.name}
-                </Link>
-                {/* US-D2 — le doublon que la création laisse passer volontairement
-                    (cahier §2.4) : c'est ici qu'on le tranche. */}
-                {row.duplicates > 0 && (
-                  <div className="font-mono text-[10px]" style={{ color: "var(--color-danger-text)" }}>
-                    même lien que {row.duplicates} autre{row.duplicates > 1 ? "s" : ""} fiche
-                    {row.duplicates > 1 ? "s" : ""}
-                  </div>
+          return (
+            <div
+              key={row.id}
+              className="grid grid-cols-1 gap-[9px] border-b border-[var(--color-border-hairline)] px-4 py-3 last:border-b-0 md:grid-cols-[1fr_110px_92px_78px_140px] md:items-center md:gap-[14px] md:px-[18px] md:py-[11px]"
+            >
+              <div className="flex min-w-0 items-center gap-[10px]">
+                <ModThumbnail src={row.imageUrl ?? undefined} name={row.name} size={28} />
+                <div className="min-w-0">
+                  <Link
+                    href={`/mods/${row.id}`}
+                    className="block truncate font-sans text-[13px] font-medium hover:underline"
+                  >
+                    {row.name}
+                  </Link>
+                  {/* US-D2 — le doublon que la création laisse passer volontairement
+                      (cahier §2.4) : c'est ici qu'on le tranche. */}
+                  {row.duplicates > 0 && (
+                    <div className="font-mono text-[10px]" style={{ color: "var(--color-danger-text)" }}>
+                      même lien que {row.duplicates} autre{row.duplicates > 1 ? "s" : ""} fiche
+                      {row.duplicates > 1 ? "s" : ""}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {/* Trois colonnes sur un écran large ; sur un téléphone, une seule ligne de
+                  métadonnées sous le nom — empilées, elles feraient trois fois la hauteur
+                  de la fiche qu'elles décrivent. `md:contents` rend ce conteneur
+                  transparent pour la grille, qui retrouve alors ses colonnes. */}
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 md:contents">
+                <span className="truncate font-mono text-[10.5px] text-[var(--color-text-secondary)]">
+                  {row.author}
+                </span>
+                <span className="font-mono text-[10.5px] text-[var(--color-text-muted)]">
+                  {formatCreatedAt(new Date(row.createdAt))}
+                </span>
+                <span className="font-mono text-xs">
+                  {row.votes}
+                  <span className="md:hidden"> vote{row.votes > 1 ? "s" : ""}</span>
+                </span>
+              </div>
+
+              <div className="flex justify-end gap-[6px]">
+                {isPending ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setPendingId(null)}
+                      disabled={isDeleting}
+                      className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-[9px] py-[6px] font-sans text-[11px] font-medium disabled:opacity-60"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(row)}
+                      disabled={isDeleting}
+                      className="btn-solid rounded-sm px-[10px] py-[6px] font-sans text-[11px] font-semibold disabled:opacity-60"
+                      style={{ background: "var(--color-danger)", color: "#fff" }}
+                    >
+                      {isDeleting ? "…" : "Confirmer"}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      setPendingId(row.id);
+                    }}
+                    className="btn-danger rounded-sm px-[10px] py-[6px] font-sans text-[11px] font-medium"
+                    style={{ border: "1px solid var(--color-danger)", color: "var(--color-danger-text)" }}
+                  >
+                    Supprimer
+                  </button>
                 )}
               </div>
             </div>
-            {/* Trois colonnes sur un écran large ; sur un téléphone, une seule ligne de
-                métadonnées sous le nom — empilées, elles feraient trois fois la hauteur
-                de la fiche qu'elles décrivent. `md:contents` rend ce conteneur
-                transparent pour la grille, qui retrouve alors ses colonnes. */}
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 md:contents">
-              <span className="truncate font-mono text-[10.5px] text-[var(--color-text-secondary)]">
-                {row.author}
-              </span>
-              <span className="font-mono text-[10.5px] text-[var(--color-text-muted)]">
-                {formatCreatedAt(new Date(row.createdAt))}
-              </span>
-              <span className="font-mono text-xs">
-                {row.votes}
-                <span className="md:hidden"> vote{row.votes > 1 ? "s" : ""}</span>
-              </span>
-            </div>
-
-            <div className="flex justify-end gap-[6px]">
-              {isPending ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setPendingId(null)}
-                    disabled={isDeleting}
-                    className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-[9px] py-[6px] font-sans text-[11px] font-medium disabled:opacity-60"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(row)}
-                    disabled={isDeleting}
-                    className="btn-solid rounded-sm px-[10px] py-[6px] font-sans text-[11px] font-semibold disabled:opacity-60"
-                    style={{ background: "var(--color-danger)", color: "#fff" }}
-                  >
-                    {isDeleting ? "…" : "Confirmer"}
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    setPendingId(row.id);
-                  }}
-                  className="btn-danger rounded-sm px-[10px] py-[6px] font-sans text-[11px] font-medium"
-                  style={{ border: "1px solid var(--color-danger)", color: "var(--color-danger-text)" }}
-                >
-                  Supprimer
-                </button>
-              )}
-            </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
 
       {rows.length > 0 && mods.total > mods.rows.length && (
         <p className="px-[18px] py-[9px] font-mono text-[10px] text-[var(--color-text-muted)]">

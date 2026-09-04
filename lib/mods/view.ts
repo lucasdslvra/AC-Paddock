@@ -91,11 +91,15 @@ export function apiModToView(mod: ApiMod): ModView {
     imageUrl: mod.imageUrl ?? undefined,
     description: mod.description ?? undefined,
     fileUpload: toFileUpload(mod),
-    primaryLink: {
-      label: formatLinkLabel(mod.url),
-      url: stripProtocol(mod.url),
-      href: mod.url,
-    },
+    // Pas de lien, pas de bloc : `primaryLink` absent est ce qui fait dire à la carte
+    // et à la fiche qu'il manque l'essentiel (cahier §2.2, le champ est facultatif).
+    primaryLink: mod.url
+      ? {
+          label: formatLinkLabel(mod.url),
+          url: stripProtocol(mod.url),
+          href: mod.url,
+        }
+      : undefined,
     // Un lien sans intitulé se présente sous son domaine : « racedepartment.com » dit
     // déjà où il mène, et laisser la case vide dessinerait une étiquette blanche.
     altLinks: mod.links.map((link) => ({

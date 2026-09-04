@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import type { Mod } from "@/lib/mock-data";
 import { useVote } from "@/lib/mods/useVote";
 import { MiniBarChart } from "./MiniBarChart";
+import { MissingLinkBadge } from "./MissingLinkBadge";
 import { ModThumbnail } from "./ModThumbnail";
 import { TagPill } from "./TagPill";
 import { TypeBadge } from "./TypeBadge";
@@ -32,15 +33,23 @@ export function ModCard({ mod }: ModCardProps) {
 
   return (
     <article className="card-interactive flex flex-col gap-[10px] rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[13px]">
-      <Link href={`/mods/${mod.id}`} className="link-card flex gap-[11px]">
-        <ModThumbnail src={mod.imageUrl} name={mod.name} size={52} />
-        <div className="min-w-0">
-          <TypeBadge type={mod.type} />
-          <div className="title-text mt-[2px] text-pretty text-sm font-semibold leading-tight">
-            {mod.name}
+      <div className="flex items-start gap-2">
+        <Link href={`/mods/${mod.id}`} className="link-card flex min-w-0 flex-1 gap-[11px]">
+          <ModThumbnail src={mod.imageUrl} name={mod.name} size={52} />
+          <div className="min-w-0">
+            <TypeBadge type={mod.type} />
+            <div className="title-text mt-[2px] text-pretty text-sm font-semibold leading-tight">
+              {mod.name}
+            </div>
           </div>
-        </div>
-      </Link>
+        </Link>
+        {/* Cahier §2.2 — le lien est facultatif, mais une fiche sans lien ne dit pas où
+            prendre le mod : le catalogue la marque pour qu'on vienne la compléter. Le
+            marqueur est hors du lien de la carte — un élément qui prend le focus n'a
+            rien à faire dans une ancre, et son infobulle doit pouvoir s'ouvrir au
+            clavier comme au survol. */}
+        {!mod.primaryLink && <MissingLinkBadge className="flex-none" />}
+      </div>
       {mod.tags.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {mod.tags.map((tag) => (

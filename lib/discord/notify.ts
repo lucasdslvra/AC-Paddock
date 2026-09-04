@@ -173,8 +173,12 @@ export interface ModNotification {
   guildId: string | null;
   name: string;
   type: ModType;
-  /** Le lien externe de la fiche (cahier §2.2) — la source du mod, pas notre page. */
-  url: string;
+  /**
+   * Le lien externe de la fiche (cahier §2.2) — la source du mod, pas notre page.
+   * `null` quand la fiche a été proposée sans : l'annonce le dit plutôt que de le taire,
+   * c'est une invitation à aller le poser.
+   */
+  url: string | null;
   description: string | null;
   imageUrl: string | null;
   tags: string[];
@@ -212,7 +216,14 @@ export async function notifyModCreated(mod: ModNotification): Promise<void> {
     fields.push({ name: "Engagé pour la soirée", value: truncate(label, FIELD_MAX), inline: false });
   }
 
-  fields.push({ name: "Lien du mod", value: truncate(mod.url, FIELD_MAX), inline: false });
+  // Une fiche sans lien n'est pas une fiche muette : le champ reste, et dit ce qui
+  // manque. Le titre de l'annonce mène à la fiche, où n'importe quel membre peut poser
+  // l'adresse — c'est précisément le geste qu'on espère provoquer.
+  fields.push({
+    name: "Lien du mod",
+    value: mod.url ? truncate(mod.url, FIELD_MAX) : "— aucun lien pour l'instant",
+    inline: false,
+  });
 
   await notify(mod.guildId, {
     title: truncate(mod.name, TITLE_MAX),

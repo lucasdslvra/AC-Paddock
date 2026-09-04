@@ -25,7 +25,9 @@ export default async function ModifierModPage(props: PageProps<"/mods/[id]/modif
         id: mod.id,
         type: toUiModType(mod.type),
         name: mod.name,
-        url: mod.url,
+        // Le champ du formulaire est une chaîne : une fiche sans lien s'y ouvre vide,
+        // et repartira vide si personne ne la complète.
+        url: mod.url ?? "",
         description: mod.description ?? "",
         imageUrl: mod.imageUrl,
         tags: mod.tags.map(({ tag }) => tag.name),

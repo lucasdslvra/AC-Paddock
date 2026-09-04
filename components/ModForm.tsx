@@ -227,6 +227,10 @@ export function ModForm({ mod, currentSoiree = null }: ModFormProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...parsed.data,
+          // Explicitement `null` plutôt qu'absent : `JSON.stringify` efface les clés
+          // `undefined`, et une clé absente veut dire « ne touche pas » côté PATCH —
+          // le lien vidé ne serait alors jamais effacé.
+          url: parsed.data.url ?? null,
           description: parsed.data.description ?? null,
           imageUrl: parsed.data.imageUrl ?? null,
           // La route ne le lit qu'à la création, et c'est elle qui résout la soirée
@@ -434,7 +438,7 @@ export function ModForm({ mod, currentSoiree = null }: ModFormProps) {
 
           <div>
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
-              LIEN EXTERNE — CHAMP PRINCIPAL
+              LIEN EXTERNE — FACULTATIF
             </div>
             <input
               ref={urlInputRef}
@@ -467,6 +471,15 @@ export function ModForm({ mod, currentSoiree = null }: ModFormProps) {
             {fieldErrors.url && (
               <p className="mt-[6px] font-mono text-[10.5px]" style={{ color: "var(--color-danger-text)" }}>
                 {fieldErrors.url}
+              </p>
+            )}
+            {/* Le lien n'est plus exigé : proposer un mod de mémoire vaut mieux que ne
+                pas le proposer. Mais la fiche restera signalée comme incomplète au
+                catalogue tant que personne ne l'aura posé — autant le dire ici. */}
+            {!fieldErrors.url && url.trim() === "" && (
+              <p className="mt-[6px] font-mono text-[10.5px] leading-[1.5] text-[var(--color-text-muted)]">
+                Sans lien, la fiche part quand même — elle portera un ⚠ au catalogue
+                jusqu&apos;à ce que quelqu&apos;un l&apos;ajoute.
               </p>
             )}
             {/* US-D2/D3 — le lien est déjà enregistré : on avertit, on ne bloque pas. */}

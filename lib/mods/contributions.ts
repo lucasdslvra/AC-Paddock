@@ -37,7 +37,8 @@ export interface ContributionRecord {
 export interface ModSnapshot {
   name: string;
   type: DbModType;
-  url: string;
+  /** `null` sur une fiche proposée sans lien — le champ est facultatif (cahier §2.2). */
+  url: string | null;
   description: string | null;
   imageUrl: string | null;
   /** Noms normalisés, dans n'importe quel ordre — la comparaison est ensembliste. */
@@ -58,7 +59,7 @@ export const MOD_SNAPSHOT_SELECT = {
 export function toModSnapshot(mod: {
   name: string;
   type: DbModType;
-  url: string;
+  url: string | null;
   description: string | null;
   imageUrl: string | null;
   tags: { tag: { name: string } }[];
@@ -87,8 +88,14 @@ export function diffMod(before: ModSnapshot, after: ModSnapshot): ContributionRe
   // lecteur. Ce qu'il ne peut plus retrouver, c'est celui d'avant.
   if (before.name !== after.name) entries.push({ kind: "NAME", detail: before.name });
   if (before.type !== after.type) entries.push({ kind: "TYPE", detail: toUiModType(after.type) });
-  // Le domaine suffit à dire où mène le nouveau lien, et tient sur la ligne.
-  if (before.url !== after.url) entries.push({ kind: "URL", detail: formatLinkLabel(after.url) });
+  // Le lien principal est facultatif : le poser, le remplacer et le retirer sont trois
+  // gestes, comme pour la description. Le détail est le domaine du lien concerné —
+  // celui qui arrive, ou celui qui part quand la fiche n'en a plus : `transition`
+  // garantit qu'au moins l'un des deux est renseigné.
+  const url = transition(before.url, after.url);
+  if (url) {
+    entries.push({ kind: URL_KINDS[url], detail: formatLinkLabel(after.url ?? before.url ?? "") });
+  }
 
   const description = transition(before.description, after.description);
   if (description) entries.push({ kind: DESCRIPTION_KINDS[description] });
@@ -114,6 +121,17 @@ const DESCRIPTION_KINDS = {
   added: "DESCRIPTION_ADDED",
   updated: "DESCRIPTION_UPDATED",
   removed: "DESCRIPTION_REMOVED",
+} as const satisfies Record<FieldTransition, ContributionKind>;
+
+/**
+ * Le lien principal est facultatif (cahier §2.2) : le poser, le remplacer et le retirer
+ * sont trois gestes, et `URL` — le genre le plus ancien — reste le remplacement, pour
+ * que les entrées déjà écrites gardent leur sens.
+ */
+const URL_KINDS = {
+  added: "URL_ADDED",
+  updated: "URL",
+  removed: "URL_REMOVED",
 } as const satisfies Record<FieldTransition, ContributionKind>;
 
 const IMAGE_KINDS = {
@@ -220,6 +238,10 @@ export function describeContribution(kind: ContributionKind, detail: string | nu
       return detail ? `a changé le type en ${detail}` : "a changé le type de la fiche";
     case "URL":
       return `a remplacé le lien principal${about}`;
+    case "URL_ADDED":
+      return `a ajouté le lien principal${about}`;
+    case "URL_REMOVED":
+      return `a retiré le lien principal${about}`;
     case "DESCRIPTION_ADDED":
       return "a ajouté la description";
     case "DESCRIPTION_UPDATED":

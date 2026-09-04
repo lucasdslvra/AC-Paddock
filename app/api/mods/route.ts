@@ -215,7 +215,10 @@ export async function POST(request: Request) {
       // GET /api/mods/check-url pour repérer un doublon (US-D2).
       data: {
         ...fields,
-        urlKey: modUrlKey(fields.url),
+        // Sans lien, pas de clé : elles se posent et s'effacent ensemble (cahier §2.2,
+        // le lien est facultatif depuis).
+        url: fields.url ?? null,
+        urlKey: fields.url ? modUrlKey(fields.url) : null,
         authorId: author.id,
         tags: await buildTagCreateWrite(tags),
         // L'engagement est écrit avec la fiche plutôt qu'en second appel : la soirée

@@ -41,6 +41,10 @@ export async function listModerationMods(): Promise<ModerationList<AdminModRow>>
     // `groupBy` y répond en une requête pour tout le catalogue.
     prisma.mod.groupBy({
       by: ["urlKey"],
+      // Les fiches sans lien sont écartées : leur clé est nulle, et les regrouper
+      // ferait de « pas de lien » un lien partagé — elles se déclareraient doublons
+      // les unes des autres alors qu'elles ne se ressemblent en rien.
+      where: { urlKey: { not: null } },
       _count: { urlKey: true },
       having: { urlKey: { _count: { gt: 1 } } },
     }),

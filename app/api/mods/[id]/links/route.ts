@@ -74,7 +74,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/mods/[id]/l
     // copies de la même adresse passeraient pour deux liens différents.
     const key = modUrlKey(parsed.data.url);
     const alreadyThere =
-      modUrlKey(mod.url) === key || mod.links.some((link) => modUrlKey(link.url) === key);
+      (mod.url !== null && modUrlKey(mod.url) === key) ||
+      mod.links.some((link) => modUrlKey(link.url) === key);
     if (alreadyThere) {
       return Response.json(
         { error: "Ce lien est déjà sur la fiche.", fieldErrors: { url: "Ce lien est déjà sur la fiche." } },

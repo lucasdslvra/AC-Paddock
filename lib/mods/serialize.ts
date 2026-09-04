@@ -117,7 +117,11 @@ export interface ApiMod {
   id: string;
   type: ModModel["type"];
   name: string;
-  url: string;
+  /**
+   * Le lien externe de la fiche, ou `null` : le champ est facultatif (cahier §2.2), et
+   * une fiche sans lien est une fiche incomplète — le catalogue la marque comme telle.
+   */
+  url: string | null;
   description: string | null;
   imageUrl: string | null;
   /**

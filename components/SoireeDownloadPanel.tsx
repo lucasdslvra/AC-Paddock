@@ -14,8 +14,12 @@ export interface SoireeDownloadItem {
    * et c'est à la main que ça se récupère.
    */
   file: { filename: string; href: string } | null;
-  /** Le lien externe de la fiche (RaceDepartment, Drive…), toujours présent. */
-  href: string;
+  /**
+   * Le lien externe de la fiche (RaceDepartment, Drive…), ou `null` : le champ est
+   * facultatif (cahier §2.2). Une fiche retenue sans fichier **et** sans lien n'est
+   * alors qu'un nom — c'est ce que la liste dit, plutôt que de proposer un lien mort.
+   */
+  href: string | null;
 }
 
 /** Le temps entre deux téléchargements lancés. */
@@ -129,14 +133,22 @@ export function SoireeDownloadPanel({
           <ul className="mt-[6px] flex flex-col gap-[5px]">
             {missing.map((item) => (
               <li key={item.modId} className="font-mono text-[10.5px] leading-[1.5]">
-                <a
-                  href={item.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="link-underline text-[var(--color-text-secondary)]"
-                >
-                  {item.name} ↗
-                </a>
+                {item.href ? (
+                  <a
+                    href={item.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="link-underline text-[var(--color-text-secondary)]"
+                  >
+                    {item.name} ↗
+                  </a>
+                ) : (
+                  // Ni fichier ni lien : le nom seul, et pourquoi il n'y a rien à
+                  // cliquer. Le taire ferait croire à un oubli d'affichage.
+                  <span className="text-[var(--color-text-muted)]">
+                    {item.name} — aucun lien sur la fiche
+                  </span>
+                )}
               </li>
             ))}
           </ul>

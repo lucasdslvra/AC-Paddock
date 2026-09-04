@@ -22,9 +22,10 @@ interface ModInlineTextEditProps {
 /**
  * US-B3 — corriger la description ou le lien sans quitter la fiche.
  *
- * Une description vidée est envoyée telle quelle : la route lit la présence de la clé,
- * donc « description: "" » l'efface. Un lien vide, lui, est refusé par le schéma — la
- * fiche ne peut pas rester sans lien externe (cahier §2.2), et le message le dit.
+ * Un champ vidé est envoyé tel quel : la route lit la présence de la clé, donc
+ * « description: "" » efface la description, et « url: "" » retire le lien principal —
+ * qui est facultatif depuis (cahier §2.2). Ce que le schéma refuse encore, c'est un
+ * lien mal formé, et le message le dit.
  */
 export function ModInlineTextEdit({
   modId,

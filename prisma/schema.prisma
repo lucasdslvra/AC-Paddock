@@ -80,12 +80,20 @@ model Mod {
   type        ModType
   name        String
   /// Lien externe (RaceDepartment, Drive…) — champ principal du cahier §2.2.
-  url         String
+  ///
+  /// Facultatif : on propose souvent un mod de mémoire, sans avoir la page sous la
+  /// main, et refuser la fiche pour ça revient à perdre la proposition entière plutôt
+  /// qu'un seul champ. La fiche est alors incomplète, et le dit — le catalogue marque
+  /// celles qui n'ont pas de lien pour qu'un autre membre vienne le poser (usage wiki).
+  url         String?
   /// Forme normalisée de `url` (`modUrlKey`, lib/mods/url.ts) : c'est la colonne que
-  /// compare GET /api/mods/check-url (US-D2). Recalculée à chaque écriture de `url`.
+  /// compare GET /api/mods/check-url (US-D2). Recalculée à chaque écriture de `url`,
+  /// et remise à NULL avec lui : sans lien, il n'y a rien à comparer, et une chaîne
+  /// vide ferait passer toutes les fiches sans lien pour des doublons les unes des
+  /// autres.
   /// Volontairement sans `@unique` : le cahier §2.4 veut un avertissement, pas un
   /// blocage — « Créer quand même » doit rester possible.
-  urlKey      String
+  urlKey      String?
   description String?
   imageUrl    String?
 
@@ -203,7 +211,13 @@ model ModContribution {
 enum ContributionKind {
   NAME
   TYPE
+  /// Le lien principal remplacé par un autre. Comme la description, il se pose et se
+  /// retire aussi — trois gestes, trois phrases : « a ajouté le lien principal » n'est
+  /// pas « a remplacé le lien principal », et c'est le premier qui complète une fiche
+  /// signalée comme incomplète au catalogue.
   URL
+  URL_ADDED
+  URL_REMOVED
   DESCRIPTION_ADDED
   DESCRIPTION_UPDATED
   DESCRIPTION_REMOVED

@@ -31,15 +31,21 @@ export const modInputSchema = z.object({
       .min(2, "Le nom doit faire au moins 2 caractères.")
       .max(120, "Le nom ne doit pas dépasser 120 caractères."),
   ),
+  // Facultatif (cahier §2.2) : une fiche peut être proposée sans son adresse, quitte à
+  // ce qu'un autre membre la pose ensuite. Ce qui reste refusé, c'est un lien saisi
+  // *mal* — le champ vide n'est pas une erreur, `http://truc` en est une.
+  //
+  // Comme les autres champs optionnels, une valeur vide devient `undefined` : côté
+  // PATCH, c'est la présence de la clé qui dit « efface le lien » (buildModUpdateData).
   url: z.preprocess(
-    trimmed,
+    emptyToUndefined,
     z
-      .string({ error: "Le lien externe est obligatoire." })
-      .min(1, "Le lien externe est obligatoire.")
+      .string()
       .max(2048, "Ce lien est trop long.")
       // `protocol` bloque les schémas exotiques (javascript:, data:…) : cette URL
       // finira dans un href sur la fiche du mod.
-      .pipe(z.url({ protocol: /^https?$/, error: "Entre un lien valide, en http(s)://" })),
+      .pipe(z.url({ protocol: /^https?$/, error: "Entre un lien valide, en http(s)://" }))
+      .optional(),
   ),
   description: z.preprocess(
     emptyToUndefined,
@@ -124,9 +130,9 @@ export const modPatchSchema = modInputSchema.partial();
 export interface ModUpdateData {
   type?: ModInput["type"];
   name?: string;
-  url?: string;
+  url?: string | null;
   /** Jamais saisi : dérivé de `url` (US-D2), et donc toujours écrit avec lui. */
-  urlKey?: string;
+  urlKey?: string | null;
   description?: string | null;
   imageUrl?: string | null;
 }
@@ -146,10 +152,12 @@ export function buildModUpdateData(
     ...("type" in payload && { type: values.type }),
     ...("name" in payload && { name: values.name }),
     // `urlKey` suit `url` : la clé de comparaison des doublons (US-D2) ne doit jamais
-    // désigner l'ancien lien. Le schéma a déjà refusé une valeur vide, la garde sur
-    // `undefined` n'est là que pour le typage.
-    ...("url" in payload &&
-      values.url !== undefined && { url: values.url, urlKey: modUrlKey(values.url) }),
+    // désigner l'ancien lien. Un lien effacé emmène donc sa clé avec lui — une clé
+    // orpheline ferait remonter la fiche sur une adresse qu'elle ne porte plus.
+    ...("url" in payload && {
+      url: values.url ?? null,
+      urlKey: values.url ? modUrlKey(values.url) : null,
+    }),
     ...("description" in payload && { description: values.description ?? null }),
     ...("imageUrl" in payload && { imageUrl: values.imageUrl ?? null }),
   };

@@ -89,6 +89,42 @@ const TYPE_PLURAL = { vehicule: "Véhicules", circuit: "Circuits" } as const;
 type EditableField = "description" | "url" | "links" | "tags" | "image";
 
 /**
+ * Cahier §2.2 — la fiche n'a pas de lien externe, le champ étant facultatif.
+ *
+ * Le même ⚠ qu'au catalogue, mais ici il y a la place de dire quoi faire : le bloc est
+ * le bouton qui ouvre la saisie du lien. Sans `onAdd` — les fiches de démonstration,
+ * qui ne s'éditent pas — il ne reste que le constat, et rien à cliquer.
+ */
+function MissingPrimaryLink({ onAdd }: { onAdd?: () => void }) {
+  const content = (
+    <>
+      <span className="font-mono text-[10px] tracking-[0.08em] text-[var(--color-text-muted)]">
+        ⚠ LIEN PRINCIPAL MANQUANT
+      </span>
+      <span className="font-mono text-[11px] text-[var(--color-text-secondary)]">
+        {onAdd ? "ajouter le lien du mod" : "aucun lien sur cette fiche"}
+      </span>
+    </>
+  );
+  const className = "flex min-w-[150px] flex-col gap-[3px] rounded-sm border px-3 py-[9px] text-left";
+  const style = { borderColor: "var(--color-amber)" };
+
+  if (!onAdd) {
+    return (
+      <div className={className} style={style}>
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <button type="button" onClick={onAdd} className={`btn-outline ${className}`} style={style}>
+      {content}
+    </button>
+  );
+}
+
+/**
  * US-F1 / US-F2 — le vote depuis la fiche, et le compte de ceux qui ont déjà voté.
  *
  * Le MVP vote « sans notion formelle de soirée » (cahier §6) : le compteur porte donc
@@ -428,7 +464,7 @@ export function ModDetailView({
                     field="url"
                     initialValue={mod.primaryLink?.href ?? mod.primaryLink?.url ?? ""}
                     placeholder="https://www.racedepartment.com/downloads/…"
-                    hint="Le lien principal, celui du bouton de téléchargement. Pour un miroir ou un pack de textures, ajoute plutôt un lien secondaire. Échap annule."
+                    hint="Le lien principal, celui du bouton de téléchargement. Pour un miroir ou un pack de textures, ajoute plutôt un lien secondaire. Champ laissé vide : la fiche repart sans lien, et le catalogue la signalera comme incomplète. Échap annule."
                     onSaved={handleSaved}
                     onCancel={() => setEditing(null)}
                   />
@@ -447,7 +483,7 @@ export function ModDetailView({
 
               {editing !== "url" && editing !== "links" && (
                 <div className="mt-[14px] flex flex-wrap gap-2 border-t border-[var(--color-border-hairline)] pt-[14px]">
-                  {mod.primaryLink && (
+                  {mod.primaryLink ? (
                     <div className="flex min-w-[150px] flex-col gap-[3px] rounded-sm border border-[var(--color-border)] px-3 py-[9px]">
                       <span className="flex items-baseline gap-3 font-mono text-[10px] tracking-[0.08em] text-[var(--color-text-muted)]">
                         LIEN PRINCIPAL
@@ -464,6 +500,9 @@ export function ModDetailView({
                       </span>
                       <span className="font-mono text-[11px]">{mod.primaryLink.url}</span>
                     </div>
+                  ) : (
+                    /* Cahier §2.2 — le lien est facultatif, et celle-ci n'en a pas. */
+                    <MissingPrimaryLink onAdd={editHref ? () => setEditing("url") : undefined} />
                   )}
                   {/* Cahier §2.2 — les liens qu'un autre membre a ajoutés. Cliquables :
                       seul le lien principal a son bouton de téléchargement à côté. */}

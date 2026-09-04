@@ -47,7 +47,12 @@ export interface ModQuery {
   type: ModType | null;
   search: string;
   sort: ModSort;
-  /** 1-indexée, comme ce qui s'affiche. */
+  /**
+   * 1-indexée. Elle ne sert plus qu'à l'API : le catalogue déroule les pages les unes
+   * à la suite des autres (lib/mods/useCatalogue.ts) et n'en écrit aucune dans l'URL —
+   * entrer au milieu d'une liste qui se déroule laisserait tout ce qui précède
+   * inaccessible. Un `?page=` hérité d'un ancien lien est donc lu, puis ignoré.
+   */
   page: number;
 }
 

@@ -37,7 +37,12 @@ export function AppHeader({ active = null, variant = "default", subtitle, stats,
 
   return (
     <header
-      className="flex items-center gap-5 border-b px-[22px] py-[14px]"
+      // Barre de navigation fixée en haut : elle porte les onglets, le compteur du
+      // site et « Proposer un mod » — de quoi partir ailleurs, ce qui n'a aucune
+      // raison de dépendre d'où l'on en est dans la page. `sticky` et non `fixed` :
+      // l'en-tête garde sa place dans le flux, et rien en dessous n'a à compenser sa
+      // hauteur. Le fond est opaque, sans quoi le contenu défilerait au travers.
+      className="sticky top-0 z-40 flex items-center gap-5 border-b px-[22px] py-[14px]"
       style={
         isAdmin
           ? { background: "#17181c", color: "#fbfaf7", borderColor: "transparent" }

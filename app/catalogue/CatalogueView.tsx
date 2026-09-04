@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { ModCard } from "@/components/ModCard";
 import { PageLoader } from "@/components/PageLoader";
@@ -11,6 +11,7 @@ import type { ModType } from "@/lib/generated/prisma/enums";
 import {
   MAX_SEARCH_LENGTH,
   MOD_SORTS,
+  MODS_PER_PAGE,
   modQueryToSearchParams,
   parseModQuery,
   SEARCH_DEBOUNCE_MS,
@@ -60,23 +61,65 @@ export function CatalogueView() {
   const query = useMemo(() => parseModQuery(searchParams), [searchParams]);
 
   const updateQuery = useCallback(
-    (patch: Partial<ModQuery>, options?: { scroll?: boolean }) => {
-      // Tout changement de filtre ramène en page 1 : rester en page 4 après avoir coché
-      // un tag afficherait une page vide alors que des résultats existent. Un patch qui
-      // porte `page` écrase évidemment cette remise à zéro.
+    (patch: Partial<ModQuery>) => {
+      // `page: 1` efface un `?page=` hérité d'un lien d'avant le défilement continu :
+      // la liste se déroule depuis le début, l'URL ne doit pas prétendre le contraire.
       const next: ModQuery = { ...query, page: 1, ...patch };
       const params = modQueryToSearchParams(next).toString();
 
       // `replace` plutôt que `push` : cocher quatre tags ne doit pas demander quatre
-      // retours en arrière pour revenir à la page d'où l'on vient.
-      router.replace(params ? `/catalogue?${params}` : "/catalogue", {
-        scroll: options?.scroll ?? false,
-      });
+      // retours en arrière pour revenir à la page d'où l'on vient. `scroll: false` :
+      // c'est la colonne de droite qui défile, pas la fenêtre — la remonter est le
+      // travail de l'effet sur `filtersKey`.
+      router.replace(params ? `/catalogue?${params}` : "/catalogue", { scroll: false });
     },
     [query, router],
   );
 
-  const { data, isLoading, hasFailed } = useModCatalogue(query);
+  const { data, mods: loadedMods, isLoading, isLoadingMore, hasMore, loadMore, hasFailed, retry } =
+    useModCatalogue(query);
+
+  // La colonne de droite est le seul bloc qui défile : l'en-tête et le panneau de
+  // filtres restent en place. C'est donc elle — et non la fenêtre — que l'observateur
+  // du bas de liste doit surveiller, et elle qu'il faut ramener en haut au changement
+  // de filtre.
+  const listRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // La signature des filtres, page exclue : la même que celle du hook, qui vide sa pile
+  // en la voyant changer.
+  const filtersKey = useMemo(
+    () => modQueryToSearchParams({ ...query, page: 1 }).toString(),
+    [query],
+  );
+
+  // Filtres changés : on remonte en haut de la liste. Rester à mi-hauteur d'une liste
+  // qu'on vient de remplacer donne l'impression d'avoir sauté les premiers résultats.
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: 0 });
+  }, [filtersKey]);
+
+  // US-E1 — le défilement continu : une sentinelle en bas de grille, et la page
+  // suivante part quand elle approche. `rootMargin` la déclenche 400 px avant qu'elle
+  // n'entre à l'écran, pour que les cartes soient là avant qu'on arrive au bout.
+  //
+  // L'observateur se remonte à chaque changement d'état plutôt que de vivre une fois
+  // pour toutes : c'est ce qui le fait re-tester la sentinelle après une page reçue,
+  // sans quoi une fenêtre haute — où la sentinelle reste visible — n'en chargerait
+  // jamais qu'une. `loadMore` se garde tout seul des appels de trop.
+  useEffect(() => {
+    const target = sentinelRef.current;
+    if (!target || !hasMore || isLoadingMore || hasFailed) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMore();
+      },
+      { root: listRef.current, rootMargin: "400px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, hasFailed, loadMore]);
 
   // Le champ garde sa propre valeur pendant la frappe : passer par l'URL à chaque
   // lettre lancerait une requête par caractère (US-E3).
@@ -143,10 +186,9 @@ export function CatalogueView() {
     return <PageLoader />;
   }
 
-  const mods = data?.mods.map(apiModToView) ?? [];
+  const mods = loadedMods.map(apiModToView);
   const counts = data?.counts ?? { all: 0, CAR: 0, TRACK: 0 };
   const total = data?.total ?? 0;
-  const pageCount = data?.pageCount ?? 1;
   const hasFilters = query.tags.length > 0 || query.type !== null || query.search !== "";
 
   // US-J1 — les critères dans l'ordre où la colonne de gauche les propose, pour que la
@@ -178,7 +220,11 @@ export function CatalogueView() {
   const currentSoiree = data?.currentSoiree ?? null;
 
   return (
-    <div className="flex min-h-screen flex-col">
+    /* Coque d'application : la fenêtre ne défile pas, la colonne de droite si. C'est ce
+       qui tient l'en-tête et le panneau de filtres en place pendant qu'on déroule le
+       catalogue — et ce qui donne à la sentinelle du défilement continu une racine à
+       observer (`listRef`). */
+    <div className="flex h-screen flex-col overflow-hidden">
       <AppHeader
         active="catalogue"
         subtitle={session?.guildName ?? "serveur"}
@@ -189,8 +235,10 @@ export function CatalogueView() {
         cta={{ label: "Proposer un mod", href: "/mods/nouveau" }}
       />
 
-      <div className="grid flex-1 grid-cols-[236px_1fr] items-start">
-        <aside className="flex flex-col gap-5 border-r border-[var(--color-border)] p-[18px]">
+      <div className="grid min-h-0 flex-1 grid-cols-[236px_1fr]">
+        {/* Le panneau défile pour lui-même : un vocabulaire de tags un peu fourni ne
+            doit pas emmener la liste des mods avec lui. */}
+        <aside className="flex h-full flex-col gap-5 overflow-y-auto border-r border-[var(--color-border)] p-[18px]">
           <div className="flex items-center gap-2 rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-[11px] py-[9px]">
             <span className="font-mono text-[11px] text-[var(--color-text-faint)]">⌕</span>
             <input
@@ -301,13 +349,16 @@ export function CatalogueView() {
           </div>
         </aside>
 
-        <div className="p-[18px]">
+        <div ref={listRef} className="h-full overflow-y-auto p-[18px]">
           <div className="mb-[14px] flex items-baseline justify-between gap-4">
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
               {/* Tant que la première réponse n'est pas là, annoncer « 0 RÉSULTATS »
                   serait un mensonge : on ne sait pas encore. */}
               {data === null ? "CHARGEMENT…" : `${total} RÉSULTAT${total > 1 ? "S" : ""}`}
-              {pageCount > 1 ? ` · PAGE ${query.page} SUR ${pageCount}` : ""}
+              {/* En défilement continu, le total ne dit plus où l'on en est : c'est le
+                  nombre de fiches déjà déroulées qui le dit. Affiché seulement tant
+                  qu'il en reste — « 24 · 24 AFFICHÉES » n'apprend rien. */}
+              {data !== null && mods.length < total ? ` · ${mods.length} AFFICHÉES` : ""}
             </div>
             <label className="flex shrink-0 items-center gap-[6px] font-mono text-[11px] text-[var(--color-text-secondary)]">
               tri :
@@ -327,8 +378,9 @@ export function CatalogueView() {
 
           <ActiveFilterBar filters={activeFilters} onReset={clearFilters} />
 
-          {/* La grille est estompée pendant qu'une nouvelle réponse arrive, plutôt que
-              vidée : les cartes affichées se périment un instant, elles ne sautent pas. */}
+          {/* La grille est estompée pendant qu'une **première** page arrive, plutôt que
+              vidée : les cartes affichées se périment un instant, elles ne sautent pas.
+              Une page suivante, elle, ne touche à rien de ce qui est déjà là. */}
           <div
             className="grid grid-cols-1 gap-3 transition-opacity sm:grid-cols-2 lg:grid-cols-3"
             style={{ opacity: isLoading && data !== null ? 0.55 : 1 }}
@@ -378,52 +430,48 @@ export function CatalogueView() {
             </div>
           )}
 
-          {/* Page demandée au-delà de la dernière : un lien direct devenu caduc, ou une
-              fiche supprimée depuis. Le compteur dit qu'il y a des résultats, la grille
-              est vide — il faut expliquer pourquoi. */}
-          {data !== null && total > 0 && mods.length === 0 && (
-            <div className="rounded-sm border border-dashed border-[var(--color-border-dashed)] p-8 text-center">
-              <p className="font-sans text-sm font-semibold">Cette page n&apos;existe plus.</p>
-              <p className="mt-[6px] font-mono text-[10.5px] text-[var(--color-text-muted)]">
-                Le catalogue s&apos;arrête à la page {pageCount}.{" "}
+          {/* US-E1 — le bas de la liste, en défilement continu. La sentinelle est un bloc
+              vide : c'est son approche du bord qui demande la suite (voir l'observateur
+              plus haut), pas un clic. Elle n'existe que tant qu'il reste des fiches. */}
+          {hasMore && <div ref={sentinelRef} aria-hidden="true" className="h-px" />}
+
+          {isLoadingMore && (
+            <p
+              role="status"
+              className="mt-4 text-center font-mono text-[10.5px] text-[var(--color-text-muted)]"
+            >
+              chargement des fiches suivantes…
+            </p>
+          )}
+
+          {/* Une page suivante qui échoue ne vide pas la liste : elle propose de
+              reprendre là où ça s'est arrêté. Le bouton, parce qu'un rechargement
+              automatique sur une connexion coupée boucle sans rien dire. */}
+          {hasFailed && data !== null && (
+            <div className="mt-4 rounded-sm border border-dashed border-[var(--color-border-dashed)] p-4 text-center">
+              <p className="font-mono text-[10.5px] text-[var(--color-text-muted)]">
+                La suite du catalogue n&apos;a pas pu être chargée.{" "}
                 <button
                   type="button"
-                  onClick={() => updateQuery({ page: 1 }, { scroll: true })}
+                  onClick={retry}
                   className="link-underline border-b text-[var(--color-link)]"
                   style={{ borderColor: "var(--color-amber)" }}
                 >
-                  Revenir au début
+                  Réessayer
                 </button>
                 .
               </p>
             </div>
           )}
 
-          {pageCount > 1 && (
-            <nav
-              aria-label="Pages du catalogue"
-              className="mt-4 flex items-center justify-center gap-4 font-mono text-[11px]"
-            >
-              <button
-                type="button"
-                disabled={query.page <= 1}
-                onClick={() => updateQuery({ page: query.page - 1 }, { scroll: true })}
-                className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-[10px] py-[5px] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                ← précédent
-              </button>
-              <span className="text-[var(--color-text-muted)]">
-                page {query.page} sur {pageCount}
-              </span>
-              <button
-                type="button"
-                disabled={query.page >= pageCount}
-                onClick={() => updateQuery({ page: query.page + 1 }, { scroll: true })}
-                className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-[10px] py-[5px] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                suivant →
-              </button>
-            </nav>
+          {/* Le bout de la liste, dit explicitement : sans cette ligne, une liste qui
+              s'arrête ressemble à une liste qui n'a pas fini de charger. Affiché
+              seulement quand il y a eu de quoi dérouler — en dessous d'une page, la fin
+              va de soi. */}
+          {!hasMore && !hasFailed && mods.length > MODS_PER_PAGE && (
+            <p className="mt-5 text-center font-mono text-[10px] tracking-[0.08em] text-[var(--color-text-faint)]">
+              — FIN DU CATALOGUE · {mods.length} FICHE{mods.length > 1 ? "S" : ""} —
+            </p>
           )}
         </div>
       </div>

@@ -17,7 +17,9 @@ interface BreadcrumbHeaderProps {
 
 export function BreadcrumbHeader({ crumbs, actions }: BreadcrumbHeaderProps) {
   return (
-    <header className="flex items-center gap-5 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-[22px] py-[14px]">
+    /* Fixée en haut comme la barre de navigation (`AppHeader`) : sur une fiche longue
+       ou un formulaire, c'est ici que vivent le fil d'Ariane et « Enregistrer ». */
+    <header className="sticky top-0 z-40 flex items-center gap-5 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-[22px] py-[14px]">
       <div className="flex items-center gap-[11px]">
         <div className="flex h-[26px] w-[26px] items-center justify-center bg-[var(--color-emphasis-bg)]">
           <span className="font-mono text-[11px] font-semibold text-[var(--color-emphasis-icon)]">P</span>

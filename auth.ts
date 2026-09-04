@@ -64,7 +64,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       authorization: { params: { scope: "identify guilds" } },
     }),
   ],
-  session: { strategy: "jwt" },
+  /**
+   * La session tient dans le cookie, et elle dure trente jours **glissants** : chaque
+   * passage sur le site la repousse d'autant (`updateAge` la réécrit au plus une fois
+   * par jour). Un membre qui vient chaque semaine n'a donc jamais à repasser par
+   * Discord ; celui qui disparaît un mois, si.
+   *
+   * Ce sont les valeurs par défaut d'Auth.js, posées ici parce qu'elles ne sont pas
+   * un détail d'implémentation : c'est la seule chose qui borne l'accès une fois entré.
+   * L'appartenance au serveur Discord n'est vérifiée qu'à la connexion (`signIn`) —
+   * quelqu'un qui quitte le groupe garde donc l'accès jusqu'à l'expiration de son
+   * jeton. Rallonger `maxAge` rallonge d'autant ce sursis.
+   */
+  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60, updateAge: 24 * 60 * 60 },
   pages: { signIn: "/", error: "/" },
   callbacks: {
     async signIn({ account, profile }) {

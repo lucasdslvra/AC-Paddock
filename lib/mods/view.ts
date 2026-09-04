@@ -86,6 +86,7 @@ export function apiModToView(mod: ApiMod): ModView {
     engagement: mod.engagement,
     voteHistory: toBarHeights(mod.voteHistory),
     author: mod.author.username,
+    authorAvatarUrl: mod.author.avatarUrl,
     ageLabel: formatAge(createdAt),
     createdAtLabel: formatCreatedAt(createdAt),
     imageUrl: mod.imageUrl ?? undefined,

@@ -74,6 +74,12 @@ export interface Mod {
   engagement?: ApiModEngagement | null;
   voteHistory: number[];
   author: string;
+  /**
+   * L'avatar Discord de l'auteur, tel que sa dernière connexion l'a laissé en base.
+   * `null` quand son compte n'en a pas, absent sur les fiches de démonstration : dans
+   * les deux cas la carte retombe sur la pastille rayée.
+   */
+  authorAvatarUrl?: string | null;
   ageLabel: string;
   createdAtLabel: string;
   /** URL publique de l'image d'aperçu (US-B2), absente sur les fiches de démo. */

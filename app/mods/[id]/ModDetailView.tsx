@@ -287,8 +287,6 @@ export function ModDetailView({
   // n'ont rien à recevoir) *et* un engagement dans la soirée en cours. `engagement` est
   // exactement ça : non nul quand la fiche est au programme du soir.
   const canUploadFile = editHref !== undefined && mod.engagement != null;
-  // Mock authors have no avatar of their own; only the signed-in member does.
-  const authorImage = session?.user?.name === mod.author ? session.user.image : null;
   const previewUrl = mod.imageUrl && mod.imageUrl !== failedImageUrl ? mod.imageUrl : undefined;
 
   return (
@@ -701,7 +699,7 @@ export function ModDetailView({
             </div>
           </div>
           <div className="flex items-start gap-2 px-1 font-mono text-[10px] leading-[1.6] text-[var(--color-text-muted)]">
-            <UserAvatar src={authorImage} name={mod.author} size={16} />
+            <UserAvatar src={mod.authorAvatarUrl} name={mod.author} size={16} />
             <span>
               Auteur d&apos;origine : {mod.author}.
               {lastContribution && ` Dernière modif : ${lastContribution.author}, ${lastContribution.whenLabel}.`}

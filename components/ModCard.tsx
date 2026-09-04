@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useSession } from "next-auth/react";
 import type { Mod } from "@/lib/mock-data";
 import { useVote } from "@/lib/mods/useVote";
 import { MiniBarChart } from "./MiniBarChart";
@@ -16,7 +15,6 @@ interface ModCardProps {
 }
 
 export function ModCard({ mod }: ModCardProps) {
-  const { data: session } = useSession();
   // US-G3/G4 — le compteur est celui de la soirée en cours, et il repart de zéro à
   // chaque nouvelle : la popularité de la fiche se lit dans les barres, au-dessus.
   const { soireeVotes, hasVoted, isPending, error, toggle } = useVote(mod.id, {
@@ -28,8 +26,6 @@ export function ModCard({ mod }: ModCardProps) {
   // pas de bouton du tout. Un bouton éteint se lit comme une panne, et il annoncerait
   // un « 00 » qui n'est le score de rien.
   const isEngaged = mod.engagement != null;
-  // Mock authors have no avatar of their own; only the signed-in member does.
-  const authorImage = session?.user?.name === mod.author ? session.user.image : null;
 
   return (
     <article className="card-interactive flex flex-col gap-[10px] rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[13px]">
@@ -70,7 +66,7 @@ export function ModCard({ mod }: ModCardProps) {
         <MiniBarChart values={mod.voteHistory} dimmed={mod.totalVotes === 0} />
         <div className="flex items-center justify-between border-t border-[var(--color-border-hairline)] pt-[9px]">
           <span className="flex items-center gap-[6px] font-mono text-[10px] text-[var(--color-text-muted)]">
-            <UserAvatar src={authorImage} name={mod.author} size={16} />
+            <UserAvatar src={mod.authorAvatarUrl} name={mod.author} size={16} />
             {mod.author} · {mod.ageLabel}
           </span>
           {isEngaged && (

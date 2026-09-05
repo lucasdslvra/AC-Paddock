@@ -37,8 +37,12 @@ interface ModFormProps {
    * US-G2 — la soirée en cours, où la fiche peut être engagée dès sa publication.
    * `null` s'il n'y en a aucune de programmée. Sans objet à l'édition : une fiche déjà
    * publiée s'engage depuis la fiche elle-même (`EngageModButton`).
+   *
+   * `voteClosedReason` porte la phrase de `voteClosedMessage` quand le classement du
+   * soir est figé, `null` tant qu'il accepte des engagements — comme le `closedReason`
+   * d'`EngageModButton`, à qui la fiche publiée pose la même question.
    */
-  currentSoiree?: { dateLabel: string; theme: string | null } | null;
+  currentSoiree?: { dateLabel: string; theme: string | null; voteClosedReason: string | null } | null;
 }
 
 export function ModForm({ mod, currentSoiree = null }: ModFormProps) {
@@ -69,10 +73,16 @@ export function ModForm({ mod, currentSoiree = null }: ModFormProps) {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
-  // US-G2 — engager la fiche dans la soirée en cours au moment de la publier. Coché
-  // par défaut : on ne propose un mod la veille d'une soirée que pour l'y jouer, et le
-  // membre qui ne le veut pas a l'interrupteur sous les yeux.
-  const [engage, setEngage] = useState(draft?.engage ?? true);
+  // US-G2 — engager la fiche dans la soirée en cours au moment de la publier. **Décoché
+  // par défaut** : proposer un mod au catalogue et l'inscrire au classement du soir sont
+  // deux gestes différents, et une soirée programmée ne doit pas transformer le second
+  // en effet de bord du premier. Le membre qui veut les deux a l'interrupteur sous les
+  // yeux ; celui qui alimente le catalogue n'a rien à défaire.
+  const [engage, setEngage] = useState(draft?.engage ?? false);
+  // Une soirée dont le vote a fermé n'accepte plus d'engagement : l'interrupteur n'est
+  // pas seulement caché, il cesse d'être envoyé — un brouillon repris pourrait le
+  // rapporter allumé d'avant la fermeture.
+  const canEngage = currentSoiree !== null && currentSoiree.voteClosedReason === null;
   const [fieldErrors, setFieldErrors] = useState<ModFieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -235,7 +245,7 @@ export function ModForm({ mod, currentSoiree = null }: ModFormProps) {
           imageUrl: parsed.data.imageUrl ?? null,
           // La route ne le lit qu'à la création, et c'est elle qui résout la soirée
           // visée : le formulaire dit s'il faut engager, pas où.
-          ...(!isEditing && currentSoiree && { engage }),
+          ...(!isEditing && canEngage && { engage }),
         }),
       });
       const body = await response.json().catch(() => null);
@@ -647,7 +657,11 @@ export function ModForm({ mod, currentSoiree = null }: ModFormProps) {
               <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
                 ENGAGER DIRECTEMENT
               </div>
-              {currentSoiree ? (
+              {currentSoiree && currentSoiree.voteClosedReason !== null ? (
+                <p className="mt-[10px] font-mono text-[10px] leading-[1.6] text-[var(--color-text-muted)]">
+                  {currentSoiree.voteClosedReason}
+                </p>
+              ) : currentSoiree ? (
                 <div className="mt-[10px] flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="font-sans text-xs font-semibold">

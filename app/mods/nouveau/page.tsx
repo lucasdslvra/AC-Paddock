@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { ModForm } from "@/components/ModForm";
 import { soireeContext } from "@/lib/soirees/current";
 import { formatSoireeShortDay } from "@/lib/soirees/format";
+import { isVoteOpen, voteClosedMessage } from "@/lib/soirees/phase";
 
 export default async function NouveauModPage() {
   // Comme les autres pages de fiche : la session est lue ici, et sa lecture rend la
@@ -20,7 +21,15 @@ export default async function NouveauModPage() {
   return (
     <ModForm
       currentSoiree={
-        soiree ? { dateLabel: formatSoireeShortDay(soiree.date), theme: soiree.name } : null
+        soiree
+          ? {
+              dateLabel: formatSoireeShortDay(soiree.date),
+              theme: soiree.name,
+              // Le classement figé se dit ici comme sur la fiche publiée : la même
+              // phrase, la même heure — voir app/mods/[id]/page.tsx.
+              voteClosedReason: isVoteOpen(soiree.date) ? null : voteClosedMessage(soiree.date),
+            }
+          : null
       }
     />
   );

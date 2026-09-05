@@ -19,6 +19,7 @@ import { modUrlKey } from "@/lib/mods/url";
 import { prisma } from "@/lib/prisma";
 import { upsertSessionUser } from "@/lib/session-user";
 import { soireeContext } from "@/lib/soirees/current";
+import { isVoteOpen } from "@/lib/soirees/phase";
 import { isModImageUrl } from "@/lib/supabase/storage";
 
 /**
@@ -187,7 +188,8 @@ export async function POST(request: Request) {
 
   // US-G2 — « engager directement » du formulaire de proposition. Le drapeau ne passe
   // pas par `modInputSchema`, qui ne décrit que ce qui va dans la table `Mod` : c'est
-  // une action, pas un champ de la fiche. Tout ce qui n'est pas `true` vaut non.
+  // une action, pas un champ de la fiche. Tout ce qui n'est pas `true` vaut non — une
+  // fiche déposée au catalogue n'entre donc dans la soirée que si on l'a demandé.
   const engageFlag = engageFlagSchema.safeParse(payload);
   const engage = engageFlag.success && engageFlag.data.engage === true;
 
@@ -205,6 +207,13 @@ export async function POST(request: Request) {
     // crée/rafraîchit l'auteur avant de poser la clé étrangère.
     const author = await upsertSessionUser(session.user);
     const soiree = await soireeContext(session);
+
+    // L'engagement se ferme avec le vote, 30 min avant le départ — la même règle que
+    // POST /api/soirees/[id]/mods, qui la posait déjà de son côté. Sans elle, publier
+    // une fiche pendant que le groupe télécharge son classement figé l'y glisserait à
+    // zéro vote. La fiche, elle, entre au catalogue : c'est l'engagement qui est
+    // refusé, pas la proposition.
+    const engageInSoiree = engage && soiree.current !== null && isVoteOpen(soiree.current.date);
 
     // Les tags ne sont pas une colonne de `Mod` : on les sort du lot pour les écrire
     // comme des lignes `ModTag`, en créant au passage ceux qui n'existent pas encore.
@@ -227,7 +236,7 @@ export async function POST(request: Request) {
         // laisserait le membre croire qu'elle est dans la soirée. Sans soirée
         // programmée, il n'y a rien à engager — la case du formulaire ne s'affiche même
         // pas dans ce cas.
-        ...(engage &&
+        ...(engageInSoiree &&
           soiree.current && {
             soirees: { create: { soireeId: soiree.current.id, engagedById: author.id } },
           }),
@@ -254,8 +263,8 @@ export async function POST(request: Request) {
         tags: mod.tags.map((entry) => entry.tag.name),
         author: author.username,
         // La soirée n'est citée que si la fiche y a réellement été engagée : `engage`
-        // sans soirée programmée n'engage rien (voir la création juste au-dessus).
-        engagedIn: engage && soiree.current ? soiree.current : null,
+        // sans soirée ouverte n'engage rien (voir la création juste au-dessus).
+        engagedIn: engageInSoiree ? soiree.current : null,
         origin,
       }),
     );

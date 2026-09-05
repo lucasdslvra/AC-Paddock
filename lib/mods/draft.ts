@@ -23,9 +23,10 @@ const modDraftSchema = z.object({
   imageName: z.string().nullable(),
   /**
    * US-G2 — l'interrupteur « engager directement ». Optionnel : un brouillon écrit
-   * avant ce champ reste lisible, et retrouve le réglage par défaut du formulaire.
+   * avant ce champ reste lisible, et retrouve le réglage par défaut du formulaire —
+   * décoché, comme à l'ouverture d'un formulaire vierge.
    */
-  engage: z.boolean().default(true),
+  engage: z.boolean().default(false),
 });
 
 export type ModDraft = z.infer<typeof modDraftSchema>;

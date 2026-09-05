@@ -47,7 +47,7 @@ export function AppHeader({ active = null, variant = "default", subtitle, stats,
       // et les actions (voir `order-last` sur le <nav>). Tout tenir sur une seule ligne
       // demanderait de rogner soit les onglets, soit « Proposer un mod » — or c'est
       // précisément ce que l'en-tête est là pour offrir.
-      className="sticky top-0 z-40 flex flex-wrap items-center gap-x-3 gap-y-3 border-b px-4 py-3 sm:gap-x-5 sm:px-[22px] sm:py-[14px]"
+      className="page-shell-inset sticky top-0 z-40 flex flex-wrap items-center gap-x-3 gap-y-3 border-b py-3 [--shell-gutter:16px] sm:gap-x-5 sm:py-[14px] sm:[--shell-gutter:22px]"
       style={
         isAdmin
           ? { background: "#17181c", color: "#fbfaf7", borderColor: "transparent" }

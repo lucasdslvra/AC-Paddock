@@ -71,7 +71,7 @@ export function LoginView({ guildName, stats }: LoginViewProps) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3 sm:px-[22px] sm:py-[14px]">
+      <header className="page-shell-inset flex items-center justify-between border-b border-[var(--color-border)] py-3 [--shell-gutter:16px] sm:py-[14px] sm:[--shell-gutter:22px]">
         <div className="flex items-center gap-[11px]">
           <div className="flex h-[26px] w-[26px] items-center justify-center bg-[var(--color-emphasis-bg)]">
             <span className="font-mono text-[11px] font-semibold text-[var(--color-emphasis-icon)]">P</span>
@@ -83,7 +83,7 @@ export function LoginView({ guildName, stats }: LoginViewProps) {
         <ThemeToggle />
       </header>
 
-      <div className="grid flex-1 grid-cols-1 items-center gap-10 px-5 py-10 sm:px-8 sm:py-12 md:grid-cols-2 md:px-16">
+      <div className="page-shell grid flex-1 grid-cols-1 items-center gap-10 px-5 py-10 sm:px-8 sm:py-12 md:grid-cols-2 md:px-16">
         <div>
           <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
             WIKI MODS ASSETTO CORSA

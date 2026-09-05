@@ -266,7 +266,7 @@ export function ModDetailView({
     return (
       <div className="flex min-h-screen flex-col">
         <BreadcrumbHeader crumbs={[{ label: "Catalogue", href: "/catalogue" }, { label: "Fiche introuvable" }]} />
-        <div className="p-4 sm:p-8">
+        <div className="page-shell p-4 sm:p-8">
           <p className="font-sans text-sm">Cette fiche n&apos;existe pas ou a été supprimée.</p>
           <Link
             href="/catalogue"
@@ -312,36 +312,38 @@ export function ModDetailView({
           mod est bien le même et il suffit de le compléter, soit c'en est un autre et
           la saisie repart d'où elle s'était arrêtée. */}
       {hasPendingDraft && (
-        <div
-          className="mx-4 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-sm border bg-[var(--color-surface)] p-3 sm:mx-[20px] sm:mt-[20px]"
-          style={{
-            borderColor: "var(--color-border-strong)",
-            borderLeft: "3px solid var(--color-amber)",
-          }}
-          role="status"
-        >
-          <div className="min-w-0 flex-1 sm:min-w-[240px]">
-            <div className="font-sans text-[13px] font-semibold">
-              Ta fiche en cours t&apos;attend
-            </div>
-            <div className="mt-1 font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-secondary)]">
-              Tu es venu vérifier si ce mod existait déjà. Si c&apos;est bien le même,
-              complète cette fiche plutôt que d&apos;en créer une seconde — les votes et
-              les tags resteront regroupés. Sinon, reprends ta saisie là où tu
-              l&apos;as laissée.
-            </div>
-          </div>
-          <Link
-            href="/mods/nouveau"
-            className="btn-solid flex-none rounded-sm px-[14px] py-2 font-sans text-xs font-semibold"
-            style={{ background: "var(--color-amber)", color: "var(--color-ink)" }}
+        <div className="page-shell px-4 pt-4 sm:px-[20px] sm:pt-[20px]">
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 rounded-sm border bg-[var(--color-surface)] p-3"
+            style={{
+              borderColor: "var(--color-border-strong)",
+              borderLeft: "3px solid var(--color-amber)",
+            }}
+            role="status"
           >
-            Reprendre ma fiche
-          </Link>
+            <div className="min-w-0 flex-1 sm:min-w-[240px]">
+              <div className="font-sans text-[13px] font-semibold">
+                Ta fiche en cours t&apos;attend
+              </div>
+              <div className="mt-1 font-mono text-[10.5px] leading-[1.6] text-[var(--color-text-secondary)]">
+                Tu es venu vérifier si ce mod existait déjà. Si c&apos;est bien le même,
+                complète cette fiche plutôt que d&apos;en créer une seconde — les votes et
+                les tags resteront regroupés. Sinon, reprends ta saisie là où tu
+                l&apos;as laissée.
+              </div>
+            </div>
+            <Link
+              href="/mods/nouveau"
+              className="btn-solid flex-none rounded-sm px-[14px] py-2 font-sans text-xs font-semibold"
+              style={{ background: "var(--color-amber)", color: "var(--color-ink)" }}
+            >
+              Reprendre ma fiche
+            </Link>
+          </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-[18px] p-4 sm:p-[20px] lg:grid-cols-[1fr_336px]">
+      <div className="page-shell grid grid-cols-1 gap-[18px] p-4 sm:p-[20px] lg:grid-cols-[1fr_336px]">
         <div className="flex flex-col gap-[14px]">
           <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)]">
             <div className="p-4 pb-4 sm:p-5">

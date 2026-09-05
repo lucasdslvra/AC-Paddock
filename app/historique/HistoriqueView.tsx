@@ -51,7 +51,7 @@ export function HistoriqueView({ soirees, memberCount }: HistoriqueViewProps) {
     <div className="flex min-h-screen flex-col">
       <AppHeader active="historique" />
 
-      <div className="flex flex-wrap items-end gap-x-[30px] gap-y-4 border-b border-[var(--color-border)] p-4 sm:p-[22px] sm:pb-[18px]">
+      <div className="page-shell-inset flex flex-wrap items-end gap-x-[30px] gap-y-4 border-b border-[var(--color-border)] py-4 [--shell-gutter:16px] sm:py-[22px] sm:pb-[18px] sm:[--shell-gutter:22px]">
         <div>
           <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
             ARCHIVES
@@ -104,23 +104,25 @@ export function HistoriqueView({ soirees, memberCount }: HistoriqueViewProps) {
       </div>
 
       {soirees.length === 0 ? (
-        <div className="m-4 rounded-sm border border-dashed border-[var(--color-border-dashed)] p-5 text-center sm:m-[22px] sm:p-8">
-          <p className="font-sans text-sm font-semibold">
-            Aucune soirée n&apos;a encore eu lieu.
-          </p>
-          <p className="mx-auto mt-[6px] max-w-[460px] font-mono text-[10.5px] leading-[1.7] text-[var(--color-text-muted)]">
-            Une soirée rejoint l&apos;historique le lendemain de sa date, avec le
-            classement final des mods qui y étaient engagés.
-          </p>
-          <Link
-            href="/soiree"
-            className="btn-outline mt-4 inline-block rounded-sm border border-[var(--color-border-strong)] px-[14px] py-2 font-sans text-xs font-medium"
-          >
-            Voir la soirée en cours
-          </Link>
+        <div className="page-shell p-4 sm:p-[22px]">
+          <div className="rounded-sm border border-dashed border-[var(--color-border-dashed)] p-5 text-center sm:p-8">
+            <p className="font-sans text-sm font-semibold">
+              Aucune soirée n&apos;a encore eu lieu.
+            </p>
+            <p className="mx-auto mt-[6px] max-w-[460px] font-mono text-[10.5px] leading-[1.7] text-[var(--color-text-muted)]">
+              Une soirée rejoint l&apos;historique le lendemain de sa date, avec le
+              classement final des mods qui y étaient engagés.
+            </p>
+            <Link
+              href="/soiree"
+              className="btn-outline mt-4 inline-block rounded-sm border border-[var(--color-border-strong)] px-[14px] py-2 font-sans text-xs font-medium"
+            >
+              Voir la soirée en cours
+            </Link>
+          </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-[9px] p-4 sm:p-[18px_22px_22px]">
+        <div className="page-shell flex flex-col gap-[9px] p-4 sm:p-[18px_22px_22px]">
           <div className="hidden grid-cols-[150px_1fr_260px_92px] gap-4 px-[15px] pb-[7px] font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)] md:grid">
             <span>DATE / THÈME</span>
             <span>RETENUS</span>

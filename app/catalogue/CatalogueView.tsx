@@ -281,14 +281,14 @@ export function CatalogueView() {
         </span>
       </button>
 
-      <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[236px_1fr]">
+      <div className="page-shell flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[236px_1fr]">
         {/* Le panneau défile pour lui-même : un vocabulaire de tags un peu fourni ne
             doit pas emmener la liste des mods avec lui. */}
         <aside
           id={FILTERS_PANEL_ID}
           className={`${
             areFiltersOpen ? "flex" : "hidden"
-          } flex-col gap-5 overflow-y-auto border-b border-[var(--color-border)] p-4 lg:flex lg:h-full lg:border-b-0 lg:border-r lg:p-[18px]`}
+          } flex-col gap-5 overflow-y-auto border-b border-[var(--color-border)] p-4 [scrollbar-width:none] lg:flex lg:h-full lg:border-b-0 lg:border-r lg:p-[18px] [&::-webkit-scrollbar]:hidden`}
         >
           <div className="flex items-center gap-2 rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-[11px] py-[9px]">
             <span className="font-mono text-[11px] text-[var(--color-text-faint)]">⌕</span>
@@ -400,7 +400,14 @@ export function CatalogueView() {
           </div>
         </aside>
 
-        <div ref={listRef} className="p-4 lg:h-full lg:overflow-y-auto lg:p-[18px]">
+        {/* Les deux colonnes défilent chacune de leur côté, mais sans montrer leur
+            ascenseur : sur un grand écran, la coque arrête la liste avant le bord de
+            la fenêtre, et la barre se retrouvait posée en plein milieu du fond. La
+            molette et le clavier, eux, ne changent pas. */}
+        <div
+          ref={listRef}
+          className="p-4 [scrollbar-width:none] lg:h-full lg:overflow-y-auto lg:p-[18px] [&::-webkit-scrollbar]:hidden"
+        >
           <div className="mb-[14px] flex items-baseline justify-between gap-4">
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
               {/* Tant que la première réponse n'est pas là, annoncer « 0 RÉSULTATS »

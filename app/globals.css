@@ -46,6 +46,13 @@
   /* Fond des champs de saisie et des listes qui leur sont accrochées : au-dessus de la
      surface sur fond clair, en retrait dessous sur fond sombre. */
   --color-field: #ffffff;
+
+  /* Largeur de coque — au-delà, la page ne s'étire plus, elle se centre. Les mises en
+     page du site sont toutes en colonnes de largeur fixe plus une colonne souple
+     (`1fr_336px` sur une fiche, `236px_1fr` au catalogue) : sur un écran très large,
+     c'est la colonne souple qui prend tout, et une carte de mod finit à 900 px de large
+     pour trois lignes de texte. Une seule valeur pour tout le site, à retoucher ici. */
+  --width-shell: 1440px;
 }
 
 @theme inline {
@@ -109,6 +116,30 @@
   --color-emphasis-text: var(--color-ink);
 
   --color-field: #0d0f13;
+}
+
+/* ---------------------------------------------------------------------------
+   Coque de page — la largeur maximale du contenu, et deux façons de la poser.
+
+   `.page-shell` sur un bloc de contenu : il garde ses marges intérieures et se centre
+   quand la fenêtre dépasse la coque.
+
+   `.page-shell-inset` sur une barre pleine largeur (en-tête, bandeau de titre) : le
+   fond et le filet continuent de courir d'un bord à l'autre — c'est ce qui les fait
+   lire comme des séparations de page — mais leur contenu s'aligne sur celui des blocs
+   en dessous. La marge latérale ne descend jamais sous `--shell-gutter`, que chaque
+   barre règle à son propre rembourrage (les utilitaires `px-*` ne peuvent pas servir
+   ici : cette règle-ci, hors couche, les recouvrirait).
+   --------------------------------------------------------------------------- */
+
+.page-shell {
+  width: 100%;
+  max-width: var(--width-shell);
+  margin-inline: auto;
+}
+
+.page-shell-inset {
+  padding-inline: max(var(--shell-gutter, 0px), calc((100% - var(--width-shell)) / 2));
 }
 
 .bg-grid {

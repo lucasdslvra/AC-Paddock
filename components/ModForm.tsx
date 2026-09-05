@@ -314,7 +314,7 @@ export function ModForm({ mod, currentSoiree = null }: ModFormProps) {
         }
       />
 
-      <form id={FORM_ID} onSubmit={handleSubmit} noValidate className="grid grid-cols-1 gap-[18px] p-4 sm:p-5 lg:grid-cols-[1fr_320px]">
+      <form id={FORM_ID} onSubmit={handleSubmit} noValidate className="page-shell grid grid-cols-1 gap-[18px] p-4 sm:p-5 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-[18px] rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:p-5">
           {/* US-D3 — retour depuis une fiche existante : la saisie est là, intacte. */}
           {isDraftRestored && (

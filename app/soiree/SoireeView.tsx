@@ -476,7 +476,7 @@ export function SoireeView({
     return (
       <div className="flex min-h-screen flex-col">
         <AppHeader active="soiree" />
-        <div className="p-4 sm:p-8">
+        <div className="page-shell p-4 sm:p-8">
           <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
             SOIRÉE EN COURS
           </div>
@@ -565,7 +565,7 @@ export function SoireeView({
         cta={isReadOnly ? undefined : { label: "Proposer un mod", href: "/mods/nouveau" }}
       />
 
-      <div className="flex flex-wrap items-end gap-x-7 gap-y-4 border-b border-[var(--color-border)] px-4 py-4 sm:px-[22px] sm:py-[18px]">
+      <div className="page-shell-inset flex flex-wrap items-end gap-x-7 gap-y-4 border-b border-[var(--color-border)] py-4 [--shell-gutter:16px] sm:py-[18px] sm:[--shell-gutter:22px]">
         <div>
           <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
             {eyebrow}
@@ -606,7 +606,7 @@ export function SoireeView({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-[18px] p-4 sm:p-[18px] lg:grid-cols-[1fr_320px]">
+      <div className="page-shell grid grid-cols-1 gap-[18px] p-4 sm:p-[18px] lg:grid-cols-[1fr_320px]">
         <div>
           <div className="mb-[10px] flex items-baseline justify-between">
             <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">

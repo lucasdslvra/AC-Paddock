@@ -24,7 +24,7 @@ export function BreadcrumbHeader({ crumbs, actions }: BreadcrumbHeaderProps) {
        actions — « Annuler », « Enregistrer » — sont ce qu'on vient chercher ici, elles
        gardent la première ligne. La marque, elle, se réduit à son sigle : « Paddock »
        écrit en toutes lettres coûterait la moitié de la place des boutons. */
-    <header className="sticky top-0 z-40 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 sm:gap-x-5 sm:px-[22px] sm:py-[14px]">
+    <header className="page-shell-inset sticky top-0 z-40 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] py-3 [--shell-gutter:16px] sm:gap-x-5 sm:py-[14px] sm:[--shell-gutter:22px]">
       <div className="flex flex-none items-center gap-[11px]">
         <div className="flex h-[26px] w-[26px] items-center justify-center bg-[var(--color-emphasis-bg)]">
           <span className="font-mono text-[11px] font-semibold text-[var(--color-emphasis-icon)]">P</span>

@@ -53,7 +53,7 @@ export function AdminView({
   storage,
 }: AdminViewProps) {
   return (
-    <div className="grid grid-cols-1 gap-[18px] p-4 sm:p-5 lg:grid-cols-[1fr_330px]">
+    <div className="page-shell grid grid-cols-1 gap-[18px] p-4 sm:p-5 lg:grid-cols-[1fr_330px]">
       <div className="flex flex-col gap-[14px]">
         <ModerationPanel mods={mods} tagCount={tags.total} />
         <DeletionJournal entries={deletions.entries} olderCount={deletions.olderCount} />

@@ -64,8 +64,12 @@ export interface Mod {
   tags: string[];
   /** Total des votes de la fiche, toutes soirées confondues (US-F2). */
   totalVotes: number;
-  /** Vrai si le membre connecté a voté pour cette fiche dans la soirée en cours. */
-  hasVoted?: boolean;
+  /**
+   * Combien de votes le membre connecté a placés sur cette fiche dans la soirée en
+   * cours. Un compte plutôt qu'un booléen : sa réserve du soir s'empile sur un même mod
+   * (`VOTE_QUOTA`), et c'est ce nombre qu'affiche l'incrémenteur.
+   */
+  myVotes?: number;
   /**
    * US-G3 — l'engagement de la fiche dans la soirée en cours. `null` si elle n'y est
    * pas engagée, `undefined` sur les fiches de démonstration : dans les deux cas elle

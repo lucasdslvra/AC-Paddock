@@ -69,9 +69,18 @@ const CLOCK_TICK_MS = 15_000;
 /** « VÉHICULES » / « CIRCUITS » — l'en-tête d'un des deux classements. */
 const SECTION_LABEL: Record<ModType, string> = { CAR: "VÉHICULES", TRACK: "CIRCUITS" };
 
-/** Les engagements pour lesquels ce membre a voté, par identifiant d'engagement. */
-function votedIdsOf(soiree: ApiSoiree | null): ReadonlySet<string> {
-  return new Set(soiree?.mods.filter((entry) => entry.hasVoted).map((entry) => entry.id) ?? []);
+/**
+ * Combien de votes ce membre a placés sur chaque engagement, par identifiant.
+ *
+ * Une table de comptes et non un ensemble d'identifiants : depuis l'empilement, savoir
+ * *qu'il* a voté ne suffit plus à savoir ce qu'il a dépensé de sa réserve.
+ * Les engagements sans vote de sa part n'y figurent pas — `0` se lit comme une absence.
+ */
+function myVotesOf(soiree: ApiSoiree | null): ReadonlyMap<string, number> {
+  return new Map(
+    soiree?.mods.filter((entry) => entry.myVotes > 0).map((entry) => [entry.id, entry.myVotes]) ??
+      [],
+  );
 }
 
 /**
@@ -101,29 +110,29 @@ function RankingRow({
   /** US-I2 — la soirée n'est plus celle en cours : la ligne devient un résultat. */
   readOnly: boolean;
   /**
-   * Le quota de ce type est plein et ce mod n'en fait pas partie : le bouton reste
-   * visible mais éteint, avec la raison. Un vote déjà placé se retire toujours — c'est
-   * même la seule façon d'en libérer un.
+   * La réserve de ce type est épuisée : le « + » reste visible mais éteint, avec la
+   * raison. Le « − » ne l'est jamais tant qu'il reste un vote sur cette ligne — le
+   * retirer est même la seule façon d'en libérer un.
    */
   quotaReached: boolean;
-  onVoteChange: (engagementId: string, hasVoted: boolean) => void;
+  onVoteChange: (engagementId: string, myVotes: number) => void;
   onChanged: () => void;
 }) {
-  // Le vote vit dans cette ligne, le quota se compte sur toute la soirée : la page a
-  // besoin d'être prévenue à chaque bascule, y compris optimiste.
+  // Le vote vit dans cette ligne, la réserve se compte sur toute la soirée : la page a
+  // besoin d'être prévenue à chaque pas, y compris optimiste.
   const reportVote = useCallback(
-    (hasVoted: boolean) => onVoteChange(entry.id, hasVoted),
+    (myVotes: number) => onVoteChange(entry.id, myVotes),
     [entry.id, onVoteChange],
   );
   // `useVote` est appelé même en lecture seule — un hook ne peut pas l'être sous
   // condition. Il ne coûte alors qu'un état local jamais touché : rien ne l'appelle,
-  // puisque le bouton n'est pas peint.
-  const { soireeVotes, hasVoted, isPending, error, toggle } = useVote(
+  // puisque l'incrémenteur n'est pas peint.
+  const { soireeVotes, myVotes, isPending, error, add, remove: removeVote } = useVote(
     entry.mod.id,
     {
       votes: entry.mod.votes,
       soireeVotes: entry.votes,
-      hasVoted: entry.hasVoted,
+      myVotes: entry.myVotes,
     },
     reportVote,
   );
@@ -134,8 +143,9 @@ function RankingRow({
   const [isRemoving, setIsRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
-  // Le quota ne ferme jamais un vote déjà placé : le retirer est ce qui rend la main.
-  const isBlocked = quotaReached && !hasVoted;
+  // La réserve pleine ne ferme que l'ajout : retirer est ce qui rend la main, et doit
+  // donc rester ouvert quoi qu'il arrive.
+  const canAdd = !quotaReached;
 
   async function remove() {
     setIsRemoving(true);
@@ -215,37 +225,58 @@ function RankingRow({
           </button>
         )}
         <span className="font-mono text-xl">{soireeVotes}</span>
+        {/* L'incrémenteur : un membre peut empiler plusieurs votes sur le même mod, dans
+            la limite de sa réserve du soir. Le grand nombre à gauche est le score de la
+            soirée, tous membres confondus ; celui d'ici n'est que le sien. */}
         {!readOnly && (
-          <button
-            type="button"
-            onClick={toggle}
-            disabled={isBlocked}
-            aria-pressed={hasVoted}
-            aria-busy={isPending}
-            // Le bouton éteint n'est pas une panne : la phrase dit pourquoi, et qu'il y
-            // a quelque chose à faire — retirer un vote ailleurs.
-            title={isBlocked ? quotaReachedMessage(entry.mod.type) : undefined}
-            aria-label={
-              hasVoted ? `Retirer mon vote pour ${entry.mod.name}` : `Voter pour ${entry.mod.name}`
-            }
-            className={`rounded-sm px-[11px] py-[7px] font-sans text-xs font-semibold ${
-              hasVoted
-                ? "btn-solid bg-[var(--color-amber)] text-[var(--color-ink)]"
-                : "btn-outline border border-[var(--color-border-strong)]"
-            } ${isBlocked ? "cursor-not-allowed" : ""}`}
-            style={{ opacity: isPending ? 0.7 : isBlocked ? 0.35 : 1 }}
+          <div
+            className="flex items-center rounded-sm border border-[var(--color-border-strong)]"
+            style={{ opacity: isPending ? 0.7 : 1 }}
           >
-            {hasVoted ? "✓ voté" : "+1"}
-          </button>
+            <button
+              type="button"
+              onClick={removeVote}
+              disabled={myVotes === 0}
+              aria-label={`Retirer un vote pour ${entry.mod.name}`}
+              className="px-[9px] py-[6px] font-sans text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              −
+            </button>
+            {/* `aria-live` : le compte change sans que le focus ne bouge, et c'est la
+                seule confirmation que le clic a porté. */}
+            <span
+              aria-live="polite"
+              className="min-w-[20px] text-center font-mono text-xs font-semibold"
+              style={{
+                color: myVotes > 0 ? "var(--color-amber)" : "var(--color-text-faint)",
+              }}
+            >
+              {myVotes}
+            </span>
+            <button
+              type="button"
+              onClick={add}
+              disabled={!canAdd}
+              aria-busy={isPending}
+              // Le bouton éteint n'est pas une panne : la phrase dit pourquoi, et qu'il y
+              // a quelque chose à faire — retirer un vote, ici ou ailleurs.
+              title={canAdd ? undefined : quotaReachedMessage(entry.mod.type)}
+              aria-label={`Ajouter un vote pour ${entry.mod.name}`}
+              className="px-[9px] py-[6px] font-sans text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              +
+            </button>
+          </div>
         )}
-        {/* Le vote du membre reste lisible une fois les votes clos : c'est le seul
-            repère qui distingue « je n'ai pas aimé » de « je n'étais pas là ». */}
-        {readOnly && entry.hasVoted && (
+        {/* Les votes du membre restent lisibles une fois le vote clos : c'est le seul
+            repère qui distingue « je n'ai pas aimé » de « je n'étais pas là ». Le nombre
+            n'apparaît qu'au-delà de un — « ✓ voté ×1 » se lirait comme une bizarrerie. */}
+        {readOnly && entry.myVotes > 0 && (
           <span
             className="font-mono text-[10px] text-[var(--color-text-muted)]"
-            title="Tu avais voté pour ce mod."
+            title={`Tu avais placé ${entry.myVotes} vote${entry.myVotes > 1 ? "s" : ""} sur ce mod.`}
           >
-            ✓ voté
+            ✓ voté{entry.myVotes > 1 ? ` ×${entry.myVotes}` : ""}
           </span>
         )}
       </div>
@@ -280,7 +311,7 @@ function RankingSection({
   readOnly: boolean;
   isAdmin: boolean;
   viewerDiscordId?: string | null;
-  onVoteChange: (engagementId: string, hasVoted: boolean) => void;
+  onVoteChange: (engagementId: string, myVotes: number) => void;
   onChanged: () => void;
 }) {
   const quota = VOTE_QUOTA[type];
@@ -391,7 +422,9 @@ export function SoireeView({
    * cet état commun, les compteurs « 6/8 » et les boutons éteints ne bougeraient qu'au
    * rechargement suivant, alors que le bouton, lui, répond au doigt.
    */
-  const [votedIds, setVotedIds] = useState<ReadonlySet<string>>(() => votedIdsOf(initialSoiree));
+  const [myVotes, setMyVotes] = useState<ReadonlyMap<string, number>>(() =>
+    myVotesOf(initialSoiree),
+  );
 
   /**
    * Recharge la soirée après une écriture — un engagement, un retrait. Les votes, eux,
@@ -408,7 +441,7 @@ export function SoireeView({
         setSoiree(body);
         // La base fait foi de nouveau : ce que le serveur dit de mes votes remplace ce
         // que la page en avait retenu.
-        setVotedIds(votedIdsOf(body));
+        setMyVotes(myVotesOf(body));
       })
       .catch(() => {});
   }, [soiree]);
@@ -418,25 +451,29 @@ export function SoireeView({
     return () => clearInterval(timer);
   }, []);
 
-  const handleVoteChange = useCallback((engagementId: string, hasVoted: boolean) => {
-    setVotedIds((previous) => {
-      if (previous.has(engagementId) === hasVoted) return previous;
-      const next = new Set(previous);
-      if (hasVoted) next.add(engagementId);
+  const handleVoteChange = useCallback((engagementId: string, count: number) => {
+    setMyVotes((previous) => {
+      if ((previous.get(engagementId) ?? 0) === count) return previous;
+      const next = new Map(previous);
+      // Zéro se range comme une absence, pour que la table dise la même chose que celle
+      // que `myVotesOf` reconstruit à chaque rechargement.
+      if (count > 0) next.set(engagementId, count);
       else next.delete(engagementId);
       return next;
     });
   }, []);
 
   /**
-   * Le score de ce soir tel que l'interface le connaît : celui du serveur, corrigé du
-   * seul vote que la page peut avoir changé depuis — celui de ce membre. Les votes des
+   * Le score de ce soir tel que l'interface le connaît : celui du serveur, corrigé des
+   * seuls votes que la page peut avoir changés depuis — ceux de ce membre. Ceux des
    * autres n'arrivent qu'au rechargement, comme le compteur des lignes.
+   *
+   * La correction est une différence et non un `+1` : ce membre peut avoir empilé
+   * plusieurs voix sur la ligne, et en avoir ajouté ou retiré depuis la lecture.
    */
   const liveVotes = useCallback(
-    (entry: ApiSoireeMod) =>
-      entry.votes + (votedIds.has(entry.id) ? 1 : 0) - (entry.hasVoted ? 1 : 0),
-    [votedIds],
+    (entry: ApiSoireeMod) => entry.votes + (myVotes.get(entry.id) ?? 0) - entry.myVotes,
+    [myVotes],
   );
 
   const sections = useMemo(
@@ -457,14 +494,19 @@ export function SoireeView({
     [liveVotes, soiree],
   );
 
-  /** Les votes placés par ce membre, par type — le numérateur des quotas. */
+  /**
+   * Les votes placés par ce membre, par type — le numérateur des quotas.
+   *
+   * Une somme et non un décompte de lignes : trois voix sur une même voiture pèsent
+   * trois dans sa réserve, sans quoi l'empilement la rendrait inépuisable.
+   */
   const used = useMemo(() => {
     const tally: Record<ModType, number> = { CAR: 0, TRACK: 0 };
     for (const entry of soiree?.mods ?? []) {
-      if (votedIds.has(entry.id)) tally[entry.mod.type] += 1;
+      tally[entry.mod.type] += myVotes.get(entry.id) ?? 0;
     }
     return tally;
-  }, [soiree, votedIds]);
+  }, [soiree, myVotes]);
 
   if (isLoading) {
     return <PageLoader />;

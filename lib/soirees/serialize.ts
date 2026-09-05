@@ -63,7 +63,7 @@ export type SoireeWithRelations = SoireeModel & {
     engagedBy: UserModel;
     mod: ModWithRelations;
     _count: { votes: number };
-    /** Le vote du membre connecté sur cet engagement : zéro ou une ligne. */
+    /** Les votes du membre connecté sur cet engagement — zéro, un, ou plusieurs. */
     votes: { id: string }[];
   })[];
 };
@@ -91,8 +91,12 @@ export interface ApiSoireeMod {
    * endroits qui répondent à deux questions différentes.
    */
   votes: number;
-  /** Vrai si le membre qui a demandé la soirée a voté pour ce mod ici. */
-  hasVoted: boolean;
+  /**
+   * Combien de votes le membre qui a demandé la soirée a placés sur ce mod ici. Un
+   * compte, pas un booléen : sa réserve du soir s'empile sur un même engagement
+   * (`VOTE_QUOTA`), et l'incrémenteur de la ligne affiche ce nombre.
+   */
+  myVotes: number;
   engagedAt: string;
   /**
    * Le tirage qui départage les ex æquo (`SoireeMod.tieBreak`), du plus petit au plus
@@ -143,8 +147,9 @@ export function serializeSoiree(
       mod: serializeMod(entry.mod, context.currentSoireeId),
       engagedBy: serializeMember(entry.engagedBy),
       votes: entry._count.votes,
-      // Filtré sur le seul membre connecté (`soireeInclude`) : sa présence suffit.
-      hasVoted: entry.votes.length > 0,
+      // Filtré sur le seul membre connecté (`soireeInclude`) : le nombre de lignes
+      // ramenées est son compte.
+      myVotes: entry.votes.length,
       engagedAt: entry.createdAt.toISOString(),
       tieBreak: entry.tieBreak,
     })),

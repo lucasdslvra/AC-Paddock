@@ -4,17 +4,17 @@ import { prisma } from "@/lib/prisma";
 import { sessionGuildId, upsertSessionUser } from "@/lib/session-user";
 import { currentSoiree } from "@/lib/soirees/current";
 import { isVoteOpen, voteClosedMessage } from "@/lib/soirees/phase";
-import { castVote, readVoteState } from "@/lib/soirees/vote";
+import { castVote, readVoteState, retractVote } from "@/lib/soirees/vote";
 
 /**
  * Voter pour un mod depuis le catalogue ou depuis sa fiche (US-F1), c'est-à-dire sans
  * nommer de soirée.
  *
  * Depuis US-G3, un vote n'existe que dans le cadre d'une soirée : cette route résout
- * donc la soirée en cours, et c'est le **même vote** que celui de la page soirée —
- * la même ligne, la même contrainte d'unicité. Les trois boutons de l'application
- * écrivent au même endroit, ce qui est exactement ce qu'on attend d'eux : cliquer
- * depuis une carte puis rouvrir la soirée doit montrer le vote déjà là.
+ * donc la soirée en cours, et c'est la **même réserve** que celle de la page soirée —
+ * les mêmes lignes, le même quota. Les trois boutons de l'application écrivent au même
+ * endroit, ce qui est exactement ce qu'on attend d'eux : cliquer depuis une carte puis
+ * rouvrir la soirée doit montrer les votes déjà là.
  *
  * Elle existe en plus de `/api/soirees/[id]/mods/[modId]/vote` parce que le catalogue
  * n'a aucune raison de connaître l'identifiant de la soirée du soir. Il tient une
@@ -63,7 +63,7 @@ async function resolveEngagement(modId: string, session: Session) {
   return { engagement };
 }
 
-/** US-F1 / US-G3 — voter pour un mod dans la soirée en cours. */
+/** US-F1 / US-G3 — poser un vote de plus sur un mod dans la soirée en cours. */
 export async function POST(_request: Request, ctx: RouteContext<"/api/mods/[id]/vote">) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -82,9 +82,9 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/mods/[id]/
     // bien ne pas exister encore.
     const voter = await upsertSessionUser(session.user);
 
-    // `castVote` porte la règle des quotas et l'idempotence : re-voter redit le même
-    // état, et le vote de trop est refusé — ici comme depuis la page soirée, puisque
-    // c'est la même ligne qui s'écrit.
+    // `castVote` porte la règle des quotas : chaque appel ajoute une voix, et celle de
+    // trop est refusée — ici comme depuis la page soirée, puisque c'est la même réserve
+    // qui se vide.
     const rejected = await castVote({
       userId: voter.id,
       modId: id,
@@ -96,7 +96,7 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/mods/[id]/
       return Response.json({ error: rejected.error }, { status: rejected.status });
     }
 
-    return Response.json(await readVoteState(id, resolved.engagement.id, true));
+    return Response.json(await readVoteState(id, resolved.engagement.id, voter.id));
   } catch (error) {
     console.error(`POST /api/mods/${id}/vote`, error);
     return Response.json({ error: "Ton vote n'a pas pu être enregistré." }, { status: 500 });
@@ -104,8 +104,8 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/mods/[id]/
 }
 
 /**
- * US-F1 — retirer son vote. Idempotente : retirer un vote qu'on n'a pas est déjà le
- * résultat voulu.
+ * US-F1 — retirer un vote, le dernier posé sur ce mod. Idempotente : retirer un vote
+ * qu'on n'a pas est déjà le résultat voulu.
  */
 export async function DELETE(_request: Request, ctx: RouteContext<"/api/mods/[id]/vote">) {
   const session = await auth();
@@ -129,12 +129,12 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/mods/[id
     });
 
     if (voter) {
-      await prisma.vote.deleteMany({
-        where: { userId: voter.id, soireeModId: resolved.engagement.id },
-      });
+      await retractVote({ userId: voter.id, soireeModId: resolved.engagement.id });
     }
 
-    return Response.json(await readVoteState(id, resolved.engagement.id, false));
+    // Sans ligne `User`, aucun vote à compter : `readVoteState` rendra `myVotes: 0` sur
+    // un identifiant qui n'existe pas, ce qui est exactement l'état de ce membre.
+    return Response.json(await readVoteState(id, resolved.engagement.id, voter?.id ?? ""));
   } catch (error) {
     console.error(`DELETE /api/mods/${id}/vote`, error);
     return Response.json({ error: "Ton vote n'a pas pu être retiré." }, { status: 500 });

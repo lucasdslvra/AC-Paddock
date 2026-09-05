@@ -20,8 +20,15 @@ export interface VoteState {
    * `0` quand le mod n'est engagé nulle part — il n'est alors pas votable.
    */
   soireeVotes: number;
-  /** Vrai si le membre connecté a un vote sur ce mod dans la soirée en cours. */
-  hasVoted: boolean;
+  /**
+   * Combien de votes le membre connecté a placés sur ce mod dans la soirée en cours —
+   * `0` s'il n'en a mis aucun.
+   *
+   * Un compte et non un booléen : depuis l'empilement, un membre peut poser plusieurs
+   * votes sur le même mod, dans la limite de sa réserve (`VOTE_QUOTA`). C'est ce nombre
+   * qu'affiche l'incrémenteur, et lui qui dit si le « − » a quelque chose à retirer.
+   */
+  myVotes: number;
 }
 
 /**

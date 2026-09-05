@@ -11,12 +11,23 @@ export interface VoteRejection {
 }
 
 /**
- * Écrire le vote d'un membre sur un engagement, dans la limite de son quota du soir
- * (`VOTE_QUOTA` : 8 véhicules, 3 circuits par soirée).
+ * Écrire un vote de plus d'un membre sur un engagement, dans la limite de sa réserve du
+ * soir (`VOTE_QUOTA` : 8 véhicules, 3 circuits par soirée).
+ *
+ * **Un vote de plus, et non « le » vote.** Un membre peut en empiler plusieurs sur le
+ * même mod : rien ne l'oblige à répartir sa réserve, et concentrer ses huit voix sur une
+ * seule voiture est un choix aussi valable que de les étaler. Chaque appel écrit donc
+ * une ligne, et seul le quota l'arrête.
+ *
+ * Ce qui se perd au passage, et qu'il faut savoir : la route n'est plus idempotente. Un
+ * POST rejoué — réseau capricieux, double clic — ajoute un vote au lieu de redire le
+ * même état, parce qu'il n'y a plus moyen de distinguer le renvoi d'une requête d'un
+ * second vote délibéré. C'est le prix de l'empilement, et l'interface s'y range : elle
+ * envoie un appel par clic, sans bascule à deviner.
  *
  * Partagé par les deux routes de vote — celle du catalogue et celle de la page soirée
- * écrivent la même ligne, et doivent donc compter la même chose. Rend `null` quand le
- * vote est acquis (écrit à l'instant, ou déjà là), le refus sinon.
+ * écrivent dans la même table, et doivent donc compter la même chose. Rend `null` quand
+ * le vote est écrit, le refus sinon.
  */
 export async function castVote(vote: {
   userId: string;
@@ -34,19 +45,11 @@ export async function castVote(vote: {
   return prisma.$transaction(async (tx) => {
     // Le comptage et l'écriture qui suivent doivent être indivisibles : sans ce verrou,
     // deux votes partis en même temps se comptent l'un l'autre comme absents, passent
-    // tous les deux le contrôle, et le membre place un neuvième véhicule. La contrainte
-    // d'unicité ne dit rien de ce cas-là — ce sont deux mods différents.
+    // tous les deux le contrôle, et le membre place un neuvième véhicule. C'est
+    // désormais la *seule* garantie du quota — l'unicité qui doublait la mise sur un
+    // même mod est tombée avec l'empilement (`20260905140000_votes_multiples`), et deux
+    // clics sur la même voiture sont exactement le cas qu'elle ne couvrait pas.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey})::bigint)`;
-
-    // Re-voter pour un mod déjà voté est le résultat voulu, pas un vote de plus : les
-    // routes sont idempotentes (réseau capricieux, double clic), et ce vote-là est déjà
-    // compté dans le quota. Le vérifier ici évite de refuser, à quota plein, un vote qui
-    // ne change rien.
-    const existing = await tx.vote.findFirst({
-      where: { userId: vote.userId, soireeModId: vote.soireeModId },
-      select: { id: true },
-    });
-    if (existing) return null;
 
     const used = await tx.vote.count({
       where: {
@@ -71,23 +74,59 @@ export async function castVote(vote: {
 }
 
 /**
+ * Retirer **un** vote d'un membre sur un engagement — le dernier posé.
+ *
+ * Un seul, et non tous ceux qu'il y a mis : depuis l'empilement, le bouton « − » défait
+ * un clic, pas une opinion. Retirer la pile entière ferait d'un dépassement de un clic
+ * la perte de huit votes.
+ *
+ * Le plus récent plutôt que le plus ancien parce que c'est celui qu'on vient de poser :
+ * défaire, c'est revenir à l'état d'avant le dernier geste. Les lignes étant par
+ * ailleurs interchangeables, le choix ne se voit nulle part — sauf ici.
+ *
+ * Idempotent, lui : sans vote à retirer il n'y a rien à faire, et c'est déjà le résultat
+ * voulu. Le `deleteMany` sur un identifiant précis plutôt qu'un `delete` évite l'erreur
+ * de deux retraits partis ensemble, où le second ne trouverait plus sa ligne.
+ */
+export async function retractVote(vote: {
+  userId: string;
+  soireeModId: string;
+}): Promise<void> {
+  const last = await prisma.vote.findFirst({
+    where: { userId: vote.userId, soireeModId: vote.soireeModId },
+    // `createdAt` a la milliseconde pour résolution : deux votes du même clic répété
+    // peuvent la partager, et l'identifiant ferme alors le tri. Sans lui, « le dernier »
+    // dépendrait de l'ordre que la base voudrait bien rendre.
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { id: true },
+  });
+
+  if (last) await prisma.vote.deleteMany({ where: { id: last.id } });
+}
+
+/**
  * L'état du vote après écriture, tel que les boutons doivent l'afficher (US-F2, US-G4).
  *
- * Les deux comptes sont relus en base plutôt que dérivés du nombre optimiste tenu par
+ * Les trois comptes sont relus en base plutôt que dérivés du nombre optimiste tenu par
  * le navigateur : le membre n'est pas seul à voter, et c'est le seul moment où l'on
  * peut lui rendre le compte réel — celui des autres compris.
+ *
+ * `myVotes` en fait partie depuis l'empilement, et n'est plus déductible du verbe
+ * employé : un POST ne veut plus dire « il en a un », il veut dire « il en a un de plus
+ * qu'avant », et l'interface a besoin du nombre pour peindre son incrémenteur.
  */
 export async function readVoteState(
   modId: string,
   soireeModId: string,
-  hasVoted: boolean,
+  userId: string,
 ): Promise<VoteState> {
-  const [votes, soireeVotes] = await Promise.all([
+  const [votes, soireeVotes, myVotes] = await Promise.all([
     prisma.vote.count({ where: { modId } }),
     prisma.vote.count({ where: { soireeModId } }),
+    prisma.vote.count({ where: { soireeModId, userId } }),
   ]);
 
-  return { modId, votes, soireeVotes, hasVoted };
+  return { modId, votes, soireeVotes, myVotes };
 }
 
 /** Membres distincts ayant voté dans une soirée — le « 5 / 8 ont voté » de la page. */

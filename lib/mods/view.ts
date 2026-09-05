@@ -82,7 +82,7 @@ export function apiModToView(mod: ApiMod): ModView {
     name: mod.name,
     tags: mod.tags,
     totalVotes: mod.votes,
-    hasVoted: mod.hasVoted,
+    myVotes: mod.myVotes,
     engagement: mod.engagement,
     voteHistory: toBarHeights(mod.voteHistory),
     author: mod.author.username,

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { sessionGuildId, upsertSessionUser } from "@/lib/session-user";
 import { currentSoiree } from "@/lib/soirees/current";
 import { isVoteOpen, voteClosedMessage } from "@/lib/soirees/phase";
-import { castVote, readVoteState } from "@/lib/soirees/vote";
+import { castVote, readVoteState, retractVote } from "@/lib/soirees/vote";
 
 /**
  * L'engagement visé, une fois vérifié qu'on a le droit d'y voter (US-G3).
@@ -46,17 +46,15 @@ async function resolveEngagement(soireeId: string, modId: string, session: Sessi
 }
 
 /**
- * US-G3 — voter pour un mod engagé dans une soirée.
+ * US-G3 — poser un vote de plus sur un mod engagé dans une soirée.
  *
- * Un membre, un vote par mod engagé, par soirée : c'est la contrainte
- * `@@unique([userId, soireeModId])` qui le garantit, pas une vérification préalable —
- * deux clics partis en même temps ne peuvent donc pas produire deux lignes. La route
- * reste idempotente : re-voter ne change rien et répond le même état, plutôt qu'une
- * erreur pour un vote qui est déjà celui qu'on demande.
+ * Un appel, un vote : un membre peut en empiler plusieurs sur le même mod, et la route
+ * n'est donc **pas** idempotente — un POST rejoué ajoute une voix. C'est `castVote` qui
+ * porte la règle, et son commentaire qui dit pourquoi.
  *
- * Le nombre de votes, lui, est borné par type et par soirée (`VOTE_QUOTA` : 8 véhicules,
- * 3 circuits) — c'est `castVote` qui compte et qui refuse, pour cette route comme pour
- * celle du catalogue.
+ * La seule borne est la réserve du soir, par type et par soirée (`VOTE_QUOTA` :
+ * 8 véhicules, 3 circuits) — comptée et refusée par `castVote`, pour cette route comme
+ * pour celle du catalogue.
  */
 export async function POST(
   _request: Request,
@@ -90,7 +88,7 @@ export async function POST(
       return Response.json({ error: rejected.error }, { status: rejected.status });
     }
 
-    return Response.json(await readVoteState(modId, resolved.engagement.id, true));
+    return Response.json(await readVoteState(modId, resolved.engagement.id, voter.id));
   } catch (error) {
     console.error(`POST /api/soirees/${id}/mods/${modId}/vote`, error);
     return Response.json({ error: "Ton vote n'a pas pu être enregistré." }, { status: 500 });
@@ -98,11 +96,11 @@ export async function POST(
 }
 
 /**
- * US-G3 — retirer son vote.
+ * US-G3 — retirer un vote, le dernier posé sur ce mod.
  *
- * Le backlog ne demande que le POST, mais le bouton qu'il décrit a deux états : sans
- * cette route, l'état actif serait sans retour. Idempotente elle aussi — retirer un
- * vote qu'on n'a pas est déjà le résultat voulu.
+ * Un seul par appel, en miroir du POST : c'est ce qui rend l'incrémenteur réversible
+ * clic pour clic. Idempotente, elle — retirer un vote qu'on n'a pas est déjà le
+ * résultat voulu.
  */
 export async function DELETE(
   _request: Request,
@@ -129,12 +127,12 @@ export async function DELETE(
     });
 
     if (voter) {
-      await prisma.vote.deleteMany({
-        where: { userId: voter.id, soireeModId: resolved.engagement.id },
-      });
+      await retractVote({ userId: voter.id, soireeModId: resolved.engagement.id });
     }
 
-    return Response.json(await readVoteState(modId, resolved.engagement.id, false));
+    // Sans ligne `User`, aucun vote à compter : `readVoteState` rendra `myVotes: 0` sur
+    // un identifiant qui n'existe pas, ce qui est exactement l'état de ce membre.
+    return Response.json(await readVoteState(modId, resolved.engagement.id, voter?.id ?? ""));
   } catch (error) {
     console.error(`DELETE /api/soirees/${id}/mods/${modId}/vote`, error);
     return Response.json({ error: "Ton vote n'a pas pu être retiré." }, { status: 500 });

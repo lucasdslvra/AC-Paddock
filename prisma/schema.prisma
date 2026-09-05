@@ -274,15 +274,27 @@ model Vote {
   /// veulent plus rien dire une fois l'association défaite.
   soireeMod SoireeMod? @relation(fields: [soireeModId], references: [id], onDelete: Cascade)
 
-  /// US-G3 — un membre, un vote par mod engagé, par soirée. Un même mod reproposé à
-  /// une soirée suivante est donc revotable, ce que `@@unique([userId, modId])` (la
-  /// contrainte du MVP, retirée par la migration `20260830180000_soirees`) interdisait.
+  /// Une ligne par vote placé, et un membre peut en placer plusieurs sur le même mod —
+  /// dans la limite de sa réserve du soir (`VOTE_QUOTA` : 8 véhicules, 3 circuits).
+  /// L'`@@unique([userId, soireeModId])` qui l'en empêchait est tombé avec la migration
+  /// `20260905140000_votes_multiples`.
   ///
-  /// Postgres considère deux NULL comme distincts : cette contrainte ne dit donc rien
-  /// des votes hérités. C'est un index unique partiel, posé à la main dans la même
-  /// migration, qui garde leur unicité — Prisma ne sait pas le décrire.
-  @@unique([userId, soireeModId])
-  /// Le comptage part du mod (US-F2), l'unicité ne sert que dans l'autre sens.
+  /// Empiler plutôt que pondérer une ligne unique : le classement se trie **en base**
+  /// (`RANKING_ORDER`), et Prisma ne sait ordonner une relation que par `_count`, jamais
+  /// par la somme d'une colonne. Une ligne par vote garde donc intacts le tri du soir,
+  /// celui du catalogue (US-E4) et tous les comptages — au prix de quelques lignes de
+  /// plus dans une table qui en compte peu (cahier §1 : le groupe est fermé et petit).
+  ///
+  /// Ce qui n'a pas d'unicité n'a plus d'idempotence : deux POST identiques écrivent
+  /// deux votes, et c'est le comportement voulu — « voter encore » est devenu une action
+  /// à part entière. Le quota, lui, reste garanti par le verrou consultatif de
+  /// `castVote`, qui ne dépendait déjà pas de cette contrainte.
+  ///
+  /// L'unicité des votes hérités du MVP (`soireeModId` à NULL) est portée par un index
+  /// unique partiel posé à la main dans `20260830180000_soirees` — Prisma ne sait pas le
+  /// décrire, et il n'est pas concerné par ce qui précède.
+  @@index([userId, soireeModId])
+  /// Le comptage part du mod (US-F2), la recherche par membre de l'autre côté.
   @@index([modId])
 }
 

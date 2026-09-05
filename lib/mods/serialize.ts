@@ -82,7 +82,7 @@ export type ModWithRelations = ModModel & {
    */
   soirees: (SoireeModModel & {
     _count: { votes: number };
-    /** Le vote du membre connecté dans cette soirée, s'il en a un. */
+    /** Les votes du membre connecté dans cette soirée — zéro, un, ou plusieurs. */
     votes: { id: string }[];
   })[];
 };
@@ -149,8 +149,12 @@ export interface ApiMod {
    * engagée n'en a aucune.
    */
   voteHistory: number[];
-  /** Vrai si le membre qui a demandé la fiche a voté pour elle dans la soirée en cours. */
-  hasVoted: boolean;
+  /**
+   * Combien de votes le membre qui a demandé la fiche a placés sur elle dans la soirée
+   * en cours — `0` s'il n'en a mis aucun, ou si elle n'y est pas engagée. Un compte, et
+   * non un booléen : la réserve du soir s'empile sur un même mod (`VOTE_QUOTA`).
+   */
+  myVotes: number;
   /** US-G3 — `null` si la fiche n'est pas engagée dans la soirée en cours. */
   engagement: ApiModEngagement | null;
   /** Cahier §2.2 — les liens alternatifs, dans leur ordre d'ajout. */
@@ -182,7 +186,9 @@ export function serializeMod(mod: ModWithRelations, currentSoireeId: string | nu
     // Les barres se lisent de gauche à droite dans l'ordre du temps : on retourne
     // l'ordre de la base, qui sert d'abord à trouver la soirée en cours.
     voteHistory: mod.soirees.map((entry) => entry._count.votes).reverse(),
-    hasVoted: engagement !== undefined && engagement.votes.length > 0,
+    // `votes` est déjà filtré sur le seul membre connecté (`modInclude`) : le nombre de
+    // lignes ramenées est son compte.
+    myVotes: engagement?.votes.length ?? 0,
     engagement: engagement ? { soireeModId: engagement.id, votes: engagement._count.votes } : null,
     links: mod.links.map((link) => ({
       id: link.id,

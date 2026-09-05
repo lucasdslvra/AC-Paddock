@@ -147,16 +147,18 @@ function VotePanel({
   /** Voir `ModDetailViewProps.currentSoiree` — `null` quand le vote est ouvert. */
   voteClosedReason: string | null;
 }) {
-  const { soireeVotes, hasVoted, isPending, error, toggle } = useVote(mod.id, {
+  const { soireeVotes, myVotes, isPending, error, add, remove } = useVote(mod.id, {
     votes: mod.totalVotes,
     soireeVotes: mod.engagement?.votes ?? 0,
-    hasVoted: mod.hasVoted ?? false,
+    myVotes: mod.myVotes ?? 0,
   });
   // US-G3 — seuls les mods engagés dans la soirée en cours sont votables, et seulement
   // tant que le vote du soir est ouvert : il ferme 30 min avant le départ.
   const isEngaged = mod.engagement != null;
   const canVote = isEngaged && voteClosedReason === null;
-  const others = soireeVotes - (hasVoted ? 1 : 0);
+  // Les voix des autres : le score du soir moins la pile de ce membre, qui peut compter
+  // plusieurs voix sur cette seule fiche.
+  const others = soireeVotes - myVotes;
 
   return (
     <div className="rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-[18px]">
@@ -174,20 +176,35 @@ function VotePanel({
         <MiniBarChart values={mod.voteHistory} height={36} dimmed={mod.totalVotes === 0} />
       </div>
       {canVote ? (
-        <button
-          type="button"
-          onClick={toggle}
-          aria-pressed={hasVoted}
-          aria-busy={isPending}
-          className={`mt-4 flex w-full items-center justify-center gap-2 rounded-sm p-3 font-sans text-sm font-semibold ${
-            hasVoted
-              ? "btn-solid bg-[var(--color-amber)] text-[var(--color-ink)]"
-              : "btn-outline border border-[var(--color-border-strong)]"
-          }`}
-          style={{ opacity: isPending ? 0.7 : 1 }}
-        >
-          {hasVoted ? "✓ Tu as voté — retirer" : "+1 Voter pour ce mod"}
-        </button>
+        /* Un « − » à côté de l'action principale, plutôt qu'un incrémenteur symétrique :
+           ajouter reste le geste courant, et il garde toute la largeur. Le retrait est
+           toujours là mais éteint tant qu'il n'a rien à défaire. */
+        <div className="mt-4 flex items-stretch gap-2" style={{ opacity: isPending ? 0.7 : 1 }}>
+          <button
+            type="button"
+            onClick={remove}
+            disabled={myVotes === 0}
+            aria-label="Retirer un vote pour ce mod"
+            className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-4 font-sans text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            onClick={add}
+            aria-busy={isPending}
+            aria-label="Ajouter un vote pour ce mod"
+            className={`flex flex-1 items-center justify-center gap-2 rounded-sm p-3 font-sans text-sm font-semibold ${
+              myVotes > 0
+                ? "btn-solid bg-[var(--color-amber)] text-[var(--color-ink)]"
+                : "btn-outline border border-[var(--color-border-strong)]"
+            }`}
+          >
+            {myVotes === 0
+              ? "+1 Voter pour ce mod"
+              : `✓ ${myVotes} vote${myVotes > 1 ? "s" : ""} placé${myVotes > 1 ? "s" : ""} — en ajouter un`}
+          </button>
+        </div>
       ) : (
         /* Pas de bouton éteint : il annoncerait un score qui n'existe pas. À la place,
            la raison — elle n'est pas la même selon qu'une soirée est ouverte ou non. */
@@ -201,7 +218,7 @@ function VotePanel({
         </p>
       )}
       <div className="mt-3 flex items-center gap-[5px]">
-        {hasVoted && <UserAvatar src={viewer?.image} name={viewer?.name} size={20} ring />}
+        {myVotes > 0 && <UserAvatar src={viewer?.image} name={viewer?.name} size={20} ring />}
         {/* Au-delà de quatre pastilles, la ligne déborde — le compte, lui, est écrit. */}
         {Array.from({ length: Math.min(others, 4) }, (_, index) => (
           <AvatarPlaceholder key={index} size={20} />
@@ -213,7 +230,7 @@ function VotePanel({
             ? "personne n'a encore voté"
             : others === 0
               ? "toi seul pour l'instant"
-              : `${hasVoted ? "+ " : ""}${others} autre${others > 1 ? "s" : ""} membre${others > 1 ? "s" : ""}`}
+              : `${myVotes > 0 ? "+ " : ""}${others} autre${others > 1 ? "s" : ""} membre${others > 1 ? "s" : ""}`}
         </span>
       </div>
     </div>

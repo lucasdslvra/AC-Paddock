@@ -17,10 +17,10 @@ interface ModCardProps {
 export function ModCard({ mod }: ModCardProps) {
   // US-G3/G4 — le compteur est celui de la soirée en cours, et il repart de zéro à
   // chaque nouvelle : la popularité de la fiche se lit dans les barres, au-dessus.
-  const { soireeVotes, hasVoted, isPending, error, toggle } = useVote(mod.id, {
+  const { soireeVotes, myVotes, isPending, error, add, remove } = useVote(mod.id, {
     votes: mod.totalVotes,
     soireeVotes: mod.engagement?.votes ?? 0,
-    hasVoted: mod.hasVoted ?? false,
+    myVotes: mod.myVotes ?? 0,
   });
   // Seuls les mods engagés dans la soirée en cours sont votables — les autres n'ont
   // pas de bouton du tout. Un bouton éteint se lit comme une panne, et il annoncerait
@@ -69,25 +69,39 @@ export function ModCard({ mod }: ModCardProps) {
             <UserAvatar src={mod.authorAvatarUrl} name={mod.author} size={16} />
             {mod.author} · {mod.ageLabel}
           </span>
+          {/* Le pied d'une carte est étroit, et il porte déjà l'auteur et l'âge : le
+              « − » n'y apparaît que lorsqu'il a quelque chose à retirer. Le bouton
+              principal ajoute une voix et affiche le score du soir — la réserve, elle,
+              se lit sur la page de la soirée, seul endroit qui la connaisse en entier. */}
           {isEngaged && (
-            <button
-              type="button"
-              onClick={toggle}
-              aria-pressed={hasVoted}
-              aria-busy={isPending}
-              aria-label={
-                hasVoted ? `Retirer mon vote pour ${mod.name}` : `Voter pour ${mod.name}`
-              }
-              className={`flex items-center gap-[6px] rounded-sm px-[9px] py-[5px] font-mono text-xs ${
-                hasVoted
-                  ? "btn-solid bg-[var(--color-emphasis-bg)] text-[var(--color-emphasis-text)]"
-                  : "btn-outline border border-[var(--color-border-strong)] text-[var(--color-foreground)]"
-              }`}
-              style={{ opacity: isPending ? 0.6 : 1 }}
-            >
-              {hasVoted && <span className="font-sans text-[10px] font-semibold">+1</span>}
-              <span>{String(soireeVotes).padStart(2, "0")}</span>
-            </button>
+            <span className="flex items-center gap-[5px]" style={{ opacity: isPending ? 0.6 : 1 }}>
+              {myVotes > 0 && (
+                <button
+                  type="button"
+                  onClick={remove}
+                  aria-label={`Retirer un vote pour ${mod.name}`}
+                  className="btn-outline rounded-sm border border-[var(--color-border-strong)] px-[7px] py-[5px] font-sans text-xs font-semibold text-[var(--color-text-secondary)]"
+                >
+                  −
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={add}
+                aria-busy={isPending}
+                aria-label={`Ajouter un vote pour ${mod.name}`}
+                className={`flex items-center gap-[6px] rounded-sm px-[9px] py-[5px] font-mono text-xs ${
+                  myVotes > 0
+                    ? "btn-solid bg-[var(--color-emphasis-bg)] text-[var(--color-emphasis-text)]"
+                    : "btn-outline border border-[var(--color-border-strong)] text-[var(--color-foreground)]"
+                }`}
+              >
+                {myVotes > 0 && (
+                  <span className="font-sans text-[10px] font-semibold">×{myVotes}</span>
+                )}
+                <span>{String(soireeVotes).padStart(2, "0")}</span>
+              </button>
+            </span>
           )}
         </div>
       </div>

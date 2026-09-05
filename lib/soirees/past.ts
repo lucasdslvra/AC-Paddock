@@ -9,6 +9,7 @@ import {
   type ApiPastSoiree,
   type PastSoireeModWithRelations,
 } from "./serialize";
+import { drawTieBreaks } from "./tie-break";
 import { countVotersBySoiree } from "./vote";
 
 /**
@@ -33,6 +34,13 @@ export async function listPastSoirees(
   guildId: string | null,
   now?: Date,
 ): Promise<ApiPastSoiree[]> {
+  // Le tirage des ex æquo précède la lecture : `pastSoireeInclude` ne ramène que les
+  // huit véhicules du haut (`take`), c'est donc le tri de la base qui choisit ce que
+  // l'archive montre. Toutes les soirées du serveur d'un coup, et pas seulement celles
+  // de la page : leur vote est fermé depuis longtemps, et une soirée que personne n'a
+  // ouverte depuis attend encore son tirage.
+  await drawTieBreaks({ guildId }, now);
+
   const soirees = await prisma.soiree.findMany({
     where: { guildId: guildId ?? NO_GUILD, date: { lt: startOfToday(now) } },
     orderBy: { date: "desc" },

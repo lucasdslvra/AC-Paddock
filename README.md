@@ -393,6 +393,43 @@ Un mod sans le moindre vote n'est jamais retenu, même quand la soirée compte m
 d'engagements que de places (`isRetained`) : « les 8 véhicules les plus votés » ne veut
 pas dire « les 8 premiers de la liste ».
 
+#### Les ex æquo, tirés au sort à la fermeture
+
+Les places retenues tombent souvent au milieu d'une égalité : quatre véhicules à deux
+voix pour les deux dernières places. Le classement départageait ces ex æquo par ordre
+d'engagement, ce qui revenait à donner les places à celui qui avait cliqué le premier,
+des heures avant que le vote ne dise quoi que ce soit. **À voix égales, c'est le sort qui
+tranche** — et seulement entre égaux : dans l'exemple, deux des quatre mods à deux voix
+passent, et les trois mods à une voix restent derrière, quel que soit leur tirage. Le
+classement se fait d'abord sur les voix ; le tirage ne départage jamais que des égaux.
+
+Le tirage a lieu **à la fermeture du vote**, pas à l'engagement : tirer à l'engagement
+reviendrait à connaître le vainqueur d'une égalité avant que le premier vote soit placé.
+Tant que le vote est ouvert, `SoireeMod.tieBreak` vaut `NULL` — le tirage n'a pas encore
+eu lieu, et le classement affiché n'est de toute façon qu'une projection. Ses ex æquo s'y
+rangent par ordre d'engagement (`RANKING_ORDER`, `nulls: "last"`) : un ordre d'attente,
+qui ne décide de rien, et la page le dit sous la barre quand l'égalité tombe pile à la
+coupe — « la place se tire au sort à la fermeture du vote » (`hasTieAtCut`).
+
+Le tirage est écrit par [lib/soirees/tie-break.ts](lib/soirees/tie-break.ts)
+(`drawTieBreaks`), en tête de chaque lecture de classement : un seul `UPDATE`, une valeur
+`random()` par ligne, sous condition que le vote soit fermé et que le tirage n'ait pas
+déjà eu lieu. C'est donc la première lecture qui suit la fermeture qui tire, et **une
+seule fois** — deux lectures simultanées ne tirent pas deux fois, la seconde attend les
+lignes verrouillées puis ne trouve plus rien à `NULL`. Pas de tâche planifiée : le vote
+ferme 30 min avant une heure quelconque, un cron quotidien ne serait jamais à l'heure.
+
+Rejouer le tirage à chaque affichage serait le vrai défaut : la fermeture du vote est
+exactement l'instant où s'ouvre le retrait des fichiers retenus, et la liste changerait
+de mods pendant que le groupe télécharge. La valeur est donc en base, et c'est elle que
+lisent les deux tris — celui de PostgreSQL (`RANKING_ORDER`) et celui de la page, qui
+reclasse en direct sur les votes optimistes (`rankSection`, via `ApiSoireeMod.tieBreak`).
+Les deux retiennent ainsi exactement les mêmes mods.
+
+Le tirage appartient à l'engagement, donc à la soirée : un mod malchanceux un soir repart
+avec une autre chance le suivant. `createdAt` ferme encore le tri, pour l'improbable
+égalité de tirage.
+
 #### Le refus, côté serveur
 
 `castVote` ([lib/soirees/vote.ts](lib/soirees/vote.ts)) porte la règle pour les deux

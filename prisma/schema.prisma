@@ -344,6 +344,32 @@ model SoireeMod {
 
   createdAt DateTime @default(now())
 
+  /// Le départage des ex æquo : un tirage au sort, fait **à la fermeture du vote**.
+  ///
+  /// Une soirée retient un nombre fixe de mods (`RETAINED_COUNT`), et les votes tombent
+  /// souvent à égalité juste à la barre — quatre voitures à deux voix pour deux places.
+  /// Départager par ordre d'engagement, comme le classement le faisait, revenait à
+  /// donner les dernières places à celui qui avait cliqué le premier : à voix égales,
+  /// c'est la vitesse d'un membre qui tranchait, pas le choix du groupe. Le sort tranche
+  /// désormais, et seulement entre égaux — le classement se fait toujours d'abord sur
+  /// les voix.
+  ///
+  /// `null` tant que le vote est ouvert : **le tirage n'a pas encore eu lieu**, et rien
+  /// ne serait tiré au sort si le vote continuait de changer les scores. Le classement
+  /// affiché pendant ce temps est une projection, et ses ex æquo s'y rangent par ordre
+  /// d'engagement (`RANKING_ORDER`, `nulls: "last"`) — un ordre d'attente, pas un
+  /// résultat.
+  ///
+  /// Le tirage est écrit une fois, par `drawTieBreaks` (lib/soirees/tie-break.ts), et ne
+  /// se rejoue jamais : le classement doit dire la même chose à tout le monde d'une
+  /// visite à l'autre, et la liste de retrait qui s'ouvre à cet instant précis ne peut
+  /// pas changer de mods sous les pieds de ceux qui téléchargent. C'est aussi ce qui
+  /// permet de trier en base, où un tirage fait en JavaScript n'existe pas.
+  ///
+  /// Le tirage appartient à l'engagement, donc à la soirée : un mod malchanceux un soir
+  /// repart avec une autre chance le suivant.
+  tieBreak Float?
+
   /// US-G2 — un mod ne peut être engagé qu'une fois dans une même soirée.
   @@unique([soireeId, modId])
   /// Le classement part de la soirée (US-G4) ; l'unicité sert dans ce sens-là aussi,

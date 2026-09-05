@@ -24,11 +24,20 @@ import { RETAINED_COUNT } from "./quota";
  * Le classement (US-G4). Typé à part parce qu'un littéral figé par `as const` donne un
  * tableau en lecture seule, que Prisma refuse — même raison que `MOD_ORDER_BY`.
  *
- * Les ex æquo — le cas courant en début de soirée, tout le monde à zéro — se départagent
- * par ordre d'engagement, sans quoi la liste changerait d'ordre à chaque rechargement.
+ * Les ex æquo se départagent au sort, par le tirage écrit à la fermeture du vote
+ * (`SoireeMod.tieBreak`, `drawTieBreaks`) : c'est lui qui décide, à voix égales,
+ * lesquels prennent les dernières places retenues. Comme il est en base et non rejoué à
+ * l'affichage, l'ordre ne change pas d'une visite à l'autre.
+ *
+ * `nulls: "last"` porte le temps où il n'a pas encore eu lieu — le vote est ouvert, les
+ * scores bougent encore, il n'y a rien à tirer au sort. `createdAt` range alors les ex
+ * æquo par ordre d'engagement : un ordre d'attente, le seul qui ne fasse pas sauter les
+ * lignes d'un rechargement à l'autre, et qui ne décide de rien. Il ferme aussi le tri
+ * après le tirage, pour l'improbable égalité de tirage.
  */
 export const RANKING_ORDER: SoireeModOrderByWithRelationInput[] = [
   { votes: { _count: "desc" } },
+  { tieBreak: { sort: "asc", nulls: "last" } },
   { createdAt: "asc" },
 ];
 
@@ -85,6 +94,17 @@ export interface ApiSoireeMod {
   /** Vrai si le membre qui a demandé la soirée a voté pour ce mod ici. */
   hasVoted: boolean;
   engagedAt: string;
+  /**
+   * Le tirage qui départage les ex æquo (`SoireeMod.tieBreak`), du plus petit au plus
+   * grand — `null` tant que le vote est ouvert, le tirage n'ayant lieu qu'à sa
+   * fermeture.
+   *
+   * Il voyage jusqu'à la page parce que celle-ci reclasse en direct, sur ses propres
+   * scores (`rankSection`) : sans lui, les mods à égalité y prendraient un autre ordre
+   * que celui de la base, et la liste de retrait ne serait pas celle qu'affiche la
+   * barre des retenus.
+   */
+  tieBreak: number | null;
 }
 
 /** US-G4 — une soirée et son classement. */
@@ -126,6 +146,7 @@ export function serializeSoiree(
       // Filtré sur le seul membre connecté (`soireeInclude`) : sa présence suffit.
       hasVoted: entry.votes.length > 0,
       engagedAt: entry.createdAt.toISOString(),
+      tieBreak: entry.tieBreak,
     })),
     voterCount: context.voterCount,
   };

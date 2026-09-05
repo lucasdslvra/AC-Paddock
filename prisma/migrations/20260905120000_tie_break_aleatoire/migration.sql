@@ -1,0 +1,20 @@
+-- Le départage des ex æquo d'une soirée, tiré au sort à la fermeture du vote (US-G4).
+--
+-- Une soirée retient un nombre fixe de mods — huit véhicules, un circuit — et les votes
+-- tombent souvent à égalité juste à la barre : quatre voitures à deux voix pour les deux
+-- dernières places. Le classement départageait ces ex æquo par ordre d'engagement, ce
+-- qui donnait les places restantes à celui qui avait cliqué le premier, des heures avant
+-- que le vote ne dise quoi que ce soit. À voix égales, c'est maintenant le sort qui
+-- tranche.
+--
+-- La colonne est nullable, et c'est tout le sujet : `NULL` veut dire « le tirage n'a pas
+-- encore eu lieu ». Il se fait à la fermeture du vote et pas avant — tirer au sort à
+-- l'engagement reviendrait à connaître le vainqueur d'une égalité avant même que le
+-- premier vote soit placé. `drawTieBreaks` (lib/soirees/tie-break.ts) écrit les tirages
+-- de la soirée d'un coup, à la première lecture qui suit la fermeture, et ne les rejoue
+-- jamais : la liste de retrait qui s'ouvre au même instant ne peut pas changer de mods
+-- entre deux visites.
+--
+-- Pas de valeur pour l'existant : les soirées déjà jouées ont leur vote fermé, elles
+-- seront tirées à leur prochaine lecture, comme les autres.
+ALTER TABLE "SoireeMod" ADD COLUMN "tieBreak" DOUBLE PRECISION;

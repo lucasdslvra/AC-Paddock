@@ -3,6 +3,7 @@ import type { ModPlayedAt } from "@/lib/mock-data";
 import { prisma } from "@/lib/prisma";
 import { startOfToday } from "@/lib/soirees/current";
 import { NO_GUILD } from "@/lib/soirees/scope";
+import { drawTieBreaks } from "@/lib/soirees/tie-break";
 import { formatSoireeShortDay } from "@/lib/soirees/format";
 
 /**
@@ -50,6 +51,11 @@ export async function listModPlayedAt(
     soiree: { guildId: guildId ?? NO_GUILD, date: { lt: startOfToday(now) } },
   };
 
+  // Le rang affiché ici départage les ex æquo comme la page de la soirée : il lui faut
+  // donc les mêmes tirages, y compris ceux des soirées que personne n'a rouvertes depuis
+  // leur fermeture. Sans effet une fois qu'ils sont écrits.
+  await drawTieBreaks({ guildId }, now);
+
   const [engagements, total] = await Promise.all([
     prisma.soireeMod.findMany({
       where: played,
@@ -58,6 +64,7 @@ export async function listModPlayedAt(
       select: {
         id: true,
         soireeId: true,
+        tieBreak: true,
         createdAt: true,
         soiree: { select: { id: true, name: true, date: true } },
         _count: { select: { votes: true } },
@@ -73,7 +80,13 @@ export async function listModPlayedAt(
   // retenues, en un seul aller-retour plutôt qu'un par soirée.
   const rivals = await prisma.soireeMod.findMany({
     where: { soireeId: { in: engagements.map((entry) => entry.soireeId) } },
-    select: { id: true, soireeId: true, createdAt: true, _count: { select: { votes: true } } },
+    select: {
+      id: true,
+      soireeId: true,
+      tieBreak: true,
+      createdAt: true,
+      _count: { select: { votes: true } },
+    },
   });
 
   const entries = engagements.map((entry) => ({
@@ -90,6 +103,8 @@ export async function listModPlayedAt(
 interface Ranked {
   id: string;
   soireeId: string;
+  /** Le départage tiré au sort à la fermeture du vote — voir `SoireeMod.tieBreak`. */
+  tieBreak: number | null;
   createdAt: Date;
   _count: { votes: number };
 }
@@ -99,17 +114,27 @@ interface Ranked {
  * classement, plus un.
  *
  * L'ordre est celui de la soirée elle-même (`RANKING_ORDER`, lib/soirees/serialize.ts) —
- * votes décroissants, puis ordre d'engagement. Les ex æquo ne partagent donc pas leur
+ * votes décroissants, puis le tirage au sort de la fermeture (`tieBreak`), l'ordre
+ * d'engagement ne servant qu'à fermer le tri. Les ex æquo ne partagent donc pas leur
  * rang : ils sont départagés comme sur la page de la soirée, sinon la fiche annoncerait
  * « 1er » là où le classement affiche le mod en deuxième ligne.
+ *
+ * Un tirage absent passe derrière, comme le `nulls: "last"` de la base. En pratique il
+ * n'y en a pas ici : ces soirées sont passées, `listModPlayedAt` les a fait tirer avant
+ * de lire. C'est la même précaution que dans `rankSection`, pour que les deux tris
+ * disent la même chose même quand on les appelle ailleurs.
  */
 function rankOf(entry: Ranked, rivals: Ranked[]): number {
+  const drawn = (row: Ranked) => row.tieBreak ?? Number.POSITIVE_INFINITY;
+
   const ahead = rivals.filter(
     (rival) =>
       rival.soireeId === entry.soireeId &&
       rival.id !== entry.id &&
       (rival._count.votes > entry._count.votes ||
-        (rival._count.votes === entry._count.votes && rival.createdAt < entry.createdAt)),
+        (rival._count.votes === entry._count.votes &&
+          (drawn(rival) < drawn(entry) ||
+            (drawn(rival) === drawn(entry) && rival.createdAt < entry.createdAt)))),
   );
 
   return ahead.length + 1;

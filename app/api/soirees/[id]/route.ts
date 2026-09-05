@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { soireeContext } from "@/lib/soirees/current";
 import { formatSoireeDate } from "@/lib/soirees/format";
 import { serializeSoiree, soireeInclude } from "@/lib/soirees/serialize";
+import { drawTieBreaks } from "@/lib/soirees/tie-break";
 import { countSoireeVoters } from "@/lib/soirees/vote";
 
 /**
@@ -27,6 +28,12 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/soirees/[id
     // La soirée en cours est demandée même quand on lit une soirée passée : c'est elle
     // qui décide de ce qui est votable, et `soireeInclude` la passe à `modInclude`.
     const viewer = await soireeContext(session);
+
+    // Avant de lire le classement, pas après : si le vote de cette soirée vient de
+    // fermer, c'est cette lecture qui tire au sort ses ex æquo (`drawTieBreaks`), et le
+    // classement doit être celui d'après le tirage. Sans effet le reste du temps —
+    // vote encore ouvert, ou tirage déjà fait.
+    await drawTieBreaks({ soireeId: id, guildId: viewer.guildId });
 
     const [soiree, voterCount] = await Promise.all([
       prisma.soiree.findUnique({

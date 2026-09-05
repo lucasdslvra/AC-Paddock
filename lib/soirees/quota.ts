@@ -75,6 +75,12 @@ export interface Ranked<T> {
   rank: number;
   /** Voir `isRetained` — projection tant que la soirée est en cours. */
   retained: boolean;
+  /**
+   * Le score sur lequel ce rang a été calculé — celui que l'interface tient, votes
+   * optimistes compris, et non celui de la ligne du serveur. C'est lui qui dit si deux
+   * lignes voisines sont à égalité (`hasTieAtCut`).
+   */
+  votes: number;
 }
 
 /**
@@ -88,23 +94,66 @@ export interface Ranked<T> {
  * vient de cliquer. C'est pourquoi le tri est refait ici, sur les scores tenus par
  * l'interface.
  *
- * Les ex æquo se départagent par ordre d'engagement, exactement comme `RANKING_ORDER` :
- * deux classements qui trancheraient différemment feraient sauter les lignes d'un
- * rechargement à l'autre. Les dates sont comparées sous leur forme ISO, où l'ordre
- * alphabétique est l'ordre chronologique.
+ * Les ex æquo se départagent au sort, exactement comme `RANKING_ORDER` : chaque
+ * engagement reçoit son tirage à la fermeture du vote (`SoireeMod.tieBreak`,
+ * `drawTieBreaks`), et c'est lui qui décide, à voix égales, lesquels prennent les
+ * dernières places retenues. Quatre véhicules à deux voix pour deux places, et deux
+ * d'entre eux passent — tirés au sort parmi ces quatre-là seulement : ceux qui ont
+ * moins de voix restent derrière, le sort ne départage jamais que des égaux.
+ *
+ * Le tirage vient de la base et n'est jamais rejoué ici : deux classements qui
+ * trancheraient différemment feraient sauter les lignes d'un rechargement à l'autre, et
+ * la liste de retrait changerait de mods sous les pieds du groupe. Tant que le vote est
+ * ouvert il n'a pas eu lieu (`null`), et les ex æquo se rangent par ordre d'engagement,
+ * comme `RANKING_ORDER` avec ses `nulls: "last"` — un ordre d'attente, que le tirage
+ * remplacera. `engagedAt` ferme le tri dans les deux cas ; les dates sont comparées
+ * sous leur forme ISO, où l'ordre alphabétique est l'ordre chronologique.
  */
 export function rankSection<T>(
   entries: readonly T[],
   type: ModType,
-  read: (entry: T) => { type: ModType; votes: number; engagedAt: string },
+  read: (entry: T) => {
+    type: ModType;
+    votes: number;
+    tieBreak: number | null;
+    engagedAt: string;
+  },
 ): Ranked<T>[] {
+  // Un tirage absent passe derrière tous les autres, comme le `nulls: "last"` de la
+  // base : les deux tris doivent lire la même chose, sinon la page et la liste de
+  // retrait ne retiennent pas les mêmes mods.
+  const drawn = (tieBreak: number | null) => tieBreak ?? Number.POSITIVE_INFINITY;
+
   return entries
     .map((entry) => ({ entry, ...read(entry) }))
     .filter((row) => row.type === type)
-    .sort((a, b) => b.votes - a.votes || a.engagedAt.localeCompare(b.engagedAt))
+    .sort(
+      (a, b) =>
+        b.votes - a.votes ||
+        drawn(a.tieBreak) - drawn(b.tieBreak) ||
+        a.engagedAt.localeCompare(b.engagedAt),
+    )
     .map((row, index) => ({
       entry: row.entry,
       rank: index + 1,
       retained: isRetained(type, index + 1, row.votes),
+      votes: row.votes,
     }));
+}
+
+/**
+ * Y a-t-il une égalité **à la barre** — le dernier retenu et le premier qui ne l'est pas
+ * ont-ils le même nombre de voix ?
+ *
+ * La question ne se pose que pendant que le vote est ouvert : le classement affiché est
+ * alors une projection, et ses ex æquo attendent encore le tirage de la fermeture. La
+ * page le dit sous la barre, sinon deux mods à égalité s'y liraient comme un classement
+ * acquis — l'un retenu, l'autre non, sans que rien n'explique pourquoi.
+ *
+ * Elle ne regarde que la coupe, et pas les égalités du milieu du tableau : celles-là
+ * seront tirées aussi, mais elles ne changent la place de personne.
+ */
+export function hasTieAtCut<T>(rows: readonly Ranked<T>[]): boolean {
+  const cut = rows.findIndex((row) => !row.retained);
+  return cut > 0 && rows[cut - 1]!.votes === rows[cut]!.votes;
 }

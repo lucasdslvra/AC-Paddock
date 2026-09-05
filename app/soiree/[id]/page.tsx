@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { soireeContext, startOfToday } from "@/lib/soirees/current";
 import { serializeSoiree, soireeInclude } from "@/lib/soirees/serialize";
+import { drawTieBreaks } from "@/lib/soirees/tie-break";
 import { countSoireeVoters } from "@/lib/soirees/vote";
 import { SoireeView } from "../SoireeView";
 
@@ -29,6 +30,10 @@ export default async function SoireeDetailPage(props: PageProps<"/soiree/[id]">)
   // décide de ce qui est votable, et `soireeInclude` la transmet à `modInclude`.
   const viewer = await soireeContext(session);
   const current = viewer.current;
+
+  // Même raison qu'ailleurs : le tirage des ex æquo précède la lecture du classement,
+  // pour que la page montre le résultat du sort et non l'ordre d'attente.
+  await drawTieBreaks({ soireeId: id, guildId: viewer.guildId });
 
   const [soiree, voterCount, memberCount, actor] = await Promise.all([
     prisma.soiree.findUnique({

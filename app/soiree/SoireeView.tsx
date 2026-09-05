@@ -22,6 +22,7 @@ import { useVote } from "@/lib/mods/useVote";
 import { formatSoireeCountdown, formatSoireeDate, formatSoireeTime } from "@/lib/soirees/format";
 import { downloadClosesAt, soireePhase, voteClosesAt } from "@/lib/soirees/phase";
 import {
+  hasTieAtCut,
   modTypePlural,
   quotaReachedMessage,
   rankSection,
@@ -285,6 +286,10 @@ function RankingSection({
   const quota = VOTE_QUOTA[type];
   const kept = RETAINED_COUNT[type];
   const quotaReached = used >= quota;
+  // Une égalité pile à la barre, le vote encore ouvert : la dernière place n'est pas
+  // encore prise, elle se tirera au sort à la fermeture (`drawTieBreaks`). Sans cette
+  // mention, deux mods à égalité se liraient comme un classement acquis.
+  const tieAtCut = !readOnly && hasTieAtCut(rows);
   // La barre se pose sous le dernier retenu, et non à la place fixe : un mod sans vote
   // n'est pas retenu, même quand il reste de la place (`isRetained`).
   const lastRetained = rows.reduce((last, row, index) => (row.retained ? index : last), -1);
@@ -348,6 +353,14 @@ function RankingSection({
                   {readOnly ? "NON RETENUS" : "SOUS LA BARRE"}
                   <span className="h-px flex-1" style={{ background: "var(--color-border)" }} />
                 </div>
+              )}
+              {/* Pas `aria-hidden`, contrairement à la barre : celle-ci se voit, cette
+                  phrase-là s'écoute — elle dit pourquoi deux mods à égalité ne sont pas
+                  du même côté. */}
+              {index === lastRetained && tieAtCut && (
+                <p className="text-center font-mono text-[9.5px] leading-[1.6] tracking-[0.06em] text-[var(--color-text-faint)]">
+                  égalité à la barre · la place se tire au sort à la fermeture du vote
+                </p>
               )}
             </div>
           ))}
@@ -433,6 +446,11 @@ export function SoireeView({
         rows: rankSection(soiree?.mods ?? [], type, (entry) => ({
           type: entry.mod.type,
           votes: liveVotes(entry),
+          // Le tirage vient du serveur, et vaut `null` tant que le vote est ouvert :
+          // la page ne tire jamais au sort elle-même, elle lit ce qui a été tiré à la
+          // fermeture — sinon elle ne retiendrait pas les mêmes mods que la liste de
+          // retrait.
+          tieBreak: entry.tieBreak,
           engagedAt: entry.engagedAt,
         })),
       })),

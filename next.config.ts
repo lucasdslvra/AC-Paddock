@@ -16,7 +16,14 @@ if (process.env.SUPABASE_URL) {
 }
 
 const nextConfig: NextConfig = {
-  images: { remotePatterns },
+  images: {
+    remotePatterns,
+    // 75 est la qualité par défaut de Next 16, et la seule autorisée tant qu'on ne la
+    // déclare pas ici. 90 est réservée aux vignettes : à 64 ou 128 px de large, le
+    // surcoût en octets est négligeable, alors que les artefacts de compression, eux,
+    // se voient — une carrosserie de voiture réduite à cette taille part vite en pâté.
+    qualities: [75, 90],
+  },
 };
 
 export default nextConfig;

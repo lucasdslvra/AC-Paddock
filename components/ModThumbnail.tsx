@@ -34,10 +34,21 @@ export function ModThumbnail({ src, name, size }: ModThumbnailProps) {
     <Image
       src={src}
       alt={`Aperçu de ${name}`}
-      width={size}
-      height={size}
+      // Deux fois la taille d'affichage, et non la taille elle-même : sans `sizes`,
+      // `next/image` bâtit son srcset en arrondissant `width` puis `width × 2` au
+      // palier supérieur de `imageSizes`. Demander 52 donnait donc « 64 px en 1×, 128
+      // en 2× » — soit, sur un écran ordinaire, 64 px étalés sur une case de 52 : de
+      // quoi voir la compression. Demander 104 remonte le palier 1× à 128 px, et le
+      // fichier reste sous les dix kilo-octets.
+      width={size * 2}
+      height={size * 2}
+      // Voir `images.qualities` dans `next.config.ts`.
+      quality={90}
       onError={() => setFailedSrc(src)}
       className="flex-none rounded-sm object-cover"
+      // Les deux dimensions sont reprises en CSS : c'est ce qui ramène la vignette à sa
+      // taille d'affichage, et ce qui évite l'avertissement de `next/image` sur une
+      // seule des deux dimensions surchargée.
       style={{ width: size, height: size }}
     />
   );

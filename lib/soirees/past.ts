@@ -70,8 +70,11 @@ export async function listPastSoirees(
  *
  * Une seule requête pour toute la page, tous les circuits de toutes les soirées
  * affichées. C'est bien moins que le classement complet : un soir se joue sur un
- * circuit, on en propose une poignée. Et `votes: { some: {} }` écarte ceux que personne
- * n'a votés — un circuit sans voix n'a pas été retenu.
+ * circuit, on en propose une poignée.
+ *
+ * Aucun filtre sur les voix : une soirée retient son circuit même quand personne ne l'a
+ * voté — le tirage de la fermeture le désigne parmi ceux à égalité (`isRetained`). Le
+ * premier du classement est le circuit retenu, avec ou sans voix.
  */
 async function retainedTracks(
   soireeIds: string[],
@@ -79,7 +82,7 @@ async function retainedTracks(
   if (soireeIds.length === 0) return new Map();
 
   const engagements = await prisma.soireeMod.findMany({
-    where: { soireeId: { in: soireeIds }, mod: { is: { type: "TRACK" } }, votes: { some: {} } },
+    where: { soireeId: { in: soireeIds }, mod: { is: { type: "TRACK" } } },
     orderBy: RANKING_ORDER,
     include: {
       mod: { select: { id: true, name: true, imageUrl: true } },

@@ -178,14 +178,15 @@ export interface ApiSoireeSummary {
  * plus cher que l'archive grossit — et c'est justement le seul endroit qui grossit tout
  * seul.
  *
- * `votes: { some: {} }` écarte les engagements que personne n'a votés : ils n'ont pas
- * été retenus, même quand la soirée comptait moins de huit voitures (`isRetained`).
+ * Aucun filtre sur les voix : les places se remplissent jusqu'au quota même sans
+ * personne pour voter, le tirage de la fermeture désignant les dernières
+ * (`isRetained`). Le `take` sur le classement suffit donc à donner les retenus.
  */
 export const pastSoireeInclude = {
   createdBy: true,
   _count: { select: { mods: true } },
   mods: {
-    where: { mod: { is: { type: "CAR" } }, votes: { some: {} } },
+    where: { mod: { is: { type: "CAR" } } },
     take: RETAINED_COUNT.CAR,
     orderBy: RANKING_ORDER,
     // Pas de `modInclude` ici : la ligne n'affiche qu'un nom et une vignette. Charger

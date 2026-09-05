@@ -83,12 +83,9 @@ export async function sweepUnretainedModFiles(
       date: true,
       mods: {
         orderBy: RANKING_ORDER,
-        select: {
-          modId: true,
-          tieBreak: true,
-          mod: { select: { type: true } },
-          _count: { select: { votes: true } },
-        },
+        // Pas de compte de votes : le classement vient de la base, déjà trié
+        // (`RANKING_ORDER`), et c'est le rang seul qui dit la retenue (`isRetained`).
+        select: { modId: true, tieBreak: true, mod: { select: { type: true } } },
       },
     },
   });
@@ -113,7 +110,7 @@ export async function sweepUnretainedModFiles(
     for (const entry of soiree.mods) {
       const type = entry.mod.type;
       seen[type] += 1;
-      if (isRetained(type, seen[type], entry._count.votes)) claimed.add(entry.modId);
+      if (isRetained(type, seen[type])) claimed.add(entry.modId);
     }
   }
 

@@ -33,22 +33,33 @@ export const VOTE_QUOTA = { CAR: 8, TRACK: 3 } as const satisfies Record<ModType
  * Combien de mods de chaque type une soirée retient — les plus votés, dans la limite
  * de ce nombre.
  *
- * Un mod sans le moindre vote n'est jamais retenu, même quand la soirée compte moins
- * d'engagements que de places : « les 8 véhicules les plus votés » ne veut pas dire
- * « les 8 premiers de la liste ». C'est `isRetained` qui porte cette règle, et elle
- * seule fait foi.
+ * Les places se remplissent jusqu'au bout, même sans voix. Six véhicules votés et douze
+ * autres à zéro : la soirée en retient huit — les six votés, puis deux tirés au sort
+ * parmi les douze (`tieBreak`, `drawTieBreaks`). Un soir se joue sur une grille pleine,
+ * et laisser deux places vides parce que personne n'a voté pour ces douze-là priverait
+ * la soirée de véhicules que rien ne disqualifie.
+ *
+ * C'est aussi à quoi sert le tirage, et pas seulement à départager le haut du tableau :
+ * sans lui, les places restantes iraient aux premiers engagés, et l'ordre d'arrivée
+ * déciderait de la grille à la place du groupe.
  */
 export const RETAINED_COUNT = { CAR: 8, TRACK: 1 } as const satisfies Record<ModType, number>;
 
 /**
- * Un mod est-il retenu, sachant son rang **parmi ceux de son type** (1 = le plus voté)
- * et le nombre de votes qu'il a reçus dans la soirée ?
+ * Un mod est-il retenu, sachant son rang **parmi ceux de son type** (1 = le plus voté) ?
+ *
+ * Le rang seul décide, parce qu'il porte déjà tout : les voix d'abord, le tirage de la
+ * fermeture ensuite pour les départager (`RANKING_ORDER`, `rankSection`). Un mod sans
+ * voix classé septième est donc retenu — il l'est par le sort, tiré parmi tous ceux qui
+ * n'ont pas de voix non plus, et non parce qu'il a été engagé avant eux.
  *
  * Sur la soirée en cours, la réponse est une projection : ce que le vote donnerait s'il
- * se fermait maintenant. Sur une soirée passée, c'est le résultat.
+ * se fermait maintenant. Le tirage n'a pas encore eu lieu et les mods à égalité s'y
+ * rangent par ordre d'engagement, d'où la mention affichée sous la barre — la place se
+ * tire au sort à la fermeture (`hasTieAtCut`). Sur une soirée passée, c'est le résultat.
  */
-export function isRetained(type: ModType, rank: number, votes: number): boolean {
-  return votes > 0 && rank <= RETAINED_COUNT[type];
+export function isRetained(type: ModType, rank: number): boolean {
+  return rank <= RETAINED_COUNT[type];
 }
 
 /** « véhicules » / « circuits » — le mot de l'interface, au pluriel des quotas. */
@@ -136,7 +147,7 @@ export function rankSection<T>(
     .map((row, index) => ({
       entry: row.entry,
       rank: index + 1,
-      retained: isRetained(type, index + 1, row.votes),
+      retained: isRetained(type, index + 1),
       votes: row.votes,
     }));
 }

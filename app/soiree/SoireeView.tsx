@@ -290,8 +290,8 @@ function RankingSection({
   // encore prise, elle se tirera au sort à la fermeture (`drawTieBreaks`). Sans cette
   // mention, deux mods à égalité se liraient comme un classement acquis.
   const tieAtCut = !readOnly && hasTieAtCut(rows);
-  // La barre se pose sous le dernier retenu, et non à la place fixe : un mod sans vote
-  // n'est pas retenu, même quand il reste de la place (`isRetained`).
+  // La barre se pose sous le dernier retenu, et non à la place fixe : une soirée peut
+  // compter moins d'engagements que de places, et il n'y a alors rien à séparer.
   const lastRetained = rows.reduce((last, row, index) => (row.retained ? index : last), -1);
 
   return (
@@ -350,7 +350,7 @@ function RankingSection({
                   aria-hidden
                 >
                   <span className="h-px flex-1" style={{ background: "var(--color-amber)" }} />
-                  {readOnly ? "NON RETENUS" : "SOUS LA BARRE"}
+                  {readOnly ? "NON RETENUS" : "QUALIFIÉ"}
                   <span className="h-px flex-1" style={{ background: "var(--color-border)" }} />
                 </div>
               )}

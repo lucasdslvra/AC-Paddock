@@ -380,7 +380,14 @@ export function ModDetailView({
               // L'aperçu garde son cadre paysage, mais pas sa hauteur fixe : 250 px sur
               // un écran de téléphone, c'est un tiers de la page avant d'avoir lu la
               // description.
-              className="relative flex h-[170px] items-end justify-between overflow-hidden border-y border-[var(--color-border)] px-[14px] py-[10px] sm:h-[250px]"
+              //
+              // Au-delà du téléphone, la colonne dépasse le millier de pixels : à hauteur
+              // fixe, `object-cover` y taillait une bande de 4:1 au milieu de l'image —
+              // un mod photographié de trois quarts y perdait ses roues. À partir de `sm`
+              // l'image est donc posée entière, centrée sur une copie floutée d'elle-même
+              // qui, elle, remplit le cadre : aucun format d'origine n'est sacrifié, et le
+              // bandeau reste plein sans bordure vide.
+              className="relative flex h-[170px] items-end justify-between overflow-hidden border-y border-[var(--color-border)] bg-[var(--color-surface)] px-[14px] py-[10px] sm:h-[340px]"
               style={{
                 backgroundImage: previewUrl
                   ? undefined
@@ -388,17 +395,41 @@ export function ModDetailView({
               }}
             >
               {previewUrl ? (
-                <Image
-                  src={previewUrl}
-                  alt={`Aperçu de ${mod.name}`}
-                  fill
-                  sizes="(max-width: 1024px) 100vw, 700px"
-                  // Aperçu en haut de fiche : c'est l'élément LCP, il ne doit pas
-                  // attendre le lazy-loading par défaut de `next/image`.
-                  loading="eager"
-                  onError={() => setFailedImageUrl(previewUrl)}
-                  className="object-cover"
-                />
+                <>
+                  {/* Le fond : même `src` et mêmes `sizes` que l'aperçu, donc la même URL
+                      optimisée — le navigateur ne télécharge qu'une image. L'agrandissement
+                      évite que le flou laisse voir les bords du cadre. */}
+                  <Image
+                    src={previewUrl}
+                    alt=""
+                    aria-hidden
+                    fill
+                    sizes="(max-width: 1024px) 100vw, 700px"
+                    loading="eager"
+                    className="hidden scale-125 object-cover opacity-40 blur-2xl sm:block"
+                  />
+                  {/* L'image nette, centrée dans le cadre. Pas de `fill` ici : le masque
+                      de `.preview-edge-fade` suit la boîte de l'élément, il faut donc que
+                      cette boîte épouse l'image — d'où le dimensionnement par le format
+                      d'origine, plafonné au cadre, plutôt qu'un `object-contain` étiré sur
+                      toute la largeur. `width` et `height` ne servent qu'à réserver un
+                      rapport avant le chargement ; le format réel prend le relais ensuite,
+                      sans décaler la page puisque le cadre a une hauteur fixe. */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Image
+                      src={previewUrl}
+                      alt={`Aperçu de ${mod.name}`}
+                      width={1600}
+                      height={900}
+                      sizes="(max-width: 1024px) 100vw, 700px"
+                      // Aperçu en haut de fiche : c'est l'élément LCP, il ne doit pas
+                      // attendre le lazy-loading par défaut de `next/image`.
+                      loading="eager"
+                      onError={() => setFailedImageUrl(previewUrl)}
+                      className="preview-edge-fade h-full w-full object-cover sm:h-auto sm:max-h-full sm:w-auto sm:max-w-full"
+                    />
+                  </div>
+                </>
               ) : (
                 <span className="font-mono text-[10px] text-[var(--color-text-muted)]">
                   aperçu du mod — image déposée par un membre

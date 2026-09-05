@@ -303,3 +303,54 @@ body {
     animation: loader-pulse 1.6s ease-in-out infinite;
   }
 }
+
+/* Fiche mod — le fondu des bords de l'aperçu (`ModDetailView`).
+
+   L'image nette est posée sur une copie floutée d'elle-même : sans ce masque, son bord
+   tranche sur le flou comme une découpe. Les vingt derniers pixels de chaque côté
+   s'éteignent donc en dégradé, et les deux calques se rejoignent sans frontière.
+
+   Un masque s'applique à la boîte de l'élément, pas à l'image peinte dedans : c'est
+   pourquoi l'aperçu est dimensionné par son format d'origine plutôt qu'étiré sur le
+   cadre en `object-contain` — sinon le fondu tomberait dans le flou, à côté de l'image.
+
+   Rien sous `sm` : là l'image remplit le cadre et n'a pas de flou derrière elle, le
+   fondu ne fondrait rien et grignoterait le bord du bandeau. */
+@media (min-width: 40rem) {
+  .preview-edge-fade {
+    --preview-fade: 10px;
+    /* Deux dégradés croisés — un par axe — plutôt qu'un seul : `intersect` garde le plus
+       sombre des deux, ce qui donne les quatre bords sans assombrir le centre. */
+    -webkit-mask-image: linear-gradient(
+        to right,
+        transparent,
+        #000 var(--preview-fade),
+        #000 calc(100% - var(--preview-fade)),
+        transparent
+      ),
+      linear-gradient(
+        to bottom,
+        transparent,
+        #000 var(--preview-fade),
+        #000 calc(100% - var(--preview-fade)),
+        transparent
+      );
+    mask-image: linear-gradient(
+        to right,
+        transparent,
+        #000 var(--preview-fade),
+        #000 calc(100% - var(--preview-fade)),
+        transparent
+      ),
+      linear-gradient(
+        to bottom,
+        transparent,
+        #000 var(--preview-fade),
+        #000 calc(100% - var(--preview-fade)),
+        transparent
+      );
+    /* La forme héritée pour les Safari d'avant 15.4, la moderne pour tout le reste. */
+    -webkit-mask-composite: source-in;
+    mask-composite: intersect;
+  }
+}

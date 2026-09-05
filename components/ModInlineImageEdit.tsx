@@ -127,7 +127,7 @@ export function ModInlineImageEdit({
           {currentImageUrl ? "REMPLACER L'IMAGE" : "AJOUTER UNE IMAGE"}
         </span>
         <span className="font-mono text-[10px] text-[var(--color-text-muted)]">
-          JPG ou PNG, max {MAX_IMAGE_LABEL}
+          JPG, PNG ou WebP, max {MAX_IMAGE_LABEL}
         </span>
       </div>
 

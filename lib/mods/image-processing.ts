@@ -21,6 +21,7 @@ export interface ProcessedImage {
 const EXTENSIONS: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
+  "image/webp": "webp",
 };
 
 /**
@@ -45,8 +46,8 @@ export async function compressModImage(input: Buffer, sourceType: string): Promi
     .webp({ quality: WEBP_QUALITY, effort: 5 })
     .toBuffer();
 
-  // Sur un fichier déjà très optimisé, le ré-encodage peut peser plus lourd que
-  // l'original : dans ce cas on garde l'original. Le JPEG fait exception, il est
+  // Sur un fichier déjà très optimisé — un WebP entrant, souvent — le ré-encodage peut
+  // peser plus lourd que l'original : dans ce cas on garde l'original. Le JPEG fait
   // toujours ré-encodé — c'est le format qui transporte l'orientation et les
   // métadonnées EXIF (géolocalisation comprise) qu'on tient à supprimer.
   if (type !== "image/jpeg" && encoded.byteLength >= input.byteLength) {

@@ -554,9 +554,9 @@ Le host Supabase est ajouté aux `images.remotePatterns` de `next.config.ts` à 
 
 ### Compression à l'upload
 
-Formats acceptés en entrée : **JPG et PNG** uniquement (`image/jpeg`, `image/jpg`,
-`image/png`). Le bucket n'autorise en écriture que `image/webp`, `image/png` et
-`image/jpeg`.
+Formats acceptés en entrée : **JPG, PNG et WebP** (`image/jpeg`, `image/jpg`,
+`image/png`, `image/webp`). Le bucket n'autorise en écriture que `image/webp`,
+`image/png` et `image/jpeg`.
 
 Les images sont ré-encodées côté serveur avant d'atteindre le bucket
 ([lib/mods/image-processing.ts](lib/mods/image-processing.ts)) : réduction à 1600 px sur
@@ -567,8 +567,9 @@ large au plus, et `next/image` réduit encore derrière.
 
 L'orientation EXIF est appliquée avant que les métadonnées soient retirées, sinon les
 photos de téléphone ressortent couchées. Si le ré-encodage pèse plus lourd que
-l'original — possible sur un PNG déjà minuscule — l'original est conservé ; le JPEG fait
-exception et reste toujours normalisé, à cause de l'EXIF.
+l'original — possible sur un PNG déjà minuscule, ou sur un WebP déjà optimisé —
+l'original est conservé ; le JPEG fait exception et reste toujours normalisé, à cause de
+l'EXIF.
 
 ## Espace admin (US-K1, US-K2, US-K3)
 

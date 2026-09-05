@@ -14,16 +14,21 @@ function createPrismaClient() {
   return new PrismaClient({ adapter: new PrismaPg({ connectionString, max: 5 }) });
 }
 
-// En dev, le hot reload ré-évalue ce module : sans ce cache global on ouvrirait
-// un nouveau pool à chaque rechargement jusqu'à saturer la base.
+// En dev, le hot reload ré-évalue ce module : le cache doit survivre au module, d'où
+// le global. Ailleurs, une variable de module suffit — mais elle est indispensable :
+// le proxy ci-dessous appelle `getPrismaClient` à *chaque* accès de propriété, donc
+// sans mémorisation `prisma.mod.count()` puis `prisma.vote.count()` ouvriraient chacun
+// leur pool, jamais refermé. C'est ce qui saturait le pooler Supabase pendant
+// `next build`, où les 15 workers de prérendu multiplient encore la fuite.
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
+let cachedPrisma: PrismaClient | undefined;
+
 function getPrismaClient(): PrismaClient {
-  const client = globalForPrisma.prisma ?? createPrismaClient();
   if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.prisma = client;
+    return (globalForPrisma.prisma ??= createPrismaClient());
   }
-  return client;
+  return (cachedPrisma ??= createPrismaClient());
 }
 
 // Instanciation paresseuse : `next build` importe les route handlers pour les

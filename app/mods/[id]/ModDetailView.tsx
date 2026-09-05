@@ -4,7 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { AvatarPlaceholder } from "@/components/AvatarPlaceholder";
 import { BreadcrumbHeader } from "@/components/BreadcrumbHeader";
 import { DashedAddChip } from "@/components/DashedAddChip";
 import { DeleteModButton } from "@/components/DeleteModButton";
@@ -125,15 +124,52 @@ function MissingPrimaryLink({ onAdd }: { onAdd?: () => void }) {
 }
 
 /**
+ * Un votant de la soirée : son avatar, et le poids de sa pile quand elle dépasse une
+ * voix. Le membre connecté porte le cercle ambre — le même repère que partout ailleurs
+ * pour « c'est toi ».
+ */
+function VoterFace({
+  src,
+  name,
+  votes,
+  isViewer = false,
+}: {
+  src?: string | null;
+  name?: string | null;
+  votes: number;
+  isViewer?: boolean;
+}) {
+  return (
+    <span
+      className="flex flex-none items-center gap-[3px]"
+      title={`${isViewer ? "Toi" : name} — ${votes} vote${votes > 1 ? "s" : ""}`}
+    >
+      <UserAvatar src={src} name={name} size={20} ring={isViewer} />
+      {votes > 1 && (
+        <span className="font-mono text-[9px] leading-none text-[var(--color-text-faint)]">
+          ×{votes}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
  * US-F1 / US-F2 — le vote depuis la fiche, et le compte de ceux qui ont déjà voté.
  *
  * Le MVP vote « sans notion formelle de soirée » (cahier §6) : le compteur porte donc
  * sur la fiche elle-même, pas sur une soirée. Le panneau reprendra le titre d'une
  * soirée quand l'Epic G lui en donnera une.
  *
- * Les avatars des autres votants ne sont pas chargés — la fiche ne connaît que leur
- * nombre : ils restent en pastilles neutres, le seul visage affiché est celui du
- * membre connecté quand il a voté.
+ * Sous le bouton, qui a voté ce soir — un visage par **membre**, pas par vote, et tout
+ * le monde. La distinction n'existait pas avant l'empilement : le compte des voix
+ * suffisait alors à dire le nombre de votants, et la ligne se contentait de la
+ * soustraction. Depuis, une seule personne peut porter quatre voix, et la fiche
+ * annonçait « 4 autres membres » pour une seule.
+ *
+ * Les visages remplacent la phrase qui les comptait : ils la disaient déjà, en moins
+ * précis. Le « ×N » à côté d'un avatar est ce qui reste à expliquer — sans lui, un
+ * score de 4 sous un seul visage se relirait comme le bug qu'on vient de corriger.
  */
 function VotePanel({
   mod,
@@ -142,7 +178,8 @@ function VotePanel({
   voteClosedReason,
 }: {
   mod: Mod;
-  viewer?: { name?: string | null; image?: string | null };
+  /** `id` est l'identifiant Discord : c'est lui qui reconnaît ce membre parmi les votants. */
+  viewer?: { id?: string | null; name?: string | null; image?: string | null };
   hasCurrentSoiree: boolean;
   /** Voir `ModDetailViewProps.currentSoiree` — `null` quand le vote est ouvert. */
   voteClosedReason: string | null;
@@ -156,9 +193,10 @@ function VotePanel({
   // tant que le vote du soir est ouvert : il ferme 30 min avant le départ.
   const isEngaged = mod.engagement != null;
   const canVote = isEngaged && voteClosedReason === null;
-  // Les voix des autres : le score du soir moins la pile de ce membre, qui peut compter
-  // plusieurs voix sur cette seule fiche.
-  const others = soireeVotes - myVotes;
+  // Les autres votants, tels que le serveur les a rendus. Ce membre-ci en est retiré :
+  // son propre compteur bouge avant le serveur (vote optimiste), et c'est `myVotes` qui
+  // en fait foi — la liste, elle, date de l'ouverture de la page.
+  const others = (mod.engagement?.voters ?? []).filter((voter) => voter.discordId !== viewer?.id);
 
   return (
     <div className="rounded-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-[18px]">
@@ -217,21 +255,32 @@ function VotePanel({
           {error}
         </p>
       )}
-      <div className="mt-3 flex items-center gap-[5px]">
-        {myVotes > 0 && <UserAvatar src={viewer?.image} name={viewer?.name} size={20} ring />}
-        {/* Au-delà de quatre pastilles, la ligne déborde — le compte, lui, est écrit. */}
-        {Array.from({ length: Math.min(others, 4) }, (_, index) => (
-          <AvatarPlaceholder key={index} size={20} />
+      {/* La rangée passe à la ligne : elle porte tout le monde, et une soirée animée
+          tient mal sur les 300 px du panneau. */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-[6px] gap-y-2">
+        {myVotes > 0 && (
+          <VoterFace
+            src={viewer?.image}
+            name={viewer?.name ?? "toi"}
+            votes={myVotes}
+            isViewer
+          />
+        )}
+        {others.map((voter) => (
+          <VoterFace
+            key={voter.discordId}
+            src={voter.avatarUrl}
+            name={voter.username}
+            votes={voter.votes}
+          />
         ))}
-        <span className="ml-1 font-mono text-[10px] text-[var(--color-text-muted)]">
-          {!isEngaged
-            ? "pas engagé dans la soirée en cours"
-            : soireeVotes === 0
-            ? "personne n'a encore voté"
-            : others === 0
-              ? "toi seul pour l'instant"
-              : `${myVotes > 0 ? "+ " : ""}${others} autre${others > 1 ? "s" : ""} membre${others > 1 ? "s" : ""}`}
-        </span>
+        {/* Il n'y a de phrase que lorsqu'il n'y a aucun visage à montrer : ailleurs,
+            les avatars disent qui a voté mieux que ne le ferait leur décompte. */}
+        {(!isEngaged || soireeVotes === 0) && (
+          <span className="font-mono text-[10px] text-[var(--color-text-muted)]">
+            {isEngaged ? "personne n'a encore voté" : "pas engagé dans la soirée en cours"}
+          </span>
+        )}
       </div>
     </div>
   );

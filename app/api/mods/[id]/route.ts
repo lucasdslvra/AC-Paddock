@@ -110,7 +110,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/mods/[id]"
       }
     }
 
-    return Response.json(serializeMod(mod, soiree.current?.id ?? null));
+    return Response.json(serializeMod(mod, soiree.current?.id ?? null, session.user.id));
   } catch (error) {
     console.error(`PATCH /api/mods/${id}`, error);
     return Response.json({ error: "La fiche n'a pas pu être enregistrée." }, { status: 500 });

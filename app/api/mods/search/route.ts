@@ -67,7 +67,7 @@ export async function GET(request: Request) {
       ranked
         .map(({ id }) => byId.get(id))
         .filter((mod) => mod !== undefined)
-        .map((mod) => serializeMod(mod, soiree.current?.id ?? null)),
+        .map((mod) => serializeMod(mod, soiree.current?.id ?? null, session.user.id)),
     );
   } catch (error) {
     console.error("GET /api/mods/search", error);

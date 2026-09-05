@@ -46,7 +46,7 @@ export async function GET(request: Request) {
     });
 
     return Response.json({
-      match: mod ? serializeMod(mod, soiree.current?.id ?? null) : null,
+      match: mod ? serializeMod(mod, soiree.current?.id ?? null, session.user.id) : null,
     } satisfies UrlCheckResult);
   } catch (error) {
     console.error("GET /api/mods/check-url", error);

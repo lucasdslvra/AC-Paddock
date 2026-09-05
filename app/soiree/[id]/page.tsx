@@ -59,6 +59,7 @@ export default async function SoireeDetailPage(props: PageProps<"/soiree/[id]">)
         isCurrent: soiree.id === current?.id,
         voterCount,
         currentSoireeId: current?.id ?? null,
+        viewerDiscordId: session.user.id,
       })}
       memberCount={memberCount}
       isAdmin={actor?.role === "ADMIN"}

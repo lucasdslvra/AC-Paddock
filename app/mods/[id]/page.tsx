@@ -53,7 +53,7 @@ export default async function ModDetailPage(props: PageProps<"/mods/[id]">) {
   // Le catalogue, la soirée et l'historique ne servent plus que de vraies fiches ; seul
   // l'espace admin vit encore sur `lib/mock-data.ts` : un lien parti de ses tableaux
   // tombe sur un id qui n'existe pas en base. Ce repli disparaîtra avec l'Epic J.
-  const mod = record ? toModView(record, soiree?.id ?? null) : getModById(id);
+  const mod = record ? toModView(record, soiree?.id ?? null, session.user.id) : getModById(id);
 
   // Une fiche de démonstration n'a rien en base : son fil et ses soirées sont ceux
   // qu'elle porte en dur.

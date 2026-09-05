@@ -1,489 +1,613 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AC Paddock
 
-## Getting Started
+Application web privée pour un groupe d'amis qui joue à **Assetto Corsa** ensemble.
+On y propose des mods — véhicules et circuits — avant une soirée de jeu, le groupe vote,
+et l'application dit ce qui sera roulé et où le télécharger.
 
-First, run the development server:
+Elle remplace ce qui se passait avant dans Discord : des liens collés au fil de la
+discussion, perdus deux jours plus tard, et un « on joue quoi ce soir ? » à décider dans
+les dix minutes qui précèdent. Le catalogue est commun, les fiches s'enrichissent à
+plusieurs, et le classement du soir se fait avant le soir.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Le cahier des charges d'origine est dans [backlog/cahier-des-charges-mods-ac.md](backlog/cahier-des-charges-mods-ac.md).
+Il est cité dans tout le code et dans ce document sous la forme « cahier §2.4 ».
+
+**Ce que le projet n'est pas** : un outil communautaire. L'accès est réservé aux membres
+d'un serveur Discord donné, il n'y a pas d'inscription, pas de mot de passe, pas de
+modération à l'échelle. Deux contraintes ont guidé presque toutes les décisions
+techniques : **budget d'hébergement nul** (paliers gratuits de Vercel, Supabase et
+Cloudflare) et **maintenance par une seule personne, sur son temps libre**.
+
+---
+
+## Table des matières
+
+- [Le cycle d'une soirée](#le-cycle-dune-soirée)
+- [Les écrans](#les-écrans)
+- [Stack technique](#stack-technique)
+- [Mise en route](#mise-en-route)
+- [Organisation du dépôt](#organisation-du-dépôt)
+- [Modèle de données](#modèle-de-données)
+- [Routes API](#routes-api)
+- [Les règles, en détail](#les-règles-en-détail)
+  - [Accès : Discord, serveurs, rôles](#accès--discord-serveurs-rôles)
+  - [Les fiches, en usage wiki](#les-fiches-en-usage-wiki)
+  - [Tags](#tags)
+  - [Détection de doublons](#détection-de-doublons)
+  - [Catalogue](#catalogue)
+  - [Soirées, votes et places](#soirées-votes-et-places)
+  - [Fichiers de mod](#fichiers-de-mod)
+  - [Images d'aperçu](#images-daperçu)
+  - [Espace admin](#espace-admin)
+  - [Notifications Discord](#notifications-discord)
+  - [Tâches planifiées](#tâches-planifiées)
+- [Déploiement](#déploiement)
+- [Conventions du code](#conventions-du-code)
+
+---
+
+## Le cycle d'une soirée
+
+C'est le cœur du domaine ; tout le reste en découle.
+
+**1. Le catalogue se remplit, en continu.** N'importe quel membre propose une fiche de
+mod : type (véhicule ou circuit), nom, lien externe, description, tags, image d'aperçu.
+Avant l'enregistrement, l'application cherche si une fiche proche existe déjà — nom
+similaire, ou même lien — et propose d'aller la compléter plutôt que d'en créer une
+seconde. Une fiche appartient ensuite à tout le monde : chacun peut la corriger,
+l'enrichir, y ajouter un lien miroir. Seul son auteur (ou un admin) peut la supprimer.
+
+**2. Un admin programme une soirée** : une date, une heure, éventuellement un thème
+(« touge only », « rallye »). Elle appartient au serveur Discord de son groupe, et le
+salon de ce serveur en est prévenu.
+
+**3. Les membres engagent des mods.** Engager, c'est mettre une fiche du catalogue au
+programme de la soirée. Sans limite de nombre, et sans être l'auteur de la fiche.
+
+**4. On vote, jusqu'à 30 minutes avant le départ.** Chaque membre dispose d'une réserve
+par soirée : **8 votes véhicule et 3 votes circuit**. Il les répartit comme il veut, et
+peut en empiler plusieurs sur le même mod pour le pousser. Le classement se met à jour en
+direct, séparément pour les véhicules et pour les circuits.
+
+**5. Le vote ferme, le sort tranche les égalités.** La soirée retient **les 8 véhicules
+les plus votés et le circuit le plus voté**. Les ex æquo sur la ligne de coupe sont
+départagés par un tirage au sort fait à cet instant précis — pas avant, pas à chaque
+affichage.
+
+**6. La fenêtre de retrait s'ouvre** : de la fermeture du vote jusqu'à 2 h après le
+départ, un bouton télécharge les mods retenus les uns après les autres.
+
+**7. Les fichiers disparaissent, les fiches restent.** Tout fichier déposé s'efface 24 h
+après son envoi, et ceux des mods non retenus partent dès la fermeture du vote. Le
+catalogue, lui, ne perd rien : la soirée rejoint l'historique avec ce qu'elle a retenu, et
+chaque fiche garde la liste des soirées où elle a tourné.
+
+```text
+catalogue ──► engagement ──► vote ──┃ 30 min ┃── DÉPART ──── 2 h ────┃──► historique
+   (continu)     (libre)      (quotas)  ▲                             ▲
+                                    vote clos                    retrait clos
+                                    tirage au sort              fichiers effacés
+                                    retrait ouvert
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Les écrans
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Route | Écran |
+| --- | --- |
+| `/` | Connexion (« Se connecter avec Discord »). Prérendue, sans session ; un membre déjà connecté est dévié vers `/catalogue` par [proxy.ts](proxy.ts). |
+| `/catalogue` | La grille des fiches : filtres par type et par tags, recherche, tri, pagination. |
+| `/mods/[id]` | La fiche : lien, description, tags, liens secondaires, panneau de vote, panneau de fichier, fil des contributions, soirées où elle a tourné. |
+| `/mods/nouveau`, `/mods/[id]/modifier` | Le formulaire — le même composant dans les deux cas. |
+| `/soiree` | La soirée en cours : les deux classements, le vote, l'engagement, le panneau de retrait. |
+| `/soiree/[id]` | Une soirée précise. |
+| `/historique` | Les soirées passées et ce qu'elles ont retenu. |
+| `/admin` | Modération, journal des suppressions, membres, serveurs autorisés, stockage, réglages. Réservé aux admins. |
 
-## Base de données
+L'interface est en français, responsive (le vote se fait souvent depuis un téléphone) et
+propose un thème clair/sombre.
 
-Postgres hébergé sur Supabase, accédé via Prisma (driver adapter `pg`).
+---
 
-1. Renseigne dans `.env.local` (Supabase → Project Settings → Database → Connection string) :
-   - `DATABASE_URL` : transaction pooler, port 6543 — utilisé par l'app.
-   - `DIRECT_URL` : session pooler, port 5432 — utilisé par le CLI Prisma, le transaction
-     pooler ne supporte pas le DDL.
+## Stack technique
 
-   Le host direct `db.<ref>.supabase.co` est en IPv6 uniquement sur le plan gratuit :
-   passe par le pooler. Pense à percent-encoder les caractères spéciaux du mot de passe
-   (`$` → `%24`…) : Next.js fait de l'expansion de variables en lisant `.env.local` et
-   tronquerait silencieusement un mot de passe contenant un `$`.
-2. `npx prisma generate` (lancé automatiquement au `npm install` via `postinstall`) —
-   le client est généré dans `lib/generated/prisma`, non versionné.
+| | |
+| --- | --- |
+| Framework | **Next.js 16** (App Router, React 19), TypeScript |
+| Base de données | **PostgreSQL** sur Supabase, via **Prisma 7** (driver adapter `pg`) |
+| Authentification | **Auth.js / NextAuth v5**, provider Discord, sessions JWT |
+| Images d'aperçu | **Supabase Storage** (bucket public `mod-images`), ré-encodage `sharp` |
+| Fichiers de mod | **Cloudflare R2** (S3-compatible), URL pré-signées |
+| Validation | **Zod** |
+| Styles | **Tailwind CSS v4**, tokens CSS maison — pas de bibliothèque de composants |
+| Hébergement | **Vercel** |
+| Planification | **pg_cron + pg_net** côté Supabase, crons Vercel en filet |
 
-La migration initiale (`prisma/migrations/20260829000000_init`) a été appliquée
-directement sur la base Supabase puis enregistrée dans l'historique Prisma
-(`prisma migrate resolve --applied`) : `npx prisma migrate status` doit répondre
-« Database schema is up to date ». Les suivantes s'appliquent normalement, avec
-`npx prisma migrate deploy`.
+> **Attention** : ce projet tourne sur Next.js 16, dont les conventions diffèrent des
+> versions précédentes (`middleware.ts` devenu `proxy.ts`, typages `PageProps` /
+> `RouteContext` générés, `after()`…). La documentation de la version installée est dans
+> `node_modules/next/dist/docs/` — voir [AGENTS.md](AGENTS.md).
 
-Les tables ont RLS activé sans aucune policy : l'API REST publique de Supabase ne
-renvoie rien, et Prisma (rôle propriétaire) n'est pas concerné par RLS.
+---
 
+## Mise en route
 
-## Édition des fiches (US-B3)
+### Prérequis
 
-Usage wiki : `PATCH /api/mods/[id]` n'exige qu'une session valide, aucune restriction
-d'auteur. `authorId` n'est jamais modifié, l'auteur d'origine reste affiché sur la fiche.
+Node 20+, un projet **Supabase**, un bucket **Cloudflare R2**, et une application
+**Discord** (Developer Portal → OAuth2), avec pour URL de redirection
+`http://localhost:3000/api/auth/callback/discord`.
 
-La route suit une vraie sémantique PATCH : seules les clés présentes dans le corps sont
-modifiées, une clé absente laisse le champ intact, une clé présente à `""` ou `null`
-l'efface (`buildModUpdateData` dans [lib/mods/schema.ts](lib/mods/schema.ts)). Quand
-l'image change, l'ancienne est retirée du bucket dans la foulée.
+### 1. Variables d'environnement
 
-Le formulaire de création et celui d'édition sont le même composant,
+```bash
+cp .env.local.example .env.local
+```
+
+[.env.local.example](.env.local.example) documente chaque variable et où la trouver. Les
+pièges à connaître :
+
+- **`DATABASE_URL`** doit pointer sur le *transaction pooler* (port 6543), utilisé par
+  l'app ; **`DIRECT_URL`** sur le *session pooler* (port 5432), utilisé par le CLI Prisma
+  — le transaction pooler ne supporte pas le DDL. L'hôte direct `db.<ref>.supabase.co`
+  est en IPv6 seul sur le plan gratuit : passer par le pooler.
+- **Percent-encoder les caractères spéciaux du mot de passe** (`$` → `%24`, `@` → `%40`).
+  Next.js fait de l'expansion de variables en lisant `.env.local` et tronquerait
+  silencieusement un mot de passe contenant un `$`.
+- **`DISCORD_GUILD_ID`** est le serveur du déploiement. Il n'a pas de ligne en base, et
+  c'est volontaire : quoi qu'on retire depuis l'espace admin, il autorise encore
+  quelqu'un à entrer — impossible de se verrouiller dehors.
+- **`CRON_SECRET`** protège les routes de maintenance ; sans lui, elles refusent de
+  tourner.
+
+### 2. Base de données
+
+```bash
+npx prisma generate      # lancé automatiquement au npm install (postinstall)
+npx prisma migrate deploy
+npx prisma migrate status   # doit répondre « Database schema is up to date »
+```
+
+Le client Prisma est généré dans `lib/generated/prisma`, non versionné.
+
+La migration initiale (`20260829000000_init`) a été appliquée à la main sur Supabase puis
+enregistrée dans l'historique (`prisma migrate resolve --applied`) ; les suivantes
+s'appliquent normalement. Toutes les tables ont **RLS activé sans aucune policy** : l'API
+REST publique de Supabase ne renvoie rien, et Prisma (rôle propriétaire) n'est pas
+concerné par RLS.
+
+### 3. Stockage
+
+- **Supabase** → Storage → New bucket → `mod-images`, coché **public**. Types autorisés en
+  écriture : `image/webp`, `image/png`, `image/jpeg`.
+- **Cloudflare R2** → un bucket privé en écriture, exposé en lecture par son *Public
+  Development URL* ou un domaine personnalisé, et un token API « Object Read & Write »
+  limité à ce bucket.
+
+Le bucket R2 demande en plus une **politique CORS** (Bucket → Settings → CORS Policy).
+Le fichier d'un mod ne traverse pas l'application : c'est le navigateur qui `PUT` dans le
+bucket, sur une URL signée — une requête cross-origin, que R2 refuse en pré-vol tant que
+l'origine n'est pas déclarée. Chaque origine d'où part un upload doit y figurer :
+
+```json
+[
+  {
+    "AllowedOrigins": ["http://localhost:3000", "https://ac-paddock.vercel.app"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["content-type"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+R2 compare les origines **caractère pour caractère** : pas de joker de sous-domaine, donc
+les URL de *preview* Vercel (`ac-paddock-git-<branche>-….vercel.app`), qui changent à
+chaque branche, n'uploadent pas tant qu'on ne les ajoute pas une à une — ou qu'on ne teste
+l'upload que sur le domaine de production. Le token « Object Read & Write » ne peut pas
+lire cette politique (`GetBucketCors` répond 403) : elle se règle au tableau de bord.
+
+Un oubli ici ne se voit que dans la console du navigateur — l'application, elle, ne
+reçoit rien : le `POST` qui signe l'URL réussit, et c'est l'envoi suivant, direct vers
+Cloudflare, qui est bloqué avant même de partir.
+
+`SUPABASE_URL` est lue par [next.config.ts](next.config.ts) pour autoriser l'hôte des
+images dans `next/image`. **`next.config.ts` n'est évalué qu'au démarrage** : après avoir
+renseigné cette variable, redémarrer `next dev`.
+
+### 4. Lancer
+
+```bash
+npm install
+npm run dev      # http://localhost:3000
+npm run lint
+npm run build
+```
+
+### 5. Se donner le rôle admin
+
+Aucun admin n'est désigné par l'application — `User.role` vaut `MEMBER` par défaut.
+Après une première connexion, passer sa ligne à `ADMIN` en base (éditeur SQL Supabase ou
+`npx prisma studio`).
+
+### 6. Facultatif : la planification horaire
+
+`prisma/cron/expired-mod-files.sql` installe `pg_cron`, `pg_net` et le job horaire qui
+appelle la route de maintenance. À exécuter **une fois** dans l'éditeur SQL de Supabase.
+Ce n'est pas une migration Prisma : ça ne décrit pas le schéma dont l'application dépend,
+et un échec y bloquerait des migrations qui n'y sont pour rien. Sans lui, le cron
+quotidien de `vercel.json` sert de filet.
+
+---
+
+## Organisation du dépôt
+
+```text
+app/                 Routes App Router — pages et API
+  api/               Les route handlers (voir « Routes API »)
+  admin/             L'espace admin ; son layout porte le garde de rôle
+  catalogue/  soiree/  historique/  mods/
+components/          Composants partagés entre les écrans
+lib/
+  admin/             Garde de rôle, réglages, journal, serveurs autorisés
+  discord/           Webhooks et contenu des annonces
+  mods/              Fiches : schémas, requêtes, tags, doublons, fichiers, images
+  soirees/           Soirée en cours, phases, quotas, votes, ex æquo, clôture
+  r2/  supabase/     Les deux stockages
+  prisma.ts          Le client, mémorisé et instancié paresseusement
+auth.ts              Configuration NextAuth + contrôle d'appartenance au serveur
+proxy.ts             Déviation de « / » pour un membre déjà connecté
+prisma/              Schéma, migrations, script cron
+backlog/             Cahier des charges et backlog d'origine
+```
+
+La logique métier vit dans `lib/`, jamais dans les composants ni dans les routes : une
+règle qui vaut pour deux routes (le quota de votes, par exemple) est écrite une fois et
+appelée deux fois. Les modules serveur portent `import "server-only"`.
+
+---
+
+## Modèle de données
+
+Le schéma complet, avec ses justifications, est dans
+[prisma/schema.prisma](prisma/schema.prisma) — c'est le document de référence.
+
+| Table | Rôle |
+| --- | --- |
+| `User` | Membre Discord : pseudo, avatar, rôle, serveur où son appartenance a été constatée, dernière connexion. |
+| `Mod` | La fiche : type, nom, lien, `urlKey` (forme normalisée du lien), description, image, fichier. |
+| `ModLink` | Liens secondaires (miroir, pack de textures…), avec leur intitulé et leur auteur. |
+| `ModContribution` | Le fil des corrections d'une fiche : qui a touché à quoi, et quand. |
+| `Tag`, `ModTag` | Vocabulaire libre, normalisé, alimenté par les membres. |
+| `Soiree` | Date, thème facultatif, serveur Discord propriétaire. |
+| `SoireeMod` | Un mod engagé dans une soirée. `tieBreak` porte le tirage au sort. |
+| `Vote` | Une ligne par vote placé — plusieurs par membre et par mod sont possibles. |
+| `AuthorizedGuild` | Serveurs Discord ouverts depuis l'espace admin, avec leur webhook. |
+| `DeletionLog` | Le journal des suppressions — la seule trace d'un contenu effacé. |
+| `AppConfig` | Réglages clé/valeur modifiables sans migration. |
+| `ModFileReservation` | Une place retenue dans le bucket, le temps qu'un envoi aboutisse. |
+
+Deux écarts assumés par rapport au cahier §4 :
+
+- la table `Session` du cahier s'appelle ici **`Soiree`** — `Session` est déjà le type de
+  NextAuth, présent dans presque chaque route sous la forme `const session = await auth()` ;
+- `Vote.soireeModId` est **nullable**, uniquement pour ne pas effacer les votes écrits par
+  le MVP, qui n'avait pas de notion de soirée. Plus rien n'en crée.
+
+---
+
+## Routes API
+
+Toutes exigent une session valide, sauf mention contraire.
+
+### Fiches
+
+| Route | Ce qu'elle fait |
+| --- | --- |
+| `GET /api/mods` | Le catalogue : `tags`, `type`, `search`, `sort`, `page`. |
+| `POST /api/mods` | Crée une fiche. |
+| `PATCH`·`DELETE /api/mods/[id]` | Édition wiki (toute session), suppression (auteur ou admin). La fiche elle-même se lit par la page, pas par l'API. |
+| `GET /api/mods/search?name=` | Recherche floue, pour la détection de doublons. |
+| `GET /api/mods/check-url?url=` | Un lien déjà enregistré ailleurs ? |
+| `POST /api/mods/[id]/links`, `DELETE …/links/[linkId]` | Liens secondaires. |
+| `POST`·`PUT /api/mods/[id]/upload` | Signe une URL d'envoi, puis confirme le dépôt. |
+| `POST`·`DELETE /api/mods/[id]/vote` | Voter depuis le catalogue ou la fiche. |
+
+### Soirées
+
+| Route | Ce qu'elle fait |
+| --- | --- |
+| `GET /api/soirees`, `POST` | Liste ; création réservée aux admins. |
+| `GET`·`DELETE /api/soirees/[id]` | Lecture ; suppression réservée aux admins. |
+| `POST /api/soirees/[id]/mods`, `DELETE …/mods/[modId]` | Engager, désengager. |
+| `POST`·`DELETE /api/soirees/[id]/mods/[modId]/vote` | Voter depuis la page soirée. |
+
+### Divers, admin et maintenance
+
+| Route | Ce qu'elle fait |
+| --- | --- |
+| `GET /api/tags`, `DELETE /api/tags/[name]` | Autocomplétion ; suppression réservée aux admins. |
+| `GET /api/me` | `{ isAdmin }` — pour l'affichage de l'onglet Admin. |
+| `GET /api/stats` | Compteurs fiches / votes / soirées. |
+| `POST`·`DELETE /api/uploads/mod-image` | Image d'aperçu. |
+| `GET`·`PATCH /api/admin/config` | Réglages. |
+| `GET /api/admin/deletions` | Journal des suppressions. |
+| `GET`·`POST /api/admin/guilds`, `PATCH`·`DELETE …/[id]` | Serveurs autorisés et leurs webhooks. |
+| `GET`·`DELETE /api/admin/storage` | Occupation du bucket ; vidage forcé. |
+| `GET /api/maintenance/expired-files` | Balayage des fichiers expirés — `Authorization: Bearer $CRON_SECRET`. |
+| `GET /api/maintenance/orphan-images` | Balayage des images orphelines — même contrat. |
+
+---
+
+## Les règles, en détail
+
+### Accès : Discord, serveurs, rôles
+
+La connexion demande les scopes `identify` et `guilds`. Au callback, `signIn`
+([auth.ts](auth.ts)) appelle `GET /users/@me/guilds` et vérifie que le membre appartient à
+**l'un des serveurs autorisés** : celui du déploiement (`DISCORD_GUILD_ID`) ou l'un de ceux
+ouverts depuis l'espace admin (`AuthorizedGuild`). Sinon, l'accès est refusé avec un
+message explicite. Pas de whitelist à maintenir : le serveur Discord *est* la liste.
+
+C'est le seul moment où l'appartenance est connue — Discord ne dit qu'au membre lui-même à
+quels serveurs il appartient. Elle est donc recopiée sur sa ligne `User` (`guildId`,
+`guildName`, `lastSeenAt`) au passage, avec sa date : « membre de X » sans le moment où ça
+a été constaté ne vaudrait rien.
+
+La session dure **30 jours glissants** (`updateAge` la repousse au plus une fois par jour).
+Conséquence à connaître : quelqu'un qui quitte le serveur Discord garde l'accès jusqu'à
+l'expiration de son jeton — la vérification n'a lieu qu'à la connexion. C'est assumé pour
+ce contexte (cahier §2.1).
+
+Le **rôle**, lui, n'est pas dans la session : il est relu en base à chaque requête. Une
+promotion ou une rétrogradation prend donc effet tout de suite, sans reconnexion.
+
+Le serveur d'appartenance découpe une partie de l'application : une soirée appartient à un
+serveur, « la soirée en cours » se lit par serveur, les annonces partent dans le salon de
+ce serveur. Le **catalogue reste commun** — un mod est un mod.
+
+### Les fiches, en usage wiki
+
+**Éditer** : `PATCH /api/mods/[id]` n'exige qu'une session, aucune restriction d'auteur
+(cahier §2.2). `authorId` n'est jamais modifié, l'auteur d'origine reste affiché.
+
+La route suit une vraie sémantique PATCH : une clé absente laisse le champ intact, une clé
+présente à `""` ou `null` l'efface (`buildModUpdateData`,
+[lib/mods/schema.ts](lib/mods/schema.ts)). Quand l'image change, l'ancienne est retirée du
+bucket dans la foulée.
+
+Le lien principal est **facultatif** : on propose souvent un mod de mémoire, et refuser la
+fiche pour ça reviendrait à perdre la proposition entière plutôt qu'un seul champ. Le
+catalogue marque les fiches sans lien pour qu'un autre membre vienne le poser.
+
+**Supprimer** : `DELETE /api/mods/[id]` est réservé à l'auteur ou à un admin
+(`canDeleteMod`, [lib/mods/permissions.ts](lib/mods/permissions.ts)). L'image part du
+bucket, les `ModTag`, `Vote` et `SoireeMod` suivent en cascade, et une ligne est écrite au
+journal — la seule trace qui reste.
+
+**Le fil des contributions.** Une fiche à plusieurs mains ne garde d'un membre que ce
+qu'il a laissé : une description remplacée, un tag retiré ne se voient nulle part, et
+`updatedAt` ne dit ni qui ni quoi. `ModContribution` répond à « qui a touché à ça, et
+quand ? ». La **création** n'y est pas écrite : `authorId` et `createdAt` la disent déjà,
+y compris pour les fiches antérieures à la table — elle est reconstituée à la lecture
+([lib/mods/contributions.ts](lib/mods/contributions.ts)).
+
+Le formulaire de création et celui d'édition sont le **même composant**,
 [components/ModForm.tsx](components/ModForm.tsx), paramétré par la présence d'une fiche
-existante. La détection de doublons est désactivée à l'édition, où la fiche se
-trouverait elle-même.
+existante.
 
-## Suppression des fiches (US-B4)
+### Tags
 
-`DELETE /api/mods/[id]` est réservé à l'auteur de la fiche ou à un admin
-(`canDeleteMod` dans [lib/mods/permissions.ts](lib/mods/permissions.ts)). Le rôle est
-relu en base à chaque requête plutôt que porté par la session : un changement de rôle
-prend effet tout de suite, sans attendre une reconnexion.
+Vocabulaire libre alimenté par les membres, normalisé avant d'atteindre la base
+(`normalizeTagName`, [lib/mods/tags.ts](lib/mods/tags.ts)) : minuscules, accents retirés,
+mots liés par des tirets. `Drift`, `drift` et un `DRIFT` entouré d'espaces désignent donc
+la même ligne, et
+le `@unique` sur `Tag.name` le fait respecter — c'est ce qui répond au « éviter les
+doublons/variantes » du cahier §2.2, que l'autocomplétion seule ne garantit pas. La même
+normalisation s'applique au terme cherché.
 
-L'image de la fiche est retirée du bucket dans la foulée. Ses associations `ModTag`
-(US-C1), ses `Vote` (US-F1) et ses `SoireeMod` (US-G2) partent avec elle
-(`onDelete: Cascade`). La suppression laisse une entrée au journal (US-K2, plus bas) :
-c'est la seule trace qui reste d'une fiche effacée.
+L'écriture passe par `createMany` + `skipDuplicates` puis relecture
+([lib/mods/tags-store.ts](lib/mods/tags-store.ts)) : passer par la contrainte d'unicité
+plutôt que par un `findMany` suivi d'un `create` évite qu'enregistrer deux fiches avec le
+même tag neuf au même instant fasse échouer la seconde. En PATCH, `tags` suit la sémantique
+des autres champs : absent = inchangé, présent = l'ensemble est **remplacé**, vide = tous
+retirés. Maximum 8 tags par fiche.
 
-Aucun admin n'est désigné par l'application : `User.role` vaut `MEMBER` par défaut. Pour
-en promouvoir un, passer son rôle à `ADMIN` en base.
+Au filtrage, les tags se **combinent en ET** — un `some` par tag dans le `where`. Un seul
+`in` répondrait « au moins un », qui n'est pas la question du cahier §2.3.
 
-## Tags (US-C1, US-C2)
+Un tag survit à la dernière fiche qui le portait : il appartient au vocabulaire commun.
+Seul un admin peut en supprimer un — c'est un acte de modération, pas d'édition :
+l'autocomplétion recopie sinon les fautes de frappe de fiche en fiche.
 
-Modèle `Tag` + table d'association `ModTag` (`prisma/schema.prisma`). Les deux relations
-de `ModTag` portent `onDelete: Cascade` : supprimer une fiche ou un tag ne laisse jamais
-d'association orpheline. Un tag survit en revanche à la dernière fiche qui le portait —
-il appartient au vocabulaire commun.
-
-### Normalisation
-
-Tout tag passe par `normalizeTagName` ([lib/mods/tags.ts](lib/mods/tags.ts)) avant
-d'atteindre la base : minuscules, accents retirés, mots liés par des tirets. `Drift`,
-`drift` et `  DRIFT ` désignent donc la même ligne `Tag`, et le `@unique` sur
-`Tag.name` le fait respecter. C'est ce qui répond au « éviter les doublons/variantes »
-du cahier §2.2 — l'autocomplétion seule n'y suffit pas, rien n'empêche de taper à côté.
-
-Cette normalisation vaut aussi pour le terme cherché : `GET /api/tags?query=Drift`
-trouve `drift` sans comparaison insensible à la casse côté base.
-
-### Écriture
-
-`POST /api/mods` et `PATCH /api/mods/[id]` acceptent un tableau `tags` de noms. La
-logique « findOrCreate » est dans [lib/mods/tags-store.ts](lib/mods/tags-store.ts) :
-`createMany` + `skipDuplicates`, puis relecture. Passer par la contrainte d'unicité
-plutôt que par un `findMany` suivi d'un `create` évite qu'enregistrer deux fiches avec
-le même tag neuf au même instant fasse échouer la seconde.
-
-En PATCH, `tags` suit la même sémantique que les autres champs : clé absente = tags
-inchangés, clé présente = l'ensemble est **remplacé** (d'où le `deleteMany` préalable),
-tableau vide = tous retirés. Le formulaire renvoie toujours la liste complète.
-
-Un mod est plafonné à 8 tags (`MAX_TAGS_PER_MOD`).
-
-### Lecture et filtrage
-
-`GET /api/mods?tags=drift,jdm` filtre le catalogue. Les formes `?tags=drift&tags=jdm` et
-`?tags[]=…` sont acceptées aussi. Les tags se **combinent en ET** : la fiche doit porter
-tous les tags demandés, ce qui donne un `some` par tag dans le `where` — un seul `in`
-répondrait « au moins un », qui n'est pas la question posée par le cahier §2.3.
-
-Toutes les lectures de fiches partagent l'objet `modInclude`
-([lib/mods/serialize.ts](lib/mods/serialize.ts)), pour qu'aucune ne puisse oublier de
-charger les tags. Ils ressortent triés par nom.
-
-### Interface
-
-[components/TagInput.tsx](components/TagInput.tsx) — multi-select avec autocomplétion
-sur `GET /api/tags` (les plus utilisés d'abord, avec leur nombre de fiches), création à
-la volée, navigation clavier, virgule et entrée pour valider, retour arrière pour
-retirer la dernière pastille.
-
-Le filtre du catalogue vit dans les **query params de l'URL** (`/catalogue?tags=drift,jdm`),
-pas dans un état local : la sélection survit à un rechargement, se partage par lien, et
-une pastille cliquée sur une fiche de mod y mène directement. `useSearchParams` impose
-une frontière `Suspense`, d'où le découpage `page.tsx` (serveur) /
-`CatalogueView.tsx` (client).
-
-La grille du catalogue est branchée sur `GET /api/mods` (voir la section suivante) : la
-liste des tags du panneau latéral vient donc entièrement de `GET /api/tags`, avec leur
-nombre réel de fiches.
-
-## Détection de doublons (US-D1, US-D2, US-D3)
+### Détection de doublons
 
 Une fiche par mod, enrichie par tout le monde : le cahier §2.4 demande de repérer une
-fiche existante *avant* d'en créer une seconde, sans jamais bloquer la création — le
-membre garde toujours « Créer quand même ».
+fiche existante *avant* d'en créer une seconde, **sans jamais bloquer** — le membre garde
+toujours « Créer quand même ».
 
-### Recherche floue sur le nom (US-D1)
+**Sur le nom.** `GET /api/mods/search?name=silvia` renvoie jusqu'à 5 fiches proches. La
+migration `20260829200000_duplicate_detection` installe `pg_trgm` et pose un index GIN
+trigram sur `Mod.name`. Deux façons d'être proche, réunies par un OU et toutes deux
+servies par cet index : l'opérateur de similarité `%`, qui rattrape fautes de frappe et
+variantes (`silvia s15` ↔ `Silvia S-15`), et `ILIKE '%…%'`, qui rattrape le cas inverse —
+un terme court contenu dans un nom long, où la similarité globale reste sous le seuil.
+L'opérateur et `similarity()` sont **qualifiés par leur schéma** (`OPERATOR(extensions.%)`) :
+le `search_path` du rôle de connexion n'entre pas en jeu.
 
-`GET /api/mods/search?name=silvia` renvoie jusqu'à 5 fiches proches, la plus probable
-d'abord. La migration `20260829200000_duplicate_detection` installe l'extension
-`pg_trgm` (schéma `extensions`, celui de Supabase) et pose un index GIN trigram sur
-`Mod.name`.
+**Sur le lien.** `GET /api/mods/check-url?url=…` compare une forme normalisée
+(`normalizeModUrl`, [lib/mods/url.ts](lib/mods/url.ts)) : protocole et `www.` retirés,
+ancre supprimée, paramètres de suivi écartés (`utm_*`, `fbclid`, `ref`, le `usp` des
+partages Drive…), paramètres restants triés, slash final coupé, minuscules.
 
-Deux façons d'être « proche », réunies par un OU, toutes deux servies par cet index :
+```text
+https://WWW.RaceDepartment.com/downloads/silvia.1234/?utm_source=discord#reviews
+→ racedepartment.com/downloads/silvia.1234
+```
 
-- `%`, l'opérateur de similarité trigram — il rattrape fautes de frappe et variantes
-  d'orthographe (`silvia s15` ↔ `Silvia S-15`) ;
-- `ILIKE '%…%'` — il rattrape le cas inverse, un terme court contenu dans un nom long,
-  où la similarité globale reste sous le seuil.
-
-L'opérateur et `similarity()` sont **qualifiés par leur schéma**
-(`OPERATOR(extensions.%)`) : le `search_path` du rôle de connexion n'entre pas en jeu.
-Prisma ne sachant pas décrire un index GIN trigram, celui-ci est créé à la main dans la
-migration — le rappel est dans `prisma/schema.prisma`.
-
-### Vérification du lien (US-D2)
-
-`GET /api/mods/check-url?url=…` répond `{ "match": <fiche> | null }`.
-
-La comparaison porte sur une forme normalisée du lien, `normalizeModUrl`
-([lib/mods/url.ts](lib/mods/url.ts)) : protocole et `www.` retirés, ancre supprimée,
-paramètres de suivi (`utm_*`, `fbclid`, `ref`, le `usp` des partages Drive…) écartés,
-paramètres restants triés, slash final coupé, le tout en minuscules.
-
-    https://WWW.RaceDepartment.com/downloads/silvia.1234/?utm_source=discord#reviews
-    → racedepartment.com/downloads/silvia.1234
-
-Ce résultat est stocké dans la colonne indexée `Mod.urlKey`, écrite à chaque création
-et à chaque édition du lien : la vérification est une lecture par index, pas un
-balayage du catalogue. La colonne n'est **pas** `@unique` — le doublon doit rester
-possible.
-
-Un lien illisible n'est pas une erreur ici (le champ est en cours de saisie) : la route
-répond simplement « aucune correspondance », et c'est la validation du formulaire qui
+Le résultat est stocké dans la colonne indexée `Mod.urlKey` : la vérification est une
+lecture par index, pas un balayage. Elle n'est **pas** `@unique` — le doublon doit rester
+possible. Un lien illisible n'est pas une erreur ici (le champ est en cours de saisie) :
+la route répond « aucune correspondance », et c'est la validation du formulaire qui
 refusera l'enregistrement.
 
-Le passage en minuscules suit le cahier (« casse ») et rend théoriquement égales deux
-adresses qui ne différeraient que par la casse de leur chemin — un identifiant Drive,
-par exemple. C'est assumé : la détection avertit, elle ne bloque pas.
+**Dans le formulaire** ([lib/mods/useDuplicates.ts](lib/mods/useDuplicates.ts)), et
+uniquement à la création — à l'édition, la fiche se trouverait elle-même. La recherche par
+nom est débouncée (250 ms, à partir de 3 caractères) ; celle du lien part **au blur et au
+collage**, pas à la frappe : une URL n'a de sens qu'entière.
 
-### Dans le formulaire (US-D3)
+**L'aller-retour ne coûte pas la saisie.** « Voir la fiche existante » n'a d'intérêt que si
+y aller ne fait pas perdre ce qui est déjà tapé — sinon personne ne clique et la détection
+ne sert à rien. Avant de quitter le formulaire, la saisie complète est mise de côté dans le
+`sessionStorage` de l'onglet ([lib/mods/draft.ts](lib/mods/draft.ts)), relue avec un schéma
+Zod parce que rien ne garantit ce qu'on retrouve dans un stockage navigateur. Le lien porte
+`?brouillon=1`, que la fiche lit côté serveur pour afficher « Reprendre ma fiche ». Au
+retour, les champs sont repeuplés **dès l'initialisation de l'état**, pas dans un effet :
+pas de formulaire vide qui se remplirait après coup.
 
-Les deux vérifications vivent dans [lib/mods/useDuplicates.ts](lib/mods/useDuplicates.ts)
-et ne sont actives qu'à la **création** : à l'édition, la fiche se trouverait elle-même.
+### Catalogue
 
-- `useSimilarMods` — appel debounce (250 ms) pendant la saisie du nom, à partir de 3
-  caractères ; les fiches proches s'affichent sous le champ, chacune avec un « Voir la
-  fiche ». Comme pour l'autocomplétion des tags, la requête précédente est annulée pour
-  qu'une réponse lente n'écrase pas une plus récente.
-- `useUrlDuplicate` — appel **au blur et au collage** du champ lien, pas à la frappe :
-  une URL n'a de sens qu'entière. Le collage précède la mise à jour de la valeur du
-  champ, d'où la relecture au tour de boucle suivant. Un même lien n'est interrogé
-  qu'une fois.
+`GET /api/mods` sert la grille. Tous les paramètres sont optionnels et se combinent :
 
-En cas de correspondance, un bandeau « Ce mod existe peut-être déjà » propose les deux
-sorties du cahier : **Voir la fiche existante** (lien vers la fiche) ou **Créer quand
-même**, qui écarte l'avertissement pour ce lien précis — il ne réapparaît pas au blur
-suivant, et le lien saisi est conservé tel quel.
+| Paramètre | Valeurs |
+| --- | --- |
+| `tags` | `drift,jdm` — combinés en **ET** |
+| `type` | `CAR` / `TRACK` (absent = tous) |
+| `search` | fragment du nom, insensible à la casse |
+| `sort` | `date` (défaut) / `votes` |
+| `page` | 1-indexée, 24 fiches par page |
 
-### L'aller-retour ne coûte pas la saisie
+**Un seul analyseur pour deux URL.** [lib/mods/query.ts](lib/mods/query.ts) définit la
+requête catalogue — valeurs acceptées, valeurs par défaut, `parseModQuery` et sa réciproque
+— et les deux côtés s'en servent : la route lit l'URL de la requête, la page lit la sienne.
+Un filtre écrit dans `/catalogue?…` part donc tel quel dans l'appel API, et une valeur
+bricolée à la main retombe des deux côtés sur la même valeur par défaut : une URL malformée
+affiche un catalogue, jamais une erreur.
 
-« Voir la fiche existante » n'a d'intérêt que si y aller ne fait pas perdre ce qui est
-déjà tapé — sinon personne ne clique, et la détection ne sert à rien.
+**L'URL est la seule source de vérité** des filtres : la sélection survit à un
+rechargement, se partage par lien, et une pastille cliquée sur une fiche y mène
+directement. Tout changement de filtre ramène en page 1 — rester en page 4 après avoir
+coché un tag afficherait une page vide alors que des résultats existent.
 
-Avant de quitter le formulaire, la saisie complète (type, nom, lien, description, tags,
-et l'URL de l'image déjà déposée) est mise de côté dans le `sessionStorage` de l'onglet
-— [lib/mods/draft.ts](lib/mods/draft.ts), relue avec un schéma Zod parce que rien ne
-garantit ce qu'on retrouve dans un stockage navigateur. Le lien porte en plus
-`?brouillon=1`, ce que la page de la fiche lit côté serveur pour afficher un bandeau
-**Reprendre ma fiche**.
+**Compteurs et total** viennent d'un seul `groupBy` par type, calculé en ignorant le type
+sélectionné mais en tenant compte de la recherche et des tags : « Circuits · 0 » doit
+rester lisible pendant qu'on regarde les véhicules.
 
-Au retour, `ModForm` repeuple ses champs depuis le brouillon **dès l'initialisation de
-son état**, pas dans un effet : pas de formulaire vide qui se remplirait après coup.
-Rien n'est lu pendant le rendu serveur, et le formulaire n'est de toute façon affiché
-qu'une fois la session connue. Un bandeau discret signale la reprise et offre
-« repartir de zéro » (qui libère au passage l'image envoyée). Le lien du brouillon est
-re-vérifié à l'affichage, pour que l'avertissement de doublon soit exact.
+**La recherche** part en `ILIKE '%…%'`, servi par l'index trigram. La saisie passe d'abord
+par `escapeLikeWildcards` ([lib/mods/like.ts](lib/mods/like.ts)) : Prisma insère la valeur
+telle quelle entre ses deux `%`, donc sans échappement taper `%` ramènerait tout le
+catalogue, et `silvia_s15` ne trouverait pas la fiche qui porte exactement ce nom. C'est
+une recherche de **filtrage**, à ne pas confondre avec `GET /api/mods/search`, qui répond à
+une autre question par une similarité classée.
 
-Le brouillon est effacé à la publication et sur « Annuler ». Il ne survit pas à la
-fermeture de l'onglet (`sessionStorage`, pas `localStorage`) — et comme il n'est écrit
-qu'au moment de partir voir une fiche, revenir par le bouton *retour* du navigateur
-retrouve la saisie aussi.
+**Les deux tris se terminent par `{ id: "desc" }`.** Ce n'est pas décoratif : deux fiches
+créées dans la même milliseconde s'échangeraient d'une page à l'autre, et la pagination par
+décalage en sauterait une tout en en montrant une autre deux fois.
 
-## Catalogue (US-E1, US-E2, US-E3, US-E4)
+**Côté interface**, [lib/mods/useCatalogue.ts](lib/mods/useCatalogue.ts) fait une requête
+par état de filtre, annulée dès que l'état change — sans quoi une réponse lente partie sur
+`drift` pourrait arriver après celle partie sur `drift + jdm` et réafficher la liste large
+par-dessus l'étroite. `isLoading` n'y est pas un état à part : la réponse retenue porte la
+requête à laquelle elle répond, et charger, c'est « la dernière réponse ne répond pas à la
+requête courante ». La réponse précédente reste affichée, estompée, pendant que la suivante
+arrive.
 
-`GET /api/mods` sert la grille du catalogue. Tous ses paramètres sont optionnels et se
-combinent :
+### Soirées, votes et places
 
-| Paramètre | Valeurs | US |
-| --- | --- | --- |
-| `tags` | `drift,jdm` — combinés en **ET** | US-C2 |
-| `type` | `CAR` / `TRACK` (absent = tous) | US-E2 |
-| `search` | fragment du nom, insensible à la casse | US-E3 |
-| `sort` | `date` (défaut) / `votes` | US-E4 |
-| `page` | 1-indexée, 24 fiches par page | US-E1 |
+#### Engager
 
-La réponse n'est plus un tableau nu mais un objet `ModListResponse` : `mods`, `page`,
-`perPage`, `total`, `pageCount` et `counts` (le nombre de fiches par type, pour les
-compteurs du filtre).
+Une soirée accueille **autant de véhicules et de circuits qu'on veut** : engager reste sans
+limite, et n'importe quel membre le peut, pas seulement l'auteur de la fiche. C'est le vote
+qui est contingenté, et c'est lui qui trie — si chacun pouvait voter pour tout, trente
+voitures ressortiraient trente fois à égalité.
 
-### Un seul analyseur pour deux URL
+Seul un **admin** crée une soirée. Il n'y a pas de colonne « en cours » : l'état se déduit
+de la date, et une colonne à maintenir se serait désynchronisée dès la première soirée
+passée sans que personne ne la bascule. La soirée en cours est la prochaine à venir pour le
+serveur du membre (`currentSoiree`, [lib/soirees/current.ts](lib/soirees/current.ts)).
 
-[lib/mods/query.ts](lib/mods/query.ts) définit la requête catalogue — les valeurs
-acceptées, celles par défaut, `parseModQuery` et sa réciproque
-`modQueryToSearchParams` — et les deux côtés s'en servent : la route API lit l'URL de
-la requête, le catalogue lit celle de la page. Un filtre écrit dans `/catalogue?…` part
-donc tel quel dans l'appel API, et une valeur inconnue ou bricolée à la main retombe des
-deux côtés sur la même valeur par défaut : une URL malformée affiche un catalogue, jamais
-une erreur.
+#### Voter : deux réserves, deux nombres de places
 
-Comme pour les tags (US-C2), **l'URL est la seule source de vérité** des filtres : la
-sélection survit à un rechargement et se partage par lien. Tout changement de filtre
-ramène en page 1 — rester en page 4 après avoir coché un tag afficherait une page vide
-alors que des résultats existent.
+Par membre et par soirée, dans [lib/soirees/quota.ts](lib/soirees/quota.ts) :
 
-### Compteurs et total
-
-Un seul `groupBy` par type donne d'un coup les compteurs du filtre *et* le total de la
-requête, qui n'en est que la somme (ou la ligne du type choisi). Ces compteurs sont
-calculés en ignorant le type sélectionné mais en tenant compte de la recherche et des
-tags : « Circuits · 0 » doit rester lisible pendant qu'on regarde les véhicules, sinon
-le filtre annonce des résultats qu'il n'a pas.
-
-### Recherche (US-E3)
-
-`contains` + `mode: "insensitive"` part en `ILIKE '%…%'`, servi par l'index GIN trigram
-posé sur `Mod.name` par la migration `20260829200000_duplicate_detection`. La saisie
-passe d'abord par `escapeLikeWildcards` ([lib/mods/like.ts](lib/mods/like.ts)) : Prisma
-insère la valeur telle quelle entre ses deux `%`, donc sans échappement taper `%`
-ramènerait tout le catalogue, et `silvia_s15` ne trouverait pas la fiche qui porte
-exactement ce nom.
-
-C'est une recherche de **filtrage**, à ne pas confondre avec `GET /api/mods/search`
-(US-D1), qui répond à une autre question — « une fiche proche existe-t-elle déjà ? » —
-par une similarité trigram classée.
-
-Le champ est débouncé (`SEARCH_DEBOUNCE_MS`) et garde sa propre valeur pendant la
-frappe : passer par l'URL à chaque lettre lancerait une requête par caractère.
-
-### Tri (US-E4)
-
-`sort=votes` classe par nombre de votes décroissant, agrégé par la base
-(`{ votes: { _count: "desc" } }` dans `MOD_ORDER_BY`,
-[app/api/mods/route.ts](app/api/mods/route.ts)). Les fiches à égalité — le cas le plus
-courant, zéro vote — se départagent par date, comme dans l'autre tri.
-
-Les deux tris se terminent par `{ id: "desc" }`. Ce n'est pas décoratif : deux fiches
-créées dans la même milliseconde s'échangeraient d'une page à l'autre, et la pagination
-par décalage en sauterait une tout en en montrant une autre deux fois.
-
-### Côté interface
-
-[lib/mods/useCatalogue.ts](lib/mods/useCatalogue.ts) fait la requête, une par état de
-filtre, annulée dès que l'état change — sans quoi une réponse lente partie sur `drift`
-pourrait arriver après celle partie sur `drift + jdm` et réafficher la liste large
-par-dessus la liste étroite. `isLoading` n'y est pas un état à part : la réponse retenue
-porte la requête à laquelle elle répond, et charger, c'est « la dernière réponse ne
-répond pas à la requête courante ».
-
-La réponse précédente reste affichée, estompée, pendant que la suivante arrive : les
-cartes se périment un instant plutôt que de disparaître à chaque lettre tapée.
-
-Les fiches arrivent en JSON et passent par `apiModToView`
-([lib/mods/view.ts](lib/mods/view.ts)) pour prendre la forme attendue par `ModCard`.
-`toModView`, qui part d'une ligne Prisma (fiche détail), repasse désormais par cette même
-fonction : une fiche s'affiche pareil qu'elle vienne d'un `findUnique` ou d'un `fetch`.
-
-`voteHistory` (le petit histogramme des cartes) ne décore que les fiches de
-démonstration : le vote réel n'a pas d'historique jour par jour à en tirer. Les
-compteurs FICHES / VOTES de l'en-tête viennent encore de `lib/mock-data.ts`.
-
-## Votes (US-F1, US-F2)
-
-Modèle `Vote` (`prisma/schema.prisma`), une ligne par membre et par fiche. L'unicité
-est portée par la base — `@@unique([userId, modId])` — pas par une vérification
-préalable : deux clics partis en même temps ne peuvent pas produire deux votes.
-
-Le cahier §4 rattache le vote à un `SessionMod`. Le MVP vote « sans notion formelle de
-soirée » (cahier §6), donc `Vote` pointe directement sur la fiche ; l'Epic G ajoutera
-`sessionModId` à côté plutôt que de réécrire la table.
-
-### Les routes
-
-`POST /api/mods/[id]/vote` enregistre le vote, `DELETE` le retire
-([app/api/mods/[id]/vote/route.ts](app/api/mods/[id]/vote/route.ts)). Le backlog ne
-demande que le POST, mais le bouton qu'il décrit a deux états : sans le DELETE, l'état
-actif serait sans retour.
-
-Les deux verbes sont idempotents (`skipDuplicates` d'un côté, `deleteMany` de l'autre) et
-répondent le même objet, `VoteState` ([lib/mods/vote.ts](lib/mods/vote.ts)) : le total
-de la fiche et l'état du membre. Une requête rejouée — réseau capricieux, double clic —
-redit donc la même chose au lieu d'inverser le vote, ce qu'une bascule côté serveur ne
-garantirait pas.
-
-Voter est souvent la première écriture d'un membre : sa ligne `User` n'existe pas
-forcément encore, et `upsertSessionUser` ([lib/session-user.ts](lib/session-user.ts)) la
-crée au passage — la même que celle utilisée à la création d'une fiche.
-
-### Le compteur (US-F2)
-
-`modInclude` ([lib/mods/serialize.ts](lib/mods/serialize.ts)) est devenu une fonction
-prenant l'identifiant Discord du membre connecté. Elle ramène en une seule requête le
-total (`_count.votes`) et le vote de ce membre — filtré par la relation, pas par un `id`
-de ligne `User` qui n'existe pas forcément. `ApiMod` expose donc `votes` et `hasVoted`,
-et chaque carte du catalogue sait s'afficher sans requête supplémentaire.
-
-### Côté interface
-
-`useVote` ([lib/mods/useVote.ts](lib/mods/useVote.ts)) porte la mécanique, partagée par
-la carte du catalogue et par le panneau de la fiche détail : deux dessins, un seul
-comportement. Le compteur bouge avant la réponse du serveur — voter est l'action la plus
-banale de l'application, souvent faite depuis un téléphone — puis la réponse remplace la
-valeur optimiste par le compte réel, les votes des autres membres compris. Un échec la
-remet exactement où elle était, avec un message.
-
-L'état local l'emporte ensuite sur les valeurs venues du serveur : la carte survit à un
-re-rendu du catalogue (changement de tri, de page) sans que le bouton ne retombe une
-seconde sur l'ancien compte.
-
-### Réserve de votes et mods retenus
-
-Une soirée accueille **autant de véhicules et de circuits qu'on veut** : engager reste
-sans limite, comme le veut le cahier §2.5. C'est le vote qui est contingenté, et c'est
-lui qui trie — si chacun pouvait voter pour tout, trente voitures ressortiraient trente
-fois à égalité.
-
-Deux réserves par membre et par soirée, et deux nombres de places, dans
-[lib/soirees/quota.ts](lib/soirees/quota.ts) :
-
-| Type | Votes par membre et par soirée | Mods retenus à la fin |
+| Type | Votes par membre | Mods retenus à la fin |
 | --- | --- | --- |
 | Véhicules | 8 (`VOTE_QUOTA.CAR`) | les 8 plus votés (`RETAINED_COUNT.CAR`) |
 | Circuits | 3 (`VOTE_QUOTA.TRACK`) | le plus voté (`RETAINED_COUNT.TRACK`) |
 
-Les deux côtés ne se ressemblent pas, et c'est voulu. Une soirée se joue avec une grille
-de voitures : chacun compose la sienne, la grille du soir est la somme des préférences.
-On ne roule en revanche que sur **un** circuit : les trois votes servent à dire « l'un de
-ces trois me va », pour qu'un second choix largement partagé l'emporte sur un premier
-choix isolé.
+Les deux côtés ne se ressemblent pas, et c'est voulu. Une soirée se joue avec une **grille**
+de voitures : chacun compose la sienne, la grille du soir est la somme des préférences. On
+ne roule en revanche que sur **un** circuit : les trois votes servent à dire « l'un de ces
+trois me va », pour qu'un second choix largement partagé l'emporte sur un premier choix
+isolé.
 
-Ce sont des constantes, pas des réglages d'`AppConfig` : les règles du jeu du groupe, pas
-un paramètre d'exploitation comme la taille des uploads.
+Ce sont des constantes, pas des réglages d'`AppConfig` : les règles du jeu du groupe, pas un
+paramètre d'exploitation comme la taille des uploads.
 
-Un mod sans le moindre vote n'est jamais retenu, même quand la soirée compte moins
-d'engagements que de places (`isRetained`) : « les 8 véhicules les plus votés » ne veut
-pas dire « les 8 premiers de la liste ».
+Un mod sans le moindre vote n'est **jamais** retenu, même quand la soirée compte moins
+d'engagements que de places : « les 8 véhicules les plus votés » ne veut pas dire « les 8
+premiers de la liste ».
+
+**Les votes s'empilent.** Un membre peut placer plusieurs voix sur le même mod, dans la
+limite de sa réserve — c'est ce qui permet de pousser un choix plutôt que de simplement le
+cocher. Une ligne `Vote` par voix placée : le classement se trie **en base**, et Prisma ne
+sait ordonner une relation que par `_count`, jamais par la somme d'une colonne. Une ligne
+par vote garde donc intacts le tri du soir, celui du catalogue et tous les comptages, au
+prix de quelques lignes de plus dans une table qui en compte peu.
+
+Ce qui n'a plus d'unicité n'a plus d'idempotence : deux POST identiques écrivent deux
+votes, et c'est le comportement voulu — « voter encore » est une action à part entière. Le
+`DELETE` retire la dernière voix placée, pas toutes.
+
+**Le refus, côté serveur.** `castVote` ([lib/soirees/vote.ts](lib/soirees/vote.ts)) porte
+la règle pour les deux routes de vote — celle du catalogue et celle de la page soirée
+écrivent la même ligne, elles doivent compter la même chose. Elle compte les votes déjà
+placés par ce membre, dans cette soirée, **sur ce type**, et refuse le vote de trop en
+**409** avec une phrase qui dit quoi faire.
+
+Le comptage et l'écriture tiennent dans une transaction ouverte par un verrou consultatif
+`pg_advisory_xact_lock`, haché sur `membre : soirée : type`. Sans lui, deux votes partis en
+même temps se comptent l'un l'autre comme absents, passent tous les deux le contrôle, et le
+membre place un neuvième véhicule. Le verrou ne gêne personne d'autre : deux membres, ou le
+même sur l'autre type, ne hachent pas la même clé.
 
 #### Les ex æquo, tirés au sort à la fermeture
 
-Les places retenues tombent souvent au milieu d'une égalité : quatre véhicules à deux
-voix pour les deux dernières places. Le classement départageait ces ex æquo par ordre
-d'engagement, ce qui revenait à donner les places à celui qui avait cliqué le premier,
-des heures avant que le vote ne dise quoi que ce soit. **À voix égales, c'est le sort qui
-tranche** — et seulement entre égaux : dans l'exemple, deux des quatre mods à deux voix
-passent, et les trois mods à une voix restent derrière, quel que soit leur tirage. Le
-classement se fait d'abord sur les voix ; le tirage ne départage jamais que des égaux.
+Les places retenues tombent souvent au milieu d'une égalité : quatre véhicules à deux voix
+pour les deux dernières places. Départager par ordre d'engagement, comme le classement le
+faisait, revenait à donner les places à celui qui avait cliqué le premier, des heures avant
+que le vote ne dise quoi que ce soit. **À voix égales, c'est le sort qui tranche** — et
+seulement entre égaux : dans l'exemple, deux des quatre mods à deux voix passent, et les
+mods à une voix restent derrière quel que soit leur tirage.
 
 Le tirage a lieu **à la fermeture du vote**, pas à l'engagement : tirer à l'engagement
-reviendrait à connaître le vainqueur d'une égalité avant que le premier vote soit placé.
-Tant que le vote est ouvert, `SoireeMod.tieBreak` vaut `NULL` — le tirage n'a pas encore
-eu lieu, et le classement affiché n'est de toute façon qu'une projection. Ses ex æquo s'y
-rangent par ordre d'engagement (`RANKING_ORDER`, `nulls: "last"`) : un ordre d'attente,
-qui ne décide de rien, et la page le dit sous la barre quand l'égalité tombe pile à la
-coupe — « la place se tire au sort à la fermeture du vote » (`hasTieAtCut`).
+reviendrait à connaître le vainqueur d'une égalité avant le premier vote. Tant que le vote
+est ouvert, `SoireeMod.tieBreak` vaut `NULL` et le classement affiché n'est qu'une
+projection ; ses ex æquo s'y rangent par ordre d'engagement — un ordre d'attente, qui ne
+décide de rien, et la page le dit sous la barre quand l'égalité tombe pile à la coupe.
 
-Le tirage est écrit par [lib/soirees/tie-break.ts](lib/soirees/tie-break.ts)
-(`drawTieBreaks`), en tête de chaque lecture de classement : un seul `UPDATE`, une valeur
-`random()` par ligne, sous condition que le vote soit fermé et que le tirage n'ait pas
-déjà eu lieu. C'est donc la première lecture qui suit la fermeture qui tire, et **une
-seule fois** — deux lectures simultanées ne tirent pas deux fois, la seconde attend les
-lignes verrouillées puis ne trouve plus rien à `NULL`. Pas de tâche planifiée : le vote
-ferme 30 min avant une heure quelconque, un cron quotidien ne serait jamais à l'heure.
+`drawTieBreaks` ([lib/soirees/tie-break.ts](lib/soirees/tie-break.ts)) écrit le tirage en
+tête de chaque lecture de classement : un seul `UPDATE`, une valeur `random()` par ligne,
+sous condition que le vote soit fermé et que le tirage n'ait pas déjà eu lieu. C'est donc la
+première lecture qui suit la fermeture qui tire, et **une seule fois** — deux lectures
+simultanées ne tirent pas deux fois, la seconde attend les lignes verrouillées puis ne
+trouve plus rien à `NULL`. Pas de tâche planifiée : le vote ferme 30 min avant une heure
+quelconque, un cron quotidien ne serait jamais à l'heure.
 
 Rejouer le tirage à chaque affichage serait le vrai défaut : la fermeture du vote est
-exactement l'instant où s'ouvre le retrait des fichiers retenus, et la liste changerait
-de mods pendant que le groupe télécharge. La valeur est donc en base, et c'est elle que
-lisent les deux tris — celui de PostgreSQL (`RANKING_ORDER`) et celui de la page, qui
-reclasse en direct sur les votes optimistes (`rankSection`, via `ApiSoireeMod.tieBreak`).
-Les deux retiennent ainsi exactement les mêmes mods.
+exactement l'instant où s'ouvre le retrait des fichiers retenus, et la liste changerait de
+mods pendant que le groupe télécharge. La valeur est donc en base, et c'est elle que lisent
+les deux tris — celui de PostgreSQL (`RANKING_ORDER`) et celui de la page, qui reclasse en
+direct sur les votes optimistes (`rankSection`). Les deux retiennent exactement les mêmes
+mods.
 
 Le tirage appartient à l'engagement, donc à la soirée : un mod malchanceux un soir repart
-avec une autre chance le suivant. `createdAt` ferme encore le tri, pour l'improbable
-égalité de tirage.
+avec une autre chance le suivant.
 
-#### Le refus, côté serveur
-
-`castVote` ([lib/soirees/vote.ts](lib/soirees/vote.ts)) porte la règle pour les deux
-routes de vote — celle du catalogue et celle de la page soirée écrivent la même ligne,
-elles doivent compter la même chose. Elle compte les votes déjà placés par ce membre,
-dans cette soirée, **sur ce type**, et refuse le vote de trop en 409 avec une phrase qui
-dit quoi faire : un quota plein se libère en retirant un vote.
-
-Le comptage et l'écriture tiennent dans une transaction ouverte par un verrou consultatif
-`pg_advisory_xact_lock`, haché sur `membre : soirée : type`. Sans lui, deux votes partis
-en même temps se comptent l'un l'autre comme absents, passent tous les deux le contrôle,
-et le membre place un neuvième véhicule — la contrainte `@@unique([userId, soireeModId])`
-ne dit rien de ce cas-là, ce sont deux mods différents. Le verrou ne gêne personne
-d'autre : deux membres, ou le même sur l'autre type, ne hachent pas la même clé.
-
-Re-voter pour un mod déjà voté reste idempotent et ne se compare à aucun quota : ce
-vote-là est déjà dedans.
-
-#### Les deux classements, côté page
-
-La page soirée affiche un classement par type — les places de véhicule et celle du
-circuit ne se disputent pas. `rankSection` (même fichier que les quotas) trie, numérote
-et marque ce qui est retenu ; un liseré ambre tient la ligne de coupe, et la section
-annonce « tes votes 6/8 ».
-
-Le tri est refait côté page, alors que la base le rend déjà trié (`RANKING_ORDER`) :
-c'est que le membre vote sans recharger. Ses votes bougent avant la réponse du serveur,
-et la barre des retenus doit bouger avec eux, sinon elle dit le contraire du bouton qu'on
-vient de cliquer. Les scores des **autres**, eux, n'arrivent qu'au rechargement, comme
-les compteurs. Le vote vit dans une ligne du classement mais le quota se compte sur toute
-la soirée : `useVote` prévient donc la page à chaque bascule (`onChange`), y compris sur
-la valeur optimiste et sur son annulation.
-
-Depuis le catalogue ou une fiche, où rien n'affiche de réserve, le refus arrive sous le
-bouton — c'est la même phrase que celle du bouton éteint de la page soirée.
-
-L'historique (US-I1) ne montre plus le haut d'un classement mêlé mais ce que chaque
-soirée a retenu : les véhicules dans `pastSoireeInclude`, le circuit par une requête à
-part (`retainedTracks`, [lib/soirees/past.ts](lib/soirees/past.ts)). Prisma ne sait pas
-prendre « les huit premiers véhicules **et** le premier circuit » dans une seule relation,
-et un `take` sur le classement mêlé aurait affiché une soirée sans son circuit — le seul
-mod dont il n'y en a qu'un.
-
-### L'heure du soir : fermeture du vote, fenêtre de retrait
+#### Les trois phases
 
 Le vote ne peut pas rester ouvert jusqu'au départ — il faut le temps d'installer ce qui
 sort. Trois moments, dans [lib/soirees/phase.ts](lib/soirees/phase.ts) :
-
-```
-… vote ouvert …┃ 30 min ┃ ── départ ── 2 h ──┃ … archive …
-               ▲                             ▲
-         vote clos,                    retrait clos
-       retrait ouvert
-```
 
 | Phase | Quand | Ce qui est possible |
 | --- | --- | --- |
@@ -495,92 +619,146 @@ Un seul basculement, pas deux réglages qui pourraient se croiser : **ce qui n'e
 votable est téléchargeable**. Et le retrait dure deux heures après le départ, pour le
 retardataire et pour celui dont l'installation a raté.
 
-À ne pas confondre avec « la soirée en cours » (`currentSoiree`), qui se compte en jours :
-la soirée de ce soir reste la soirée en cours jusqu'au lendemain, alors que son vote a
-fermé à 20 h 30. Ce sont deux bornes différentes, et elles répondent à deux questions
-différentes.
+À ne pas confondre avec « la soirée en cours », qui se compte en **jours** : la soirée de ce
+soir le reste jusqu'au lendemain, alors que son vote a fermé à 20 h 30. Deux bornes
+différentes, deux questions différentes.
 
-Le serveur applique ces bornes partout où l'on écrit : les deux routes de vote (POST et
-DELETE — retirer un vote après la fermeture déplacerait le classement autant qu'en
-ajouter un), l'engagement d'un mod, et son retrait. Le retrait fait exception pour les
-admins : la modération (cahier §2.6) doit pouvoir faire disparaître un contenu à
-n'importe quelle heure.
+Le serveur applique ces bornes partout où l'on écrit : les deux routes de vote (POST **et**
+DELETE — retirer un vote après la fermeture déplacerait le classement autant qu'en ajouter
+un), l'engagement, et le désengagement. Ce dernier fait exception pour les admins : la
+modération doit pouvoir faire disparaître un contenu à n'importe quelle heure.
 
 Côté page, la soirée porte une horloge : `now` descend du rendu serveur — sans quoi le
-premier rendu du navigateur différerait — puis la page prend le relais toutes les 15 s.
-La bascule se voit donc sans rechargement : les boutons de vote s'éteignent, le panneau
-de retrait apparaît. La fiche détail, elle, calcule sa raison au rendu (`voteClosedReason`)
-et laisse le serveur reprendre un onglet resté ouvert. Le catalogue garde son bouton : le
-refus arrive alors sous la carte, avec l'heure de fermeture.
+premier rendu du navigateur différerait — puis la page prend le relais toutes les 15 s. La
+bascule se voit donc sans rechargement.
 
-### Le retrait des mods retenus
+#### Le retrait des mods retenus
 
 Un bouton, et les 8 véhicules + le circuit partent l'un après l'autre
 ([components/SoireeDownloadPanel.tsx](components/SoireeDownloadPanel.tsx)).
 
-Pas d'archive construite par le serveur : `Mod.fileUrl` est l'URL publique de l'objet sur
-Cloudflare R2, et le navigateur va la chercher directement — comme au dépôt, le fichier ne
-transite jamais par l'application. Un `.zip` de neuf mods aurait fait passer jusqu'à 1 Go
-par fichier dans une fonction Vercel qui plafonne bien en dessous, en temps comme en
-volume, pour un budget d'hébergement nul (cahier §1). Le « d'un coup » se joue donc côté
-navigateur.
+Pas d'archive construite par le serveur : `Mod.fileUrl` est l'URL publique de l'objet R2, et
+le navigateur va la chercher directement — comme au dépôt, le fichier ne transite jamais par
+l'application. Un `.zip` de neuf mods aurait fait passer jusqu'à 1 Go par fichier dans une
+fonction Vercel qui plafonne bien en dessous, en temps comme en volume, pour un budget
+d'hébergement nul. Le « d'un coup » se joue donc côté navigateur — d'où deux détails qui n'en
+sont pas : les clics sont **espacés** (lancés dans la même boucle, les navigateurs n'en
+retiennent qu'un), et le panneau prévient que le navigateur demandera l'autorisation de
+télécharger plusieurs fichiers.
 
-D'où deux détails qui n'en sont pas : les clics sont **espacés** (lancés dans la même
-boucle, les navigateurs n'en retiennent qu'un), et le panneau prévient que le navigateur
-demandera l'autorisation de télécharger plusieurs fichiers — sans la phrase, un refus
-distrait ressemblerait à une panne du bouton.
+Les mods retenus dont le fichier manque ou a expiré ne sont pas passés sous silence : ils
+sont listés avec leur lien externe. Une soirée où trois voitures sur huit n'ont pas été
+déposées doit se voir avant le départ, pas se découvrir au moment de rouler. Le dépôt reste
+d'ailleurs ouvert pendant toute la fenêtre — c'est justement le moment où l'on s'aperçoit
+qu'un fichier manque.
 
-Les mods retenus dont le fichier manque ou a expiré (cahier §2.7 : 24 h) ne sont pas
-passés sous silence : ils sont listés avec leur lien externe. Une soirée où trois voitures
-sur huit n'ont pas été déposées doit se voir avant le départ, pas se découvrir au moment
-de rouler. Le dépôt, lui, reste ouvert pendant toute la fenêtre — c'est justement le
-moment où l'on s'aperçoit qu'un fichier manque.
+#### L'historique
 
-## Stockage des images (US-B2)
+L'historique ne montre pas le haut d'un classement mêlé mais **ce que chaque soirée a
+retenu** : les véhicules dans `pastSoireeInclude`, le circuit par une requête à part
+(`retainedTracks`, [lib/soirees/past.ts](lib/soirees/past.ts)). Prisma ne sait pas prendre
+« les huit premiers véhicules **et** le premier circuit » dans une seule relation, et un
+`take` sur le classement mêlé aurait affiché une soirée sans son circuit — le seul mod dont
+il n'y en a qu'un. Chaque fiche affiche de son côté les soirées où elle a tourné
+([lib/mods/played.ts](lib/mods/played.ts)).
 
-Les images d'aperçu des mods vont dans un bucket Supabase Storage nommé `mod-images`,
-en **public** : `Mod.imageUrl` stocke une URL directement affichable, sans signature à
-renouveler. Le bucket doit exister (Storage → New bucket → `mod-images`, coché public).
+### Fichiers de mod
 
-L'upload passe toujours par `POST /api/uploads/mod-image`, côté serveur, avec la clé
-secrète (`sb_secret_…`) — elle ne doit jamais être exposée au navigateur. La route vérifie la
-session, le type MIME et la taille, puis renvoie l'URL publique que le formulaire place
-dans `imageUrl`. `POST /api/mods` refuse toute `imageUrl` qui ne vient pas de ce bucket.
+Le lien externe reste la méthode privilégiée. L'upload sert aux mods difficiles à héberger
+ailleurs, et il est **temporaire par construction** (cahier §2.7).
 
-Le host Supabase est ajouté aux `images.remotePatterns` de `next.config.ts` à partir de
-`SUPABASE_URL` — sans cette variable, `next/image` refusera d'afficher les vignettes.
-`next.config.ts` n'est évalué qu'au démarrage : après avoir ajouté ou changé
-`SUPABASE_URL`, **redémarre `next dev`**, un rechargement de `.env.local` ne suffit pas.
+**Formats acceptés** : `.zip`, `.rar`, `.7z`. **Plafond par fichier** : réglable de 20 Mo à
+1 Go depuis l'espace admin (1 Go par défaut).
 
-### Compression à l'upload
+**Le dépôt suppose un engagement.** Un fichier ne peut être déposé que sur un mod **engagé
+dans la soirée en cours** du serveur du membre. La raison tient au §2.7 : le fichier ne vit
+que 24 h. Le déposer sur une fiche que personne n'a mise au programme, c'est le voir expirer
+sans avoir servi. La route refuse en **409** — pas 403 : le membre a bien le droit, c'est la
+fiche qui n'est pas dans l'état voulu, et un clic sur « Engager » le répare. C'est aussi
+cette règle qui rend tenable le plafond de 1 Go : ce n'est jamais tout le catalogue qui pèse
+à la fois, mais la poignée de mods d'une soirée, et pendant 24 h au plus.
 
-Formats acceptés en entrée : **JPG, PNG et WebP** (`image/jpeg`, `image/jpg`,
-`image/png`, `image/webp`). Le bucket n'autorise en écriture que `image/webp`,
-`image/png` et `image/jpeg`.
+**Le trajet du fichier.** `POST /api/mods/[id]/upload` valide, réserve la place et renvoie
+une **URL pré-signée** ; le navigateur écrit directement dans R2 ; `PUT` confirme. Le
+fichier ne transite jamais par une fonction Vercel.
 
-Les images sont ré-encodées côté serveur avant d'atteindre le bucket
-([lib/mods/image-processing.ts](lib/mods/image-processing.ts)) : réduction à 1600 px sur
-le plus grand côté, WebP qualité 80, métadonnées supprimées. Sur une photo de
-2048×2048, ça donne ~79 % d'octets en moins sans différence visible — les deux endroits
-où l'image s'affiche sont une vignette de 52 px et une bande d'aperçu de 700 px de
-large au plus, et `next/image` réduit encore derrière.
+À la confirmation, le fichier déposé est **relu** : taille réelle, et surtout **signature des
+premiers octets** ([lib/mods/archive.ts](lib/mods/archive.ts)). L'extension et le type MIME
+viennent tous deux du client — renommer `charge.exe` en `mod.zip` suffit à les faire mentir
+les deux. Les premiers octets, eux, ne se renomment pas. Un fichier qui n'est pas l'archive
+qu'il annonce est retiré du bucket et refusé en **415**.
 
-L'orientation EXIF est appliquée avant que les métadonnées soient retirées, sinon les
-photos de téléphone ressortent couchées. Si le ré-encodage pèse plus lourd que
-l'original — possible sur un PNG déjà minuscule, ou sur un WebP déjà optimisé —
-l'original est conservé ; le JPEG fait exception et reste toujours normalisé, à cause de
-l'EXIF.
+**Le quota global du bucket.** Le plafond par fichier borne *un* envoi, pas leur somme.
+`MAX_TOTAL_STORAGE_BYTES` (10 Go) borne ce que le bucket porte en tout, pour rester dans le
+palier gratuit de Cloudflare. L'occupation est mesurée **sur le bucket** (`ListObjectsV2`),
+pas déduite de la base : c'est ce que Cloudflare facture, et ça comprend ce que la base
+ignore — les objets d'envois abandonnés, ou qu'un retrait raté a laissés.
 
-## Espace admin (US-K1, US-K2, US-K3)
+**La réservation.** Un objet n'apparaît dans le bucket qu'une fois l'envoi *terminé* —
+jusqu'à une heure pour 1 Go. Pendant ce temps un envoi en vol ne pèse rien de mesurable, et
+deux membres qui démarrent ensemble passeraient tous les deux le même contrôle. D'où
+`ModFileReservation` : une ligne posée à la signature, retirée à la confirmation, comptée
+dans le total tant que l'envoi est en vol. Les lignes périmées sont ignorées à la lecture et
+ramassées par le balayage horaire. La réservation lit puis écrit sans verrou : deux demandes
+rigoureusement simultanées peuvent réserver toutes les deux. C'est assumé — la fenêtre se
+compte en millisecondes et le dépassement possible est borné par un fichier, là où sans
+réservation du tout elle durait une heure.
 
-### Le garde de rôle (US-K1)
+Quand la place manque, la route refuse en **507** avec un message qui dit combien il reste et
+que ça se libère tout seul.
 
-Le contrôle est un garde appelé par chaque route — `requireAdmin` dans
-[lib/admin/guard.ts](lib/admin/guard.ts) — et non un `proxy.ts` (l'ex-`middleware.js`,
-renommé en Next.js 16). La documentation de `proxy` prévient qu'il ne doit pas dépendre
-de modules partagés : il est optimisé pour être déployé sur le CDN, loin de la base, et
-c'est en base que vit le rôle. Le garde le relit donc à chaque requête, comme partout
-ailleurs dans le projet — un changement de rôle prend effet tout de suite.
+**L'expiration.** `sweepExpiredModFiles` ([lib/mods/expired-files.ts](lib/mods/expired-files.ts))
+cherche les fiches dont `fileUploadedAt` dépasse 24 h et dont `fileUrl` est encore
+renseigné, retire l'objet de R2, **puis** vide les deux colonnes. L'ordre n'est pas
+indifférent : vider `fileUrl` d'abord laisserait, si le retrait échoue, un objet que plus
+rien ne désigne — donc introuvable au balayage suivant, et téléchargeable par qui en a gardé
+l'URL. En cas d'échec, la fiche est laissée en l'état et repassera au tour suivant.
+
+Le même balayage emporte les fichiers des mods **non retenus** dès qu'une soirée est
+tranchée (`sweepUnretainedModFiles`, [lib/soirees/closing.ts](lib/soirees/closing.ts)) :
+sept voitures sur quinze ne serviront pas, et elles occupent le bucket pour rien pendant que
+le groupe télécharge les autres.
+
+Entre l'échéance et le balayage il s'écoule jusqu'à une heure. Pendant ce temps `fileUrl`
+est encore renseigné, mais le panneau affiche « EXPIRÉ », ne propose plus le téléchargement,
+et rouvre le dépôt.
+
+**Dans tous les cas, la fiche ne bouge pas** : nom, lien, description, tags, votes,
+historique. Vider le bucket fait disparaître des fichiers, jamais du catalogue.
+
+### Images d'aperçu
+
+Bucket Supabase Storage `mod-images`, en **public** : `Mod.imageUrl` stocke une URL
+directement affichable, sans signature à renouveler.
+
+L'upload passe toujours par `POST /api/uploads/mod-image`, côté serveur, avec la clé secrète
+`sb_secret_…` — elle ne doit jamais atteindre le navigateur. La route vérifie la session, le
+type MIME et la taille, puis renvoie l'URL publique. `POST /api/mods` refuse toute
+`imageUrl` qui ne vient pas de ce bucket.
+
+**Compression à l'upload** ([lib/mods/image-processing.ts](lib/mods/image-processing.ts)) :
+JPG, PNG et WebP acceptés en entrée, réduction à 1600 px sur le plus grand côté, WebP
+qualité 80, métadonnées supprimées. Sur une photo de 2048×2048, ~79 % d'octets en moins sans
+différence visible — les deux endroits où l'image s'affiche sont une vignette de 52 px et
+une bande de 700 px au plus. L'orientation EXIF est appliquée **avant** que les métadonnées
+soient retirées, sinon les photos de téléphone ressortent couchées. Si le ré-encodage pèse
+plus lourd que l'original (PNG déjà minuscule, WebP déjà optimisé), l'original est conservé ;
+le JPEG fait exception et reste toujours normalisé, à cause de l'EXIF.
+
+**Le nettoyage des orphelines.** Une image est déposée *avant* que la fiche existe. Deux
+mécanismes évitent qu'elle reste pour rien : la **suppression immédiate** quand le formulaire
+remplace ou retire une image déjà envoyée (`DELETE /api/uploads/mod-image`, qui refuse en 409
+toute image déjà référencée par une fiche), et un **balayage de rattrapage** qui liste le
+bucket, soustrait les `Mod.imageUrl` connus et supprime le reste au-delà d'un délai de grâce
+de 6 h — ce délai protège les formulaires encore ouverts, et le balayage rattrape l'onglet
+fermé sans publier, cas qu'aucun appel client ne peut couvrir.
+
+### Espace admin
+
+**Le garde de rôle** est appelé par chaque route — `requireAdmin`
+([lib/admin/guard.ts](lib/admin/guard.ts)) — et non porté par `proxy.ts` : la documentation
+de `proxy` prévient qu'il ne doit pas dépendre de modules partagés, il est optimisé pour être
+déployé sur le CDN, loin de la base, et c'est en base que vit le rôle.
 
 ```ts
 const guard = await requireAdmin();
@@ -588,321 +766,166 @@ if (!guard.ok) return guard.response;   // 401 si déconnecté, 403 sinon
 guard.actor;                            // { id, role }
 ```
 
-Il couvre `/api/admin/*` (`config`, `deletions`) et les deux suppressions réservées à
-l'admin décrites plus bas.
+[app/admin/layout.tsx](app/admin/layout.tsx) fait la même vérification côté écrans et renvoie
+un non-admin **au catalogue**, pas à la page de connexion : il est bien connecté, c'est cette
+section-là qui ne le concerne pas. Une page ajoutée sous `/admin` est donc protégée sans que
+personne n'ait à y penser. L'onglet « Admin » de l'en-tête n'apparaît que pour un admin, via
+`GET /api/me` — une route volontairement hors de `/api/admin/*`, qui répond
+`{ isAdmin: false }` plutôt qu'un 403. Masquer un lien ne protège rien ; ce sont le layout et
+les gardes qui refusent l'accès.
 
-Côté écrans, [app/admin/layout.tsx](app/admin/layout.tsx) fait la même vérification et
-renvoie un non-admin au catalogue — pas à la page de connexion : il est bien connecté,
-c'est cette section-là qui ne le concerne pas. Le layout porte aussi l'en-tête sombre
-« ESPACE ADMIN », si bien qu'une page ajoutée sous `/admin` est protégée sans que
-personne n'ait à y penser.
+**Ce que l'écran permet** : modérer les fiches et les tags, supprimer une soirée, lire le
+journal, voir les membres et par quel serveur ils sont entrés, ouvrir ou fermer l'accès à un
+serveur Discord et régler son webhook, lire l'occupation du bucket et le vider, régler la
+taille maximale des uploads.
 
-L'onglet « Admin » de l'en-tête n'apparaît que pour un admin. Le rôle n'étant pas dans
-la session, `useIsAdmin` le demande à `GET /api/me` — une route volontairement hors de
-`/api/admin/*`, qui répond `{ isAdmin: false }` plutôt qu'un 403. Masquer un lien ne
-protège rien ; c'est le layout et les gardes qui refusent l'accès.
+**Le journal des suppressions.** Une suppression est irréversible et ne laisse rien derrière
+elle ; sans `DeletionLog`, « qui a effacé la fiche qu'on cherche ? » n'aurait aucune réponse.
+Trois choix s'y lisent :
 
-### Modération et journal (US-K2)
-
-| Route | Réservée à | Emporte avec elle |
-| --- | --- | --- |
-| `DELETE /api/mods/[id]` | auteur **ou** admin (US-B4) | tags associés, votes, engagements |
-| `DELETE /api/tags/[name]` | admin | les associations `ModTag` — les fiches restent |
-| `DELETE /api/soirees/[id]` | admin | les engagements et les votes de la soirée |
-
-Les deux nouvelles suppressions étendent les routes de ressource existantes plutôt que
-d'ouvrir un `/api/admin/tags/…` parallèle : c'est la même ressource, avec une exigence
-de rôle en plus.
-
-Supprimer un tag est un acte de modération, pas d'édition : le vocabulaire est alimenté
-librement par les membres (cahier §2.2), et l'autocomplétion (US-C1) recopie ensuite les
-fautes de frappe de fiche en fiche. Supprimer une soirée sert surtout à réparer une date
-fautive — y compris celle en cours, qui capte alors les votes de tout le monde ; la
-suivante prend sa place sans qu'on ait rien à basculer, `currentSoiree` la déduit de la
-date.
-
-Chaque suppression écrit une ligne dans `DeletionLog` (`recordDeletion`,
-[lib/admin/deletion-log.ts](lib/admin/deletion-log.ts)), affichée dans le journal de
-`/admin`. Trois choix s'y lisent :
-
-- **le nom est recopié**, pas référencé : la ligne effacée ne peut plus le donner, et
-  `targetId` ne pointe donc sur rien — c'est ce qui rattache l'entrée à un lien mort
-  partagé ailleurs (« /mods/xyz renvoie 404 » : le journal dit pourquoi) ;
+- **le nom est recopié**, pas référencé — la ligne effacée ne peut plus le donner, et
+  `targetId` ne pointe donc sur rien : c'est ce qui rattache l'entrée à un lien mort partagé
+  ailleurs (« /mods/xyz renvoie 404 » : le journal dit pourquoi) ;
 - **les suppressions d'un auteur sur sa propre fiche y figurent aussi**, marquées
-  `asAdmin: false`. Un journal qui n'en montrerait que la moitié n'expliquerait pas
-  l'autre ;
-- **l'écriture du journal n'échoue jamais bruyamment** : le contenu est déjà parti, une
-  trace manquante ne doit pas ressortir en 500. L'échec reste dans les logs serveur.
+  `asAdmin: false`. Un journal qui n'en montrerait que la moitié n'expliquerait pas l'autre ;
+- **l'écriture du journal n'échoue jamais bruyamment** : le contenu est déjà parti, une trace
+  manquante ne doit pas ressortir en 500.
 
-### Taille maximale des uploads (US-K3)
+**Les réglages** vivent dans une table clé/valeur `AppConfig` : un réglage de plus ne doit pas
+coûter une migration. La valeur est stockée en texte, et c'est
+[lib/admin/settings.ts](lib/admin/settings.ts) qui sait la lire et porte les bornes. Une clé
+absente n'est pas une anomalie — la table ne contient que ce que quelqu'un a réellement
+changé, et le code retombe sur sa valeur par défaut ; une valeur devenue illisible est
+traitée pareil, plutôt que de faire échouer un upload sur un réglage cassé. Le plafond porte
+sur le **fichier du mod**, pas sur l'image d'aperçu, qui garde sa limite en dur : elle est
+ré-encodée avant stockage, sa borne est celle de ce que `sharp` doit accepter de lire.
 
-Table clé/valeur `AppConfig` : le backlog demande « table/clé de configuration », et un
-réglage de plus ne doit pas coûter une migration. La valeur est stockée en texte, c'est
-[lib/admin/settings.ts](lib/admin/settings.ts) qui sait la lire et qui porte les bornes
-— 20 à 200 Mo, 100 par défaut. Une clé absente n'est pas une anomalie : la table ne
-contient que ce que quelqu'un a réellement changé, et le code retombe sur sa valeur par
-défaut. Une valeur devenue illisible est traitée pareil, plutôt que de faire échouer un
-upload sur un réglage cassé.
+**Le vidage forcé.** `DELETE /api/admin/storage` vide le bucket entièrement, sans condition
+d'âge, et remet à zéro les `fileUrl`. C'est le levier de secours : quota atteint et pas envie
+d'attendre, ou tâche planifiée jamais mise en place. Il porte sur le **bucket**, pas sur les
+fiches — les objets abandonnés entre la signature d'une URL et sa confirmation n'apparaissent
+dans aucune colonne, et ce sont eux qu'une reprise en main a le plus besoin d'emporter. Le
+bouton demande confirmation en deux temps, sans `window.confirm` : le premier clic transforme
+le bouton en une phrase qui dit ce qui va disparaître, le second exécute.
 
-Le réglage porte sur le **fichier du mod** — le .zip du cahier §2.2 — et pas sur l'image
-d'aperçu (US-B2), qui garde sa limite en dur : elle est ré-encodée avant stockage, sa
-borne est celle de ce que `sharp` doit accepter de lire, pas une question d'espace
-disque.
+### Notifications Discord
 
-`maxModFileBytes()` ([lib/admin/config.ts](lib/admin/config.ts)) est la lecture que les
-routes d'upload du fichier de mod (US-H1/H2) doivent faire. **Ces routes n'existent pas
-encore** : la valeur est administrable et persistée, mais rien ne la consomme tant que
-l'Epic H n'est pas faite. C'est le seul point du backlog K qui reste en attente, et il
-attend une autre US.
+Le groupe vivait sur des liens éparpillés dans Discord, et tout a été rapatrié ici. La
+notification est le **chemin de retour** — le salon reste l'endroit où l'on *apprend* qu'il se
+passe quelque chose, sans redevenir celui où on en discute. Trois annonces : une soirée
+programmée, une soirée annulée, un mod proposé.
 
-## Notifications Discord (US-L1, US-L2)
+L'annulation n'est pas dans le backlog, qui ne parle que de la création. Elle y a pourtant
+plus sa place encore : quelqu'un a peut-être déjà bloqué sa soirée, et une soirée qui
+disparaît sans un mot se découvre en rouvrant une page vide. Elle ne part que pour une soirée
+**qui n'a pas encore commencé**, et elle est la seule des trois **sans lien** : la page a
+disparu avec la soirée, et un titre cliquable qui mène à un 404 est pire que pas de lien.
 
-Le cahier §1 donne la raison d'être de l'application : le groupe vivait sur des liens
-éparpillés dans Discord, et tout a été rapatrié ici. La notification est le chemin de
-retour — le salon reste l'endroit où l'on **apprend** qu'il se passe quelque chose, sans
-redevenir celui où on en discute. Trois annonces : une soirée programmée et une soirée
-annulée (US-L1), un mod proposé (US-L2).
+**Un webhook, pas un bot** : un bot demanderait une application Discord, un jeton à faire
+tourner et un processus qui écoute. Il n'y a rien à écouter — l'application parle, Discord se
+contente de l'afficher.
 
-L'annulation n'est pas dans le backlog, qui ne parle que de la création. Elle y a
-pourtant plus sa place encore : quelqu'un a peut-être déjà bloqué sa soirée, et une
-soirée qui disparaît sans un mot se découvre en rouvrant une page vide. Elle ne part
-que pour une soirée **qui n'a pas encore commencé** — trier les anciennes est du
-rangement, et le groupe n'a rien à en apprendre. Le seuil est l'instant présent, pas le
-début du jour de `currentSoiree` : une soirée dont l'heure est passée a eu lieu, on ne
-l'annule plus à personne. Elle est aussi la seule des trois **sans lien** : la
-page a disparu avec la soirée, et un titre cliquable qui mène à un 404 est pire que pas
-de lien.
+Trois modules, trois responsabilités : [lib/discord/webhook.ts](lib/discord/webhook.ts) le
+transport (il ne sait qu'envoyer et **ne lève jamais** — la soirée ou la fiche est déjà écrite
+quand il part, un salon injoignable n'a pas à ressortir en 500 chez le membre ; délai de garde
+de 5 s), [lib/discord/notify.ts](lib/discord/notify.ts) ce que les messages racontent,
+[lib/admin/guilds.ts](lib/admin/guilds.ts) à quel salon les envoyer.
 
-Un webhook, pas un bot : le backlog laisse le choix, et un bot demanderait une
-application Discord, un jeton à faire tourner et un processus qui écoute. Il n'y a rien
-à écouter — l'application parle, Discord se contente de l'afficher.
+**Après la réponse, pas pendant.** Les routes de création appellent leur notification dans un
+`after()` : le membre voit sa fiche ou sa soirée sans attendre Discord, et l'envoi survit
+quand même à la fin de la requête, y compris en serverless.
 
-Trois modules, trois responsabilités :
+**Rien de ce qui part ne peut mentionner personne.** Le contenu vient de champs saisis par les
+membres, et un webhook a le droit de réveiller tout un serveur : chaque envoi porte
+`allowed_mentions: { parse: [] }`. Un `@everyone` dans un nom de fiche s'affiche, et ne
+notifie rien.
 
-- [lib/discord/webhook.ts](lib/discord/webhook.ts) — le transport. Il ne sait qu'envoyer,
-  et **ne lève jamais** : la soirée ou la fiche est déjà écrite quand il part, un salon
-  injoignable ou un webhook supprimé n'ont pas à ressortir en 500 chez le membre.
-  L'échec reste dans les logs serveur, seul endroit d'où il puisse être corrigé. Un
-  délai de garde de 5 s empêche une invocation de rester ouverte sur un Discord muet ;
-- [lib/discord/notify.ts](lib/discord/notify.ts) — ce que les messages racontent ;
-- [lib/admin/guilds.ts](lib/admin/guilds.ts) — à quel salon les envoyer.
+**Le lien du message** est fabriqué à partir de l'hôte par lequel la requête vient d'entrer,
+pas d'une variable d'environnement de plus : c'est exactement l'adresse que le membre a sous
+les yeux. Si elle est illisible, le message part sans lien plutôt que pas du tout.
 
-**Après la réponse, pas pendant.** Les deux routes de création appellent leur
-notification dans un [`after()`](app/api/mods/route.ts) : le membre voit sa fiche ou sa
-soirée sans attendre que Discord réponde, et l'envoi survit quand même à la fin de la
-requête — `after` garde l'invocation ouverte, y compris en serverless.
-
-**Rien de ce qui part ne peut mentionner personne.** Le contenu vient de champs saisis
-par les membres — nom d'un mod, description, tags —, et un webhook a le droit de
-réveiller tout un serveur : chaque envoi porte donc `allowed_mentions: { parse: [] }`.
-Un `@everyone` dans un nom de fiche s'affiche, et ne notifie rien.
-
-**Le lien du message** est fabriqué à partir de l'hôte par lequel la requête vient
-d'entrer (`requestOrigin`), pas d'une variable d'environnement de plus : c'est
-exactement l'adresse que le membre a sous les yeux. Si elle est illisible, le message
-part sans lien plutôt que pas du tout.
-
-### Un salon par serveur (US-L2)
-
-Les annonces ne sont pas globales. Depuis que plusieurs serveurs ont accès, un webhook
-unique voudrait dire que le salon d'un groupe reçoit ce que fait l'autre — alors qu'ils
-ne se croisent nulle part ailleurs. `AuthorizedGuild` porte donc deux colonnes de plus
-(migration `20260901200000_guild_webhooks`) :
-
-- `webhookUrl` — le salon de ce groupe. Nul par défaut : ouvrir l'accès à un serveur ne
-  doit pas se mettre à écrire dans un salon dont personne n'a donné l'adresse ;
-- `notify` — l'interrupteur de ce salon, distinct de l'URL. Taire un groupe quelques
-  semaines ne doit pas coûter son adresse, qu'il faudrait retrouver ensuite.
-
-`guildWebhookUrl(guildId)` est la seule autorité sur « où envoyer », et répond `null`
-dans tous les cas où il n'y a rien à envoyer : pas de webhook, interrupteur fermé,
-serveur inconnu, base injoignable. Le salon est résolu **au moment de l'envoi** : couper
-les annonces d'un serveur ne rattrape pas ce qui est déjà parti, mais rien de ce qui est
-encore en vol ne passe outre.
-
-Qui est prévenu de quoi :
+**Un salon par serveur.** Depuis que plusieurs serveurs ont accès, un webhook unique voudrait
+dire que le salon d'un groupe reçoit ce que fait l'autre — alors qu'ils ne se croisent nulle
+part ailleurs. `AuthorizedGuild` porte donc `webhookUrl` (nul par défaut : ouvrir l'accès à un
+serveur ne doit pas se mettre à écrire dans un salon dont personne n'a donné l'adresse) et
+`notify`, l'interrupteur, distinct de l'URL — taire un groupe quelques semaines ne doit pas
+coûter son adresse, qu'il faudrait retrouver ensuite.
 
 | Annonce | Serveur visé | Pourquoi |
 | --- | --- | --- |
-| Soirée créée (US-L1) | celui de la soirée (`Soiree.guildId`) | Elle lui appartient déjà — un admin peut en programmer une pour un groupe dont il n'est pas. |
-| Soirée annulée (US-L1) | celui de la soirée | Même serveur, message inverse. Il dit ce qu'elle emportait — engagements et votes partent avec elle (`onDelete: Cascade`) — et rappelle que les fiches, elles, restent au catalogue. |
-| Mod proposé (US-L2) | celui de l'auteur | Un groupe est prévenu de ce que **les siens** proposent. Le catalogue reste commun : les autres verront la fiche, sans avoir été réveillés pour une proposition de gens qu'ils ne croiseront jamais en soirée. |
+| Soirée créée | celui de la soirée | Elle lui appartient déjà — un admin peut en programmer une pour un groupe dont il n'est pas. |
+| Soirée annulée | celui de la soirée | Même serveur, message inverse. Il dit ce qu'elle emportait, et rappelle que les fiches restent au catalogue. |
+| Mod proposé | celui de l'auteur | Un groupe est prévenu de ce que **les siens** proposent. Le catalogue reste commun : les autres verront la fiche, sans avoir été réveillés pour une proposition de gens qu'ils ne croiseront jamais en soirée. |
 
-Le serveur du déploiement fait exception, comme partout : il n'a pas de ligne en base —
-c'est ce qui rend impossible de se verrouiller dehors depuis l'espace admin — donc son
-salon reste dans `DISCORD_WEBHOOK_URL`, à côté de `DISCORD_GUILD_ID`. Pas de ligne, pas
-d'interrupteur non plus : pour lui, la présence de la variable **est** l'interrupteur.
+**Le webhook est un secret** — qui l'a peut écrire dans le salon. Trois conséquences : il **ne
+ressort jamais du serveur** (l'API n'en donne qu'une forme tronquée, assez pour vérifier
+lequel c'est, jamais assez pour le recopier — d'où un champ de saisie qui part toujours vide :
+on ne *modifie* pas un webhook, on en *pose un nouveau*) ; **l'URL est validée contre Discord**
+à l'entrée comme juste avant l'envoi, sans quoi l'espace admin deviendrait un moyen de faire
+poster le serveur vers n'importe quelle adresse, avec le contenu des fiches dedans ; et il se
+renseigne **à deux moments**, à l'ouverture de l'accès ou plus tard, parce que c'est rarement
+au même instant qu'on a l'identifiant du serveur et l'URL du webhook sous la main.
 
-### Le webhook est un secret
+### Tâches planifiées
 
-Qui l'a peut écrire dans le salon. Trois conséquences, toutes visibles dans le code :
+| Quoi | Où | Fréquence |
+| --- | --- | --- |
+| Fichiers expirés + réservations + mods non retenus | `pg_cron` → `/api/maintenance/expired-files` | horaire |
+| Idem, en filet | `vercel.json` | quotidien, 5 h |
+| Images orphelines | `vercel.json` | quotidien, 4 h |
+| Tirage au sort des ex æquo | à la première lecture après fermeture | — |
 
-- **il ne ressort jamais du serveur.** `ApiAuthorizedGuild.webhook` n'en porte qu'une
-  forme tronquée (`maskWebhookUrl` : « discord.com/…/1403926…/•••• »), assez pour
-  vérifier qu'il y en a un et lequel, jamais assez pour le recopier. Conséquence directe
-  sur l'écran : on ne **modifie** pas un webhook, on en **pose un nouveau** — le champ
-  de saisie part toujours vide, parce qu'il n'a rien à pré-remplir ;
-- **l'URL est validée contre Discord** (`isDiscordWebhookUrl`), à l'entrée comme juste
-  avant l'envoi. Sans ce contrôle, l'espace admin devient un moyen de faire poster le
-  serveur vers n'importe quelle adresse, avec le contenu des fiches dedans. Un admin est
-  de confiance ; une confiance n'a pas à être une capacité ;
-- **il se renseigne à deux moments** : à l'ouverture de l'accès (`POST /api/admin/guilds`,
-  champ facultatif) et plus tard depuis la ligne du serveur (`PATCH
-  /api/admin/guilds/[id]`). C'est rarement au même moment qu'on a l'identifiant du
-  serveur et l'URL du webhook sous la main.
+Les deux routes de maintenance exigent `Authorization: Bearer $CRON_SECRET` et refusent de
+tourner si le secret n'est pas défini. En local, on les appelle à la main avec le même
+en-tête.
 
-## Nettoyage des images orphelines
+**Pourquoi `pg_cron` et pas seulement Vercel** : le cahier §2.7 demande *plusieurs passages
+par jour* pour que la fenêtre réelle soit « 24 h » et non « 24 h + la période du job », or les
+crons Vercel sont limités à un déclenchement quotidien sur le plan Hobby. `pg_cron` tourne à
+l'heure, gratuitement. Le cron Vercel reste comme filet : tant que `pg_cron` n'est pas en
+place, les fichiers s'effacent quand même — avec une fenêtre de 24 à 48 h, ce qui vaut mieux
+que jamais.
 
-Une image est déposée dans le bucket *avant* que la fiche existe. Deux mécanismes
-évitent qu'elle y reste pour rien :
+**Pourquoi `pg_net` appelle l'application, pas Cloudflare.** Le cahier proposait que `pg_net`
+s'adresse directement à l'API R2. Supprimer un objet R2 demande une signature AWS SigV4 — une
+chaîne de HMAC-SHA256 à écrire en plpgsql, et surtout les identifiants Cloudflare recopiés
+dans la base. La base appelle donc la route de maintenance, qui a déjà le SDK et les clés : les
+identifiants R2 ne vivent qu'à un seul endroit. L'URL de l'application et le `CRON_SECRET`
+sont rangés dans **Supabase Vault**, pas en clair dans la définition du job : `cron.job` est
+une table lisible, et ce secret vaut droit de déclencher la maintenance.
 
-1. **Suppression immédiate** — quand le formulaire remplace ou retire une image déjà
-   envoyée, il appelle `DELETE /api/uploads/mod-image`. La route refuse (409) toute
-   image déjà référencée par une fiche, pour qu'on ne puisse pas vider l'aperçu d'un
-   mod existant par ce chemin.
-2. **Balayage de rattrapage** — `GET /api/maintenance/orphan-images` liste le bucket,
-   soustrait les `Mod.imageUrl` connus, et supprime le reste au-delà d'un délai de
-   grâce de 6 h (`ORPHAN_GRACE_MS`). Ce délai protège les formulaires encore ouverts.
-   C'est ce qui rattrape l'onglet fermé sans publier, cas qu'aucun appel client ne peut
-   couvrir.
+---
 
-La route de balayage exige `Authorization: Bearer $CRON_SECRET` et refuse de tourner
-si `CRON_SECRET` n'est pas défini. `vercel.json` la déclenche tous les jours à 4 h ;
-en local, on peut l'appeler à la main avec le même en-tête.
+## Déploiement
 
-## Expiration des fichiers de mod (US-H3)
+Vercel, branche `main`. Reporter toutes les variables de `.env.local.example` dans les
+réglages du projet, et ajouter l'URL de production aux redirections OAuth de l'application
+Discord (`https://<domaine>/api/auth/callback/discord`).
 
-Cahier §2.7 : **tout fichier déposé saute 24 h après son upload**, quelle que soit la
-date de la soirée à laquelle le mod est associé. La fiche, elle, n'est jamais supprimée
-— nom, lien, description, votes et historique restent.
+`vercel.json` déclare les deux crons quotidiens. Les migrations s'appliquent avec
+`npx prisma migrate deploy` (sur `DIRECT_URL`).
 
-`sweepExpiredModFiles` (`lib/mods/expired-files.ts`) cherche les fiches dont
-`fileUploadedAt` dépasse 24 h et dont `fileUrl` est encore renseigné, retire l'objet de
-Cloudflare R2, puis vide les deux colonnes. L'ordre n'est pas indifférent : l'objet part
-**avant** que la fiche l'oublie. Vider `fileUrl` d'abord laisserait, si le retrait
-échoue, un objet que plus rien ne désigne — donc introuvable au balayage suivant, et
-téléchargeable par qui en a gardé l'URL. En cas d'échec la fiche est laissée en l'état
-et repassera à l'heure suivante.
+Le client Prisma est instancié **paresseusement et mémorisé** ([lib/prisma.ts](lib/prisma.ts)) :
+`next build` importe les route handlers pour les analyser, et l'absence de `DATABASE_URL` au
+moment du build ne doit pas faire échouer la compilation — l'erreur doit tomber à la première
+requête. La mémorisation, elle, n'est pas un confort : sans elle, chaque accès de propriété
+ouvrirait son propre pool, jamais refermé, ce qui saturait le pooler Supabase pendant le
+build. Le pool est plafonné à 5 connexions par instance.
 
-`GET /api/maintenance/expired-files` expose ce balayage, avec le même contrat que celui
-des images orphelines : `Authorization: Bearer $CRON_SECRET`, et refus de tourner si le
-secret n'est pas défini.
+---
 
-### Le dépôt suppose un engagement
+## Conventions du code
 
-Un fichier ne peut être déposé que sur un mod **engagé dans la soirée en cours** — celle
-du serveur du membre (`soireeContext`). La raison tient au §2.7 : le fichier ne vit que
-24 h. Le déposer sur une fiche que personne n'a mise au programme, c'est le voir expirer
-sans avoir servi, et occuper le bucket pour rien entre-temps.
-
-`POST /api/mods/[id]/upload` refuse en **409** dans ce cas — pas 403 : le membre a bien
-le droit, c'est la fiche qui n'est pas dans l'état voulu, et un clic sur « Engager » le
-répare. Le panneau de la fiche ne montre alors pas de zone de dépôt mais la raison
-(`uploadDisabledReason`), sur le modèle de `voteDisabledReason`. Une fiche non engagée
-qui porte déjà un fichier garde son bouton de téléchargement, sans le ré-upload.
-
-C'est aussi cette règle qui rend tenable le plafond de **1 Go** (`MAX_MOD_FILE_MO`) : ce
-n'est jamais tout le catalogue qui pèse à la fois, mais la poignée de mods d'une soirée,
-et pendant 24 h au plus.
-
-### Le quota global du bucket
-
-Le plafond d'US-K3 borne **un** envoi ; il ne borne pas leur somme. `MAX_TOTAL_STORAGE_BYTES`
-(10 Go) borne ce que le bucket porte en tout, pour rester dans le palier gratuit de
-Cloudflare.
-
-L'occupation est mesurée sur le bucket (`totalStoredBytes`, un `ListObjectsV2`) et non
-déduite de la base : c'est ce que Cloudflare facture, et ça comprend ce que la base
-ignore — les objets d'envois abandonnés, ou qu'un retrait raté a laissés. Compter depuis
-les seules fiches sous-estimerait l'occupation, précisément quand on a besoin de la
-connaître.
-
-**La réservation.** Un objet n'apparaît dans le bucket qu'une fois l'envoi *terminé* —
-jusqu'à une heure pour 1 Go. Pendant ce temps un envoi en vol ne pèse rien de mesurable,
-et deux membres qui démarrent ensemble passeraient tous les deux le même contrôle. D'où
-`ModFileReservation` : une ligne posée à la signature, retirée à la confirmation, comptée
-dans le total tant que l'envoi est en vol. Les lignes périmées sont ignorées à la lecture
-et ramassées par le balayage horaire.
-
-La réservation lit puis écrit sans verrou : deux demandes rigoureusement simultanées
-peuvent lire le même total et réserver toutes les deux. C'est assumé — la fenêtre se
-compte en millisecondes, le dépassement possible est borné par un fichier, et le prix
-d'une transaction sérialisable ne se justifie pas contre ça. Sans réservation du tout, la
-fenêtre était d'une heure.
-
-`POST /api/mods/[id]/upload` refuse en **507** quand la place manque, avec un message qui
-dit combien il reste et que ça se libère tout seul — « c'est plein » n'indiquerait pas
-quoi faire. L'occupation n'est pas affichée sur la fiche : ça coûterait un appel à
-Cloudflare à chaque ouverture de page, pour une information qui n'est utile qu'au moment
-du refus.
-
-### La planification
-
-Elle vit dans la base, pas dans `vercel.json` : le cahier §2.7 demande **plusieurs
-passages par jour** pour que la fenêtre réelle soit « 24 h » et non « 24 h + la période
-du job », or les crons Vercel sont limités à un déclenchement quotidien sur le plan
-Hobby. `pg_cron` tourne à l'heure, gratuitement.
-
-`prisma/cron/expired-mod-files.sql` contient tout : les extensions, les secrets, la
-fonction et le job. À exécuter **une fois** dans l'éditeur SQL de Supabase — ce n'est
-pas une migration Prisma, parce que ça ne décrit pas le schéma dont l'application
-dépend et qu'un échec y bloquerait des migrations qui n'y sont pour rien.
-
-### Le vidage forcé, et le filet quotidien
-
-Deux choses tiennent la rétention en état, pour deux pannes différentes.
-
-`vercel.json` déclenche `/api/maintenance/expired-files` une fois par jour. C'est un
-filet, pas la règle : le plan Hobby de Vercel ne permet qu'un déclenchement quotidien, ce
-qui donne une fenêtre de 24 h à 48 h au lieu des 24 h du cahier §2.7. `pg_cron` reste la
-planification réelle — mais tant qu'il n'est pas en place, les fichiers s'effacent quand
-même, ce qui vaut mieux que jamais.
-
-`DELETE /api/admin/storage` (réservé aux admins) vide le bucket entièrement, sans
-condition d'âge, et remet à zéro les `fileUrl` de toutes les fiches. C'est le levier de
-secours : quota atteint et pas envie d'attendre l'expiration, ou tâche planifiée jamais
-mise en place et bucket rempli. Il porte sur le **bucket**, pas sur les fiches — les
-objets abandonnés entre la signature d'une URL et sa confirmation n'apparaissent dans
-aucune colonne, et ce sont eux qu'une reprise en main a le plus besoin d'emporter.
-
-Les fiches ne sont jamais touchées : nom, lien, description, tags, votes, historique. La
-même promesse que pour l'expiration ordinaire — vider le bucket fait disparaître des
-fichiers, jamais du catalogue.
-
-Le bouton de l'espace admin demande confirmation en deux temps, sans `window.confirm` :
-le premier clic transforme le bouton en une phrase qui dit ce qui va disparaître, le
-second exécute. Un vidage manuel écrit la même trace qu'un balayage automatique — sinon
-la pastille annoncerait « EN RETARD » juste après qu'on a vidé le bucket à la main.
-
-### pg_net appelle l'application, pas Cloudflare
-
-Le cahier proposait que `pg_net` s'adresse directement à l'API R2. Supprimer un objet R2
-demande une signature AWS SigV4 — une chaîne de HMAC-SHA256 à écrire en plpgsql, et
-surtout les identifiants Cloudflare recopiés dans la base. La base appelle donc la route
-de maintenance, qui a déjà le SDK et les clés : `pg_cron` et `pg_net` restent l'un et
-l'autre à leur poste, et les identifiants R2 ne vivent qu'à un seul endroit.
-
-L'URL de l'application et le `CRON_SECRET` sont rangés dans **Supabase Vault**, pas en
-clair dans la définition du job : `cron.job` est une table lisible, et ce secret vaut
-droit de déclencher la maintenance.
-
-### Entre l'échéance et le balayage
-
-Il s'écoule jusqu'à une heure. Pendant ce temps `fileUrl` est encore renseigné, mais
-`modFileLifetime` marque le fichier expiré : le panneau affiche « EXPIRÉ », ne propose
-plus le téléchargement, et rouvre le dépôt.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Le code et l'interface sont en français.** Les commentaires expliquent *pourquoi*, pas
+  *quoi* — ils portent les décisions et ce qu'on a écarté. C'est la mémoire du projet : ce
+  document en est le résumé, le code en est le détail.
+- **Les règles métier vivent dans `lib/`**, jamais dans un composant ni dupliquées entre deux
+  routes. Un quota, une phase, une permission s'écrivent une fois.
+- **Le serveur ne fait jamais confiance au client** : les bornes de phase, les quotas, les
+  rôles et les formats de fichier sont vérifiés côté serveur, même quand l'interface les
+  applique déjà. Un bouton éteint est un confort, pas une protection.
+- **Les messages d'erreur disent quoi faire.** « Quota atteint » n'aide personne ; « tes 8
+  votes véhicules sont placés, retires-en un pour voter ailleurs » si.
+- **Les secrets ne sortent pas du serveur** : clé Supabase, identifiants R2, webhooks Discord.
+- Les traces d'un contenu supprimé survivent au contenu (journal des suppressions, fil des
+  contributions) — c'est la seule façon de répondre à « qu'est-ce qui s'est passé ? ».

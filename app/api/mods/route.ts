@@ -130,7 +130,7 @@ export async function GET(request: Request) {
     const total = query.type ? counts[query.type] : counts.all;
 
     const body: ModListResponse = {
-      mods: mods.map((mod) => serializeMod(mod, soiree.current?.id ?? null)),
+      mods: mods.map((mod) => serializeMod(mod, soiree.current?.id ?? null, session.user.id)),
       page: query.page,
       perPage: MODS_PER_PAGE,
       total,
@@ -269,7 +269,9 @@ export async function POST(request: Request) {
       }),
     );
 
-    return Response.json(serializeMod(mod, soiree.current?.id ?? null), { status: 201 });
+    return Response.json(serializeMod(mod, soiree.current?.id ?? null, session.user.id), {
+      status: 201,
+    });
   } catch (error) {
     console.error("POST /api/mods", error);
     return Response.json({ error: "La fiche n'a pas pu être enregistrée." }, { status: 500 });

@@ -55,6 +55,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/soirees/[id
         isCurrent: soiree.id === viewer.current?.id,
         voterCount,
         currentSoireeId: viewer.current?.id ?? null,
+        viewerDiscordId: session.user.id,
       }),
     );
   } catch (error) {

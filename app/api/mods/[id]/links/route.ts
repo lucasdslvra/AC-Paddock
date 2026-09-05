@@ -105,7 +105,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/mods/[id]/l
       include: modInclude(session.user.id, soiree),
     });
 
-    return Response.json(serializeMod(updated, soiree.current?.id ?? null), { status: 201 });
+    return Response.json(serializeMod(updated, soiree.current?.id ?? null, session.user.id), {
+      status: 201,
+    });
   } catch (error) {
     console.error(`POST /api/mods/${id}/links`, error);
     return Response.json({ error: "Ce lien n'a pas pu être ajouté." }, { status: 500 });

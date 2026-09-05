@@ -133,7 +133,13 @@ export interface ApiSoiree {
 
 export function serializeSoiree(
   soiree: SoireeWithRelations,
-  context: { isCurrent: boolean; voterCount: number; currentSoireeId: string | null },
+  context: {
+    isCurrent: boolean;
+    voterCount: number;
+    currentSoireeId: string | null;
+    /** Le membre pour qui la soirée est sérialisée — le même que pour `soireeInclude`. */
+    viewerDiscordId: string;
+  },
 ): ApiSoiree {
   return {
     id: soiree.id,
@@ -144,7 +150,7 @@ export function serializeSoiree(
     isCurrent: context.isCurrent,
     mods: soiree.mods.map((entry) => ({
       id: entry.id,
-      mod: serializeMod(entry.mod, context.currentSoireeId),
+      mod: serializeMod(entry.mod, context.currentSoireeId, context.viewerDiscordId),
       engagedBy: serializeMember(entry.engagedBy),
       votes: entry._count.votes,
       // Filtré sur le seul membre connecté (`soireeInclude`) : le nombre de lignes

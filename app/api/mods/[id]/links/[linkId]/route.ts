@@ -60,7 +60,7 @@ export async function DELETE(
       include: modInclude(session.user.id, soiree),
     });
 
-    return Response.json(serializeMod(updated, soiree.current?.id ?? null));
+    return Response.json(serializeMod(updated, soiree.current?.id ?? null, session.user.id));
   } catch (error) {
     console.error(`DELETE /api/mods/${id}/links/${linkId}`, error);
     return Response.json({ error: "Ce lien n'a pas pu être retiré." }, { status: 500 });

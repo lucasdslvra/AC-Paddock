@@ -307,7 +307,7 @@ export async function PUT(request: Request, ctx: RouteContext<"/api/mods/[id]/up
       }
     }
 
-    return Response.json(serializeMod(mod, soiree.current?.id ?? null));
+    return Response.json(serializeMod(mod, soiree.current?.id ?? null, session.user.id));
   } catch (error) {
     console.error(`PUT /api/mods/${id}/upload`, error);
     return Response.json({ error: "Le fichier n'a pas pu être rattaché à la fiche." }, { status: 500 });

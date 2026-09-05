@@ -119,6 +119,10 @@ export function apiModToView(mod: ApiMod): ModView {
  * plutôt que de dupliquer la conversion : une fiche s'affiche pareil, qu'elle vienne
  * d'un `findUnique` ou d'un `fetch`.
  */
-export function toModView(mod: ModWithRelations, currentSoireeId: string | null): ModView {
-  return apiModToView(serializeMod(mod, currentSoireeId));
+export function toModView(
+  mod: ModWithRelations,
+  currentSoireeId: string | null,
+  viewerDiscordId: string,
+): ModView {
+  return apiModToView(serializeMod(mod, currentSoireeId, viewerDiscordId));
 }

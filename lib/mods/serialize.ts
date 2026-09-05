@@ -64,7 +64,33 @@ export function modInclude(viewerDiscordId: string, soiree: SoireeContext) {
       take: MOD_VOTE_HISTORY_LENGTH,
       include: {
         _count: { select: { votes: true } },
-        votes: { where: { user: { discordId: viewerDiscordId } }, select: { id: true } },
+        // Deux besoins dans une seule relation, parce que Prisma ne sait pas inclure
+        // deux fois la même :
+        //
+        //   · les votes du membre connecté, sur n'importe laquelle de ces soirées —
+        //     c'est `myVotes`, et lui seul dit ce que le « − » a à retirer ;
+        //   · **tous** les votes de la soirée en cours, pour savoir *qui* a voté.
+        //     Depuis l'empilement, le compte des votes n'est plus le compte des
+        //     votants : quatre voix peuvent être celles d'un seul membre, et la fiche
+        //     l'annonçait comme « 4 autres membres ». Il faut les lignes pour le dire.
+        //
+        // La seconde branche ne porte que sur la soirée en cours : les six autres
+        // n'affichent qu'une barre, et charger leurs votants coûterait à chaque carte
+        // du catalogue ce que personne ne regarde.
+        votes: {
+          where: soiree.current
+            ? {
+                OR: [
+                  { user: { discordId: viewerDiscordId } },
+                  { soireeMod: { soireeId: soiree.current.id } },
+                ],
+              }
+            : { user: { discordId: viewerDiscordId } },
+          select: {
+            id: true,
+            user: { select: { discordId: true, username: true, avatarUrl: true } },
+          },
+        },
       },
     },
   } as const;
@@ -82,8 +108,12 @@ export type ModWithRelations = ModModel & {
    */
   soirees: (SoireeModModel & {
     _count: { votes: number };
-    /** Les votes du membre connecté dans cette soirée — zéro, un, ou plusieurs. */
-    votes: { id: string }[];
+    /**
+     * Une ligne par vote (voir `modInclude`) : pour la soirée en cours, tous ceux
+     * qu'a reçus l'engagement ; pour les précédentes, seulement ceux du membre
+     * connecté. C'est le votant attaché à chaque ligne qui distingue les deux.
+     */
+    votes: { id: string; user: Pick<UserModel, "discordId" | "username" | "avatarUrl"> }[];
   })[];
 };
 
@@ -96,6 +126,27 @@ export type ModWithRelations = ModModel & {
 export interface ApiModEngagement {
   soireeModId: string;
   /** Votes de cette fiche **dans la soirée en cours** — pas son total (voir `votes`). */
+  votes: number;
+  /**
+   * Qui a voté ce soir sur cette fiche, du plus gros paquet de voix au plus petit.
+   *
+   * Une entrée par **membre**, et non par vote : depuis l'empilement, `votes` ci-dessus
+   * ne dit plus combien de personnes se cachent derrière le score — un seul membre peut
+   * en porter huit. La fiche a besoin des deux comptes pour ne pas transformer quatre
+   * voix en quatre votants, et des visages pour les montrer.
+   *
+   * Le membre connecté y figure comme les autres : c'est à l'affichage de le mettre à
+   * part, lui seul sachant que son propre compteur bouge avant le serveur.
+   */
+  voters: ApiModVoter[];
+}
+
+/** Un membre ayant voté pour une fiche ce soir, et le poids de sa pile. */
+export interface ApiModVoter {
+  discordId: string;
+  username: string;
+  avatarUrl: string | null;
+  /** Combien de votes ce membre a empilés sur cette seule fiche (au moins un). */
   votes: number;
 }
 
@@ -164,7 +215,40 @@ export interface ApiMod {
   updatedAt: string;
 }
 
-export function serializeMod(mod: ModWithRelations, currentSoireeId: string | null): ApiMod {
+/**
+ * Les lignes de vote d'un engagement, repliées en un votant par membre.
+ *
+ * L'ordre est celui des piles, la plus haute d'abord, et le pseudo départage les égaux :
+ * la fiche n'affiche que les premiers visages, et il vaut mieux que ce soient toujours
+ * les mêmes d'un rechargement à l'autre.
+ */
+function tallyVoters(votes: ModWithRelations["soirees"][number]["votes"]): ApiModVoter[] {
+  const byMember = new Map<string, ApiModVoter>();
+
+  for (const { user } of votes) {
+    const seen = byMember.get(user.discordId);
+    if (seen) {
+      seen.votes += 1;
+      continue;
+    }
+    byMember.set(user.discordId, { ...user, votes: 1 });
+  }
+
+  return [...byMember.values()].sort(
+    (a, b) => b.votes - a.votes || a.username.localeCompare(b.username),
+  );
+}
+
+export function serializeMod(
+  mod: ModWithRelations,
+  currentSoireeId: string | null,
+  /**
+   * L'identifiant Discord du membre pour qui la fiche est sérialisée — le même que
+   * celui passé à `modInclude`. C'est lui qui sépare ses votes de ceux des autres dans
+   * la liste que ramène la soirée en cours.
+   */
+  viewerDiscordId: string,
+): ApiMod {
   // `soirees` arrive de la plus récente à la plus ancienne, bornée à la soirée en
   // cours : celle-ci ne peut donc être qu'en tête. On compare quand même l'identifiant
   // plutôt que de prendre `[0]` de confiance — une fiche non engagée ce soir a bien une
@@ -186,10 +270,16 @@ export function serializeMod(mod: ModWithRelations, currentSoireeId: string | nu
     // Les barres se lisent de gauche à droite dans l'ordre du temps : on retourne
     // l'ordre de la base, qui sert d'abord à trouver la soirée en cours.
     voteHistory: mod.soirees.map((entry) => entry._count.votes).reverse(),
-    // `votes` est déjà filtré sur le seul membre connecté (`modInclude`) : le nombre de
-    // lignes ramenées est son compte.
-    myVotes: engagement?.votes.length ?? 0,
-    engagement: engagement ? { soireeModId: engagement.id, votes: engagement._count.votes } : null,
+    // Les votes de la soirée en cours arrivent tous, votant compris : le compte de ce
+    // membre est le nombre de lignes qui portent son identifiant, pas leur total.
+    myVotes: engagement?.votes.filter((vote) => vote.user.discordId === viewerDiscordId).length ?? 0,
+    engagement: engagement
+      ? {
+          soireeModId: engagement.id,
+          votes: engagement._count.votes,
+          voters: tallyVoters(engagement.votes),
+        }
+      : null,
     links: mod.links.map((link) => ({
       id: link.id,
       label: link.label,

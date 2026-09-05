@@ -70,6 +70,7 @@ export default async function SoireePage() {
         isCurrent: true,
         voterCount,
         currentSoireeId: current.id,
+        viewerDiscordId: session.user.id,
       })}
       memberCount={memberCount}
       isAdmin={actor?.role === "ADMIN"}

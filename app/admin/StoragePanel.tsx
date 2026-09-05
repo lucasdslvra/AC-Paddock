@@ -119,6 +119,9 @@ function SweepLine({ sweep, stale }: { sweep: ApiModFileSweep | null; stale: boo
       <span className="font-mono text-[10px] text-[var(--color-text-secondary)]">
         dernier nettoyage : {SWEEP_DATE.format(at)} ·{" "}
         {sweep.deleted === 0 ? "rien à retirer" : `${sweep.deleted} fichier${sweep.deleted > 1 ? "s" : ""}`}
+        {/* Le motif n'est précisé que quand il y en a deux : un balayage qui n'a retiré
+            que des fichiers périmés n'a pas à s'en expliquer. */}
+        {sweep.unretained > 0 && ` · dont ${sweep.unretained} non retenu${sweep.unretained > 1 ? "s" : ""}`}
       </span>
       <span
         className="shrink-0 px-[6px] py-[2px] font-mono text-[10px]"

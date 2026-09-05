@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { settleSoirees } from "@/lib/soirees/closing";
 import { soireeContext } from "@/lib/soirees/current";
 import { isVoteOpen } from "@/lib/soirees/phase";
 import { serializeSoiree, soireeInclude } from "@/lib/soirees/serialize";
-import { drawTieBreaks } from "@/lib/soirees/tie-break";
 import { countSoireeVoters } from "@/lib/soirees/vote";
 import { SoireeView } from "./SoireeView";
 
@@ -29,13 +29,14 @@ export default async function SoireePage() {
   }
 
   // Le vote de la soirée en cours vient peut-être de fermer : c'est alors cette lecture
-  // qui tire au sort ses ex æquo, avant de lire le classement qu'elle affiche.
+  // qui tire au sort ses ex æquo, avant de lire le classement qu'elle affiche, et qui
+  // programme le retrait des fichiers que ce classement ne retient pas (`settleSoirees`).
   //
   // `drawTieBreaks` se garde tout seul, mais la question se tranche ici sans requête, et
   // c'est la page que le groupe recharge le plus pendant que le vote est ouvert — la
   // seule où l'appel serait, presque à chaque fois, une écriture pour rien.
   if (!isVoteOpen(current.date)) {
-    await drawTieBreaks({ soireeId: current.id, guildId: viewer.guildId });
+    await settleSoirees({ soireeId: current.id, guildId: viewer.guildId });
   }
 
   const [soiree, voterCount, memberCount, actor] = await Promise.all([

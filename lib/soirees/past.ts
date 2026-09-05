@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { settleSoirees } from "./closing";
 import { startOfToday } from "./current";
 import { NO_GUILD } from "./scope";
 import {
@@ -9,7 +10,6 @@ import {
   type ApiPastSoiree,
   type PastSoireeModWithRelations,
 } from "./serialize";
-import { drawTieBreaks } from "./tie-break";
 import { countVotersBySoiree } from "./vote";
 
 /**
@@ -39,7 +39,7 @@ export async function listPastSoirees(
   // l'archive montre. Toutes les soirées du serveur d'un coup, et pas seulement celles
   // de la page : leur vote est fermé depuis longtemps, et une soirée que personne n'a
   // ouverte depuis attend encore son tirage.
-  await drawTieBreaks({ guildId }, now);
+  await settleSoirees({ guildId }, now);
 
   const soirees = await prisma.soiree.findMany({
     where: { guildId: guildId ?? NO_GUILD, date: { lt: startOfToday(now) } },

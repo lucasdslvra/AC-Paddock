@@ -69,6 +69,9 @@ export async function purgeAllModFiles(now: Date = new Date()): Promise<PurgeRes
     deleted: result.deleted,
     failed: result.failed,
     reservations: result.reservations,
+    // Un vidage forcé ne trie pas : il emporte le bucket entier, retenus compris. Rien
+    // n'est parti « faute d'être retenu », et l'annoncer serait une raison inventée.
+    unretained: 0,
   });
 
   return result;

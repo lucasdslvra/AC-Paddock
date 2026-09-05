@@ -86,6 +86,12 @@ export interface ApiModFileSweep {
   failed: number;
   /** Réservations de place périmées, ramassées au passage. */
   reservations: number;
+  /**
+   * Combien, parmi les `deleted`, sont partis parce qu'aucune soirée ne les retenait —
+   * le classement d'une soirée s'est figé, et la neuvième voiture n'a plus de fichier à
+   * porter (lib/soirees/closing.ts). Le reste est parti d'âge.
+   */
+  unretained: number;
 }
 
 /**
@@ -101,7 +107,10 @@ export function parseModFileSweep(value: string): ApiModFileSweep | null {
     const parsed: unknown = JSON.parse(value);
     if (typeof parsed !== "object" || parsed === null) return null;
 
-    const { at, expired, deleted, failed, reservations } = parsed as Record<string, unknown>;
+    const { at, expired, deleted, failed, reservations, unretained } = parsed as Record<
+      string,
+      unknown
+    >;
     if (typeof at !== "string" || Number.isNaN(Date.parse(at))) return null;
 
     const count = (input: unknown) => (typeof input === "number" && input >= 0 ? input : 0);
@@ -111,6 +120,9 @@ export function parseModFileSweep(value: string): ApiModFileSweep | null {
       deleted: count(deleted),
       failed: count(failed),
       reservations: count(reservations),
+      // Absent des traces écrites avant ce balayage-là : `count` en fait un zéro, ce qui
+      // est exactement ce qu'elles voulaient dire.
+      unretained: count(unretained),
     };
   } catch {
     return null;

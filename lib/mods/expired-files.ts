@@ -2,6 +2,7 @@ import "server-only";
 import { writeModFileSweep } from "@/lib/admin/config";
 import { prisma } from "@/lib/prisma";
 import { deleteModFile, modFileKeyFromUrl } from "@/lib/r2/storage";
+import { sweepUnretainedModFiles } from "@/lib/soirees/closing";
 import { MOD_FILE_TTL_HOURS } from "./file";
 import { purgeExpiredReservations } from "./storage-quota";
 
@@ -13,6 +14,12 @@ import { purgeExpiredReservations } from "./storage-quota";
  * Le balayage est déclenché de l'extérieur (pg_cron, voir prisma/sql/), toutes les
  * heures : le cahier insiste sur une fréquence supérieure à la journée, pour que la
  * fenêtre réelle soit « 24 h » et non « 24 h + la période du job ».
+ *
+ * Il emporte au passage les fichiers qu'aucune soirée ne retient (lib/soirees/closing.ts),
+ * qui ont leur propre raison de partir — pas l'âge, mais le classement figé à la
+ * fermeture du vote. Ces fichiers-là sont normalement retirés dès la fermeture, par la
+ * première lecture du classement ; le balayage est le filet en dessous, pour la soirée
+ * que personne n'a rouverte et pour le retrait que Cloudflare avait refusé.
  */
 
 export interface ExpiredFilesSweepResult {
@@ -31,6 +38,11 @@ export interface ExpiredFilesSweepResult {
    * indéfiniment d'envois abandonnés.
    */
   reservations: number;
+  /**
+   * Combien, parmi les `deleted`, sont partis non pas parce qu'ils avaient 24 h mais
+   * parce qu'aucune soirée ne les retenait (lib/soirees/closing.ts).
+   */
+  unretained: number;
 }
 
 /**
@@ -84,11 +96,19 @@ export async function sweepExpiredModFiles(
     }
   }
 
+  // Après l'expiration, et non avant : les deux balayages retirent les mêmes objets par
+  // des chemins différents, et une fiche déjà remise à zéro ici ne se présentera pas à
+  // l'autre.
+  const unretained = await sweepUnretainedModFiles(now);
+
   const result = {
     expired: expired.length,
-    deleted,
-    failed,
+    // Ce que le bucket a perdu à ce passage, les deux motifs confondus : c'est le
+    // chiffre que l'espace admin affiche, et il doit compter tout ce qui est parti.
+    deleted: deleted + unretained.deleted,
+    failed: failed + unretained.failed,
     reservations: await purgeExpiredReservations(now),
+    unretained: unretained.deleted,
   };
 
   // US-K1 — la trace que l'espace admin affiche. Sans elle, une tâche planifiée qui ne

@@ -1,10 +1,10 @@
 import "server-only";
 import type { ModPlayedAt } from "@/lib/mock-data";
 import { prisma } from "@/lib/prisma";
+import { settleSoirees } from "@/lib/soirees/closing";
 import { startOfToday } from "@/lib/soirees/current";
-import { NO_GUILD } from "@/lib/soirees/scope";
-import { drawTieBreaks } from "@/lib/soirees/tie-break";
 import { formatSoireeShortDay } from "@/lib/soirees/format";
+import { NO_GUILD } from "@/lib/soirees/scope";
 
 /**
  * Cahier §2.5 / US-I1 — les soirées où cette fiche a déjà été jouée, et le rang qu'elle
@@ -54,7 +54,7 @@ export async function listModPlayedAt(
   // Le rang affiché ici départage les ex æquo comme la page de la soirée : il lui faut
   // donc les mêmes tirages, y compris ceux des soirées que personne n'a rouvertes depuis
   // leur fermeture. Sans effet une fois qu'ils sont écrits.
-  await drawTieBreaks({ guildId }, now);
+  await settleSoirees({ guildId }, now);
 
   const [engagements, total] = await Promise.all([
     prisma.soireeMod.findMany({

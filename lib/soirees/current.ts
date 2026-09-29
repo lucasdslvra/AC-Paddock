@@ -2,6 +2,7 @@ import "server-only";
 import type { Session } from "next-auth";
 import { prisma } from "@/lib/prisma";
 import { sessionGuildId } from "@/lib/session-user";
+import { startOfZonedDay } from "@/lib/timezone";
 
 /**
  * La soirée en cours : la prochaine à venir, celle du jour comprise.
@@ -22,9 +23,9 @@ import { sessionGuildId } from "@/lib/session-user";
  * serveurs qui jouent le même soir ne partagent ni classement ni votes.
  */
 export function startOfToday(now: Date = new Date()): Date {
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  return start;
+  // Minuit à Paris, pas celui du serveur (UTC sur Vercel) : sinon la soirée de la
+  // veille resterait « en cours » jusqu'à 1 h ou 2 h du matin.
+  return startOfZonedDay(now);
 }
 
 /**

@@ -4,6 +4,8 @@
 // sert pour dessiner son curseur, la route pour refuser une valeur hors domaine. Deux
 // jeux de bornes finiraient par diverger, et c'est le formulaire qui aurait tort.
 
+import { APP_TIME_ZONE } from "@/lib/timezone";
+
 /** Clés de la table `AppConfig`. Une valeur absente = la valeur par défaut ci-dessous. */
 export const CONFIG_KEYS = {
   /** US-K3 — taille maximale du fichier de mod (le .zip) qu'un membre peut envoyer. */
@@ -291,6 +293,7 @@ export interface ApiGuildAccess {
 }
 
 const MEMBER_SEEN_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
+  timeZone: APP_TIME_ZONE,
   day: "2-digit",
   month: "2-digit",
   year: "2-digit",
@@ -302,6 +305,7 @@ export function formatMemberSeenDate(date: Date): string {
 }
 
 const DELETION_DATE_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
+  timeZone: APP_TIME_ZONE,
   day: "2-digit",
   month: "2-digit",
   hour: "2-digit",

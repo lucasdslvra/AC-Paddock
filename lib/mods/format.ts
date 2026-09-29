@@ -1,4 +1,7 @@
+import { APP_TIME_ZONE, zonedDaysBetween, zonedParts } from "@/lib/timezone";
+
 const DATE_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
+  timeZone: APP_TIME_ZONE,
   day: "numeric",
   month: "long",
   year: "numeric",
@@ -18,16 +21,15 @@ export function formatAge(date: Date, now: Date = new Date()): string {
   return `${Math.floor(hours / 24)} j`;
 }
 
-const SHORT_DAY_FORMATTER = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long" });
+const SHORT_DAY_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
+  timeZone: APP_TIME_ZONE,
+  day: "numeric",
+  month: "long",
+});
 
 /** Combien de jours de calendrier séparent deux instants (et non de tranches de 24 h). */
 function calendarDaysBetween(date: Date, now: Date): number {
-  const startOf = (value: Date) => {
-    const copy = new Date(value);
-    copy.setHours(0, 0, 0, 0);
-    return copy.getTime();
-  };
-  return Math.round((startOf(now) - startOf(date)) / 86_400_000);
+  return zonedDaysBetween(date, now);
 }
 
 /**
@@ -55,7 +57,7 @@ export function formatContributionAge(date: Date, now: Date = new Date()): strin
 
   // Au-delà de la semaine, une date. L'année n'apparaît que si ce n'est plus la même :
   // « 19 août » se lit sans elle, et le fil d'une fiche vit surtout sur quelques mois.
-  return date.getFullYear() === now.getFullYear()
+  return zonedParts(date).year === zonedParts(now).year
     ? SHORT_DAY_FORMATTER.format(date)
     : DATE_FORMATTER.format(date);
 }

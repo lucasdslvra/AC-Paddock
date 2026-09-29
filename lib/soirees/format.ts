@@ -1,4 +1,7 @@
+import { APP_TIME_ZONE, zonedDaysBetween, zonedParts } from "@/lib/timezone";
+
 const SOIREE_DATE_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
+  timeZone: APP_TIME_ZONE,
   weekday: "long",
   day: "numeric",
   month: "long",
@@ -7,22 +10,26 @@ const SOIREE_DATE_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
 });
 
 const SOIREE_DAY_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
+  timeZone: APP_TIME_ZONE,
   day: "numeric",
   month: "long",
   year: "numeric",
 });
 
 const SOIREE_SHORT_DAY_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
+  timeZone: APP_TIME_ZONE,
   day: "numeric",
   month: "long",
 });
 
 const SOIREE_TIME_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
+  timeZone: APP_TIME_ZONE,
   hour: "2-digit",
   minute: "2-digit",
 });
 
 const SOIREE_MONTH_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
+  timeZone: APP_TIME_ZONE,
   month: "long",
   year: "numeric",
 });
@@ -52,7 +59,7 @@ export function formatSoireeShortDay(date: Date): string {
  * milieu d'une phrase (« la soirée du 1 août »).
  */
 function ordinalFirst(label: string, date: Date): string {
-  return date.getDate() === 1 ? label.replace(/^1(?=\D)/, "1er") : label;
+  return zonedParts(date).day === 1 ? label.replace(/^1(?=\D)/, "1er") : label;
 }
 
 /** « février 2026 » — l'origine de l'archive, en tête de l'historique (US-I1). */
@@ -65,13 +72,7 @@ export function formatSoireeMonth(date: Date): string {
  * multiples de 24 h : une soirée à 21 h ce soir est « ce soir », pas « dans 0 jour ».
  */
 export function formatSoireeCountdown(date: Date, now: Date = new Date()): string {
-  const startOf = (value: Date) => {
-    const copy = new Date(value);
-    copy.setHours(0, 0, 0, 0);
-    return copy.getTime();
-  };
-
-  const days = Math.round((startOf(date) - startOf(now)) / 86_400_000);
+  const days = zonedDaysBetween(now, date);
   if (days < 0) return "passée";
   if (days === 0) return "ce soir";
   if (days === 1) return "demain";

@@ -2,6 +2,7 @@ import { PurgeFilesButton } from "@/app/admin/PurgeFilesButton";
 import { ProgressBar } from "@/components/ProgressBar";
 import type { ApiModFileSweep, ApiStorageUsage } from "@/lib/admin/settings";
 import { formatFileSize, MOD_FILE_TTL_HOURS } from "@/lib/mods/file";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 interface StoragePanelProps {
   /** `null` quand Cloudflare n'a pas pu être interrogé (configuration absente, panne). */
@@ -13,6 +14,7 @@ interface StoragePanelProps {
 }
 
 const SWEEP_DATE = new Intl.DateTimeFormat("fr-FR", {
+  timeZone: APP_TIME_ZONE,
   day: "2-digit",
   month: "2-digit",
   hour: "2-digit",

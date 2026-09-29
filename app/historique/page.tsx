@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
 import { sessionGuildId } from "@/lib/session-user";
 import { listPastSoirees } from "@/lib/soirees/past";
 import { HistoriqueView } from "./HistoriqueView";
@@ -20,12 +19,7 @@ export default async function HistoriquePage() {
   // L'archive est celle du serveur du membre : chaque groupe a joué ses soirées.
   const guildId = await sessionGuildId(session);
 
-  const [soirees, memberCount] = await Promise.all([
-    listPastSoirees(guildId),
-    // Le dénominateur de « 6 / 9 ont voté », comme sur la soirée en cours : les membres
-    // de ce serveur que l'application a déjà vus se connecter.
-    prisma.user.count({ where: { guildId } }),
-  ]);
+  const soirees = await listPastSoirees(guildId);
 
-  return <HistoriqueView soirees={soirees} memberCount={memberCount} />;
+  return <HistoriqueView soirees={soirees} />;
 }

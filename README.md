@@ -61,13 +61,17 @@ l'enrichir, y ajouter un lien miroir. Seul son auteur (ou un admin) peut la supp
 (« touge only », « rallye »). Elle appartient au serveur Discord de son groupe, et le
 salon de ce serveur en est prévenu.
 
-**3. Les membres engagent des mods.** Engager, c'est mettre une fiche du catalogue au
-programme de la soirée. Sans limite de nombre, et sans être l'auteur de la fiche.
+**3. Les membres rejoignent la soirée, puis engagent des mods.** Être sur le serveur Discord
+ne suffit pas : on **rejoint** la soirée, et seuls les inscrits engagent et votent. Engager,
+c'est mettre une fiche du catalogue au programme de la soirée. Sans limite de nombre, et sans
+être l'auteur de la fiche.
 
 **4. On vote, jusqu'à 30 minutes avant le départ.** Chaque membre dispose d'une réserve
 par soirée : **8 votes véhicule et 3 votes circuit**. Il les répartit comme il veut, et
 peut en empiler plusieurs sur le même mod pour le pousser. Le classement se met à jour en
-direct, séparément pour les véhicules et pour les circuits.
+direct, séparément pour les véhicules et pour les circuits. **30 minutes avant la
+fermeture**, le salon Discord reçoit un rappel qui mentionne les inscrits qui n'ont pas voté,
+ou pas fini.
 
 **5. Le vote ferme, le sort tranche les égalités.** La soirée retient **les 8 véhicules
 les plus votés et le circuit le plus voté**. Les ex æquo sur la ligne de coupe sont
@@ -234,6 +238,9 @@ Après une première connexion, passer sa ligne à `ADMIN` en base (éditeur SQL
 
 `prisma/cron/expired-mod-files.sql` installe `pg_cron`, `pg_net` et le job horaire qui
 appelle la route de maintenance. À exécuter **une fois** dans l'éditeur SQL de Supabase.
+`prisma/cron/vote-reminders.sql` ajoute ensuite le job de 5 minutes qui envoie le rappel de
+vote ; il réutilise les secrets Vault posés par le premier script, et sans lui aucun
+rappel ne part.
 Ce n'est pas une migration Prisma : ça ne décrit pas le schéma dont l'application dépend,
 et un échec y bloquerait des migrations qui n'y sont pour rien. Sans lui, le cron
 quotidien de `vercel.json` sert de filet.
@@ -279,7 +286,8 @@ Le schéma complet, avec ses justifications, est dans
 | `ModLink` | Liens secondaires (miroir, pack de textures…), avec leur intitulé et leur auteur. |
 | `ModContribution` | Le fil des corrections d'une fiche : qui a touché à quoi, et quand. |
 | `Tag`, `ModTag` | Vocabulaire libre, normalisé, alimenté par les membres. |
-| `Soiree` | Date, thème facultatif, serveur Discord propriétaire. |
+| `Soiree` | Date, thème facultatif, serveur Discord propriétaire, heure d'envoi du rappel de vote. |
+| `SoireeParticipant` | Un membre inscrit à une soirée — seuls les inscrits engagent et votent. |
 | `SoireeMod` | Un mod engagé dans une soirée. `tieBreak` porte le tirage au sort. |
 | `Vote` | Une ligne par vote placé — plusieurs par membre et par mod sont possibles. |
 | `AuthorizedGuild` | Serveurs Discord ouverts depuis l'espace admin, avec leur webhook. |
@@ -319,7 +327,8 @@ Toutes exigent une session valide, sauf mention contraire.
 | --- | --- |
 | `GET /api/soirees`, `POST` | Liste ; création réservée aux admins. |
 | `GET`·`DELETE /api/soirees/[id]` | Lecture ; suppression réservée aux admins. |
-| `POST /api/soirees/[id]/mods`, `DELETE …/mods/[modId]` | Engager, désengager. |
+| `POST`·`DELETE /api/soirees/[id]/participants` | Rejoindre la soirée en cours, la quitter (emporte ses votes). |
+| `POST /api/soirees/[id]/mods`, `DELETE …/mods/[modId]` | Engager, désengager — inscrits seulement. |
 | `POST`·`DELETE /api/soirees/[id]/mods/[modId]/vote` | Voter depuis la page soirée. |
 
 ### Divers, admin et maintenance
@@ -336,6 +345,7 @@ Toutes exigent une session valide, sauf mention contraire.
 | `GET`·`DELETE /api/admin/storage` | Occupation du bucket ; vidage forcé. |
 | `GET /api/maintenance/expired-files` | Balayage des fichiers expirés — `Authorization: Bearer $CRON_SECRET`. |
 | `GET /api/maintenance/orphan-images` | Balayage des images orphelines — même contrat. |
+| `GET /api/maintenance/vote-reminders` | Rappel Discord 30 min avant la fermeture du vote — même contrat. |
 
 ---
 
@@ -513,6 +523,15 @@ requête courante ». La réponse précédente reste affichée, estompée, penda
 arrive.
 
 ### Soirées, votes et places
+
+#### Rejoindre
+
+Une soirée appartient à un serveur, mais tout le serveur n'est pas de toutes les soirées : on
+la **rejoint** depuis sa page (`SoireeParticipant`). C'est ce qui ouvre l'engagement et le
+vote — `castVote` le vérifie sous le même verrou consultatif que le quota —, ce qui fait le
+dénominateur de « ont voté », et la liste que le rappel d'avant fermeture relit. On peut
+quitter tant que le vote est ouvert ; ses votes partent alors avec soi, les mods qu'on a
+engagés restent.
 
 #### Engager
 
@@ -813,7 +832,9 @@ le bouton en une phrase qui dit ce qui va disparaître, le second exécute.
 Le groupe vivait sur des liens éparpillés dans Discord, et tout a été rapatrié ici. La
 notification est le **chemin de retour** — le salon reste l'endroit où l'on *apprend* qu'il se
 passe quelque chose, sans redevenir celui où on en discute. Trois annonces : une soirée
-programmée, une soirée annulée, un mod proposé.
+programmée, une soirée annulée, un mod proposé — et un rappel, « plus que 30 minutes pour
+voter », qui mentionne les inscrits dont la réserve n'est pas vide (pour chaque type qui a
+au moins un mod engagé). Il part une fois par soirée (`Soiree.voteReminderSentAt`).
 
 L'annulation n'est pas dans le backlog, qui ne parle que de la création. Elle y a pourtant
 plus sa place encore : quelqu'un a peut-être déjà bloqué sa soirée, et une soirée qui
@@ -838,7 +859,9 @@ quand même à la fin de la requête, y compris en serverless.
 **Rien de ce qui part ne peut mentionner personne.** Le contenu vient de champs saisis par les
 membres, et un webhook a le droit de réveiller tout un serveur : chaque envoi porte
 `allowed_mentions: { parse: [] }`. Un `@everyone` dans un nom de fiche s'affiche, et ne
-notifie rien.
+notifie rien. Seule exception, le rappel de vote : il passe à `postDiscordWebhook` la liste des
+identifiants Discord à notifier, relus en base, qui s'ajoutent en `allowed_mentions.users` —
+`parse` reste vide, donc rien de ce qui est écrit dans le texte ne peut étendre la liste.
 
 **Le lien du message** est fabriqué à partir de l'hôte par lequel la requête vient d'entrer,
 pas d'une variable d'environnement de plus : c'est exactement l'adresse que le membre a sous
@@ -873,9 +896,10 @@ au même instant qu'on a l'identifiant du serveur et l'URL du webhook sous la ma
 | Fichiers expirés + réservations + mods non retenus | `pg_cron` → `/api/maintenance/expired-files` | horaire |
 | Idem, en filet | `vercel.json` | quotidien, 5 h |
 | Images orphelines | `vercel.json` | quotidien, 4 h |
+| Rappel de vote sur Discord | `pg_cron` → `/api/maintenance/vote-reminders` | toutes les 5 min |
 | Tirage au sort des ex æquo | à la première lecture après fermeture | — |
 
-Les deux routes de maintenance exigent `Authorization: Bearer $CRON_SECRET` et refusent de
+Les routes de maintenance exigent `Authorization: Bearer $CRON_SECRET` et refusent de
 tourner si le secret n'est pas défini. En local, on les appelle à la main avec le même
 en-tête.
 

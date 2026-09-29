@@ -12,6 +12,7 @@ import {
 import { MiniBarChart } from "@/components/MiniBarChart";
 import { ModThumbnail } from "@/components/ModThumbnail";
 import { ProgressBar } from "@/components/ProgressBar";
+import { SoireeParticipantsCard } from "@/components/SoireeParticipantsCard";
 import { StatBlock } from "@/components/StatBlock";
 import { TagPill } from "@/components/TagPill";
 import { UserAvatar } from "@/components/UserAvatar";
@@ -37,7 +38,6 @@ import { useRequireAuth } from "@/lib/useRequireAuth";
 interface SoireeViewProps {
   /** `null` quand aucune soirée n'est programmée (cf. `currentSoiree`). */
   soiree: ApiSoiree | null;
-  memberCount: number;
   /**
    * Le rôle n'est jamais dans la session — il est relu en base à chaque écriture, pour
    * qu'une session ouverte avant un changement de rôle ne garde pas d'anciens droits.
@@ -97,6 +97,7 @@ function RankingRow({
   soireeId,
   canRemove,
   readOnly,
+  canVote,
   quotaReached,
   onVoteChange,
   onChanged,
@@ -109,6 +110,8 @@ function RankingRow({
   canRemove: boolean;
   /** US-I2 — la soirée n'est plus celle en cours : la ligne devient un résultat. */
   readOnly: boolean;
+  /** Le membre a rejoint la soirée : sans cela, la ligne se lit mais ne se vote pas. */
+  canVote: boolean;
   /**
    * La réserve de ce type est épuisée : le « + » reste visible mais éteint, avec la
    * raison. Le « − » ne l'est jamais tant qu'il reste un vote sur cette ligne — le
@@ -228,7 +231,7 @@ function RankingRow({
         {/* L'incrémenteur : un membre peut empiler plusieurs votes sur le même mod, dans
             la limite de sa réserve du soir. Le grand nombre à gauche est le score de la
             soirée, tous membres confondus ; celui d'ici n'est que le sien. */}
-        {!readOnly && (
+        {!readOnly && canVote && (
           <div
             className="flex items-center rounded-sm border border-[var(--color-border-strong)]"
             style={{ opacity: isPending ? 0.7 : 1 }}
@@ -298,6 +301,7 @@ function RankingSection({
   used,
   soireeId,
   readOnly,
+  canVote,
   isAdmin,
   viewerDiscordId,
   onVoteChange,
@@ -309,6 +313,8 @@ function RankingSection({
   used: number;
   soireeId: string;
   readOnly: boolean;
+  /** Le membre a rejoint la soirée — voir `RankingRow`. */
+  canVote: boolean;
   isAdmin: boolean;
   viewerDiscordId?: string | null;
   onVoteChange: (engagementId: string, myVotes: number) => void;
@@ -332,7 +338,7 @@ function RankingSection({
           {SECTION_LABEL[type]} · {rows.length} engagé{rows.length > 1 ? "s" : ""} ·{" "}
           {kept > 1 ? `${kept} retenus` : "1 retenu"}
         </div>
-        {!readOnly && (
+        {!readOnly && canVote && (
           <div
             className="font-mono text-[10px]"
             style={{
@@ -369,6 +375,7 @@ function RankingSection({
                   !readOnly && (isAdmin || row.entry.engagedBy.discordId === viewerDiscordId)
                 }
                 readOnly={readOnly}
+                canVote={canVote}
                 quotaReached={quotaReached}
                 onVoteChange={onVoteChange}
                 onChanged={onChanged}
@@ -403,7 +410,6 @@ function RankingSection({
 
 export function SoireeView({
   soiree: initialSoiree,
-  memberCount,
   isAdmin = false,
   isPast = false,
   now: serverNow,
@@ -568,6 +574,12 @@ export function SoireeView({
    * alors d'elle-même, sans rechargement — c'est l'horloge qui la fait tourner.
    */
   const isReadOnly = !soiree.isCurrent || phase !== "OPEN";
+  /**
+   * Il faut avoir rejoint la soirée pour y voter et y engager : la page reste lisible
+   * pour tout le serveur, mais ses boutons n'apparaissent qu'aux inscrits. Les routes le
+   * revérifient (`castVote`, l'engagement).
+   */
+  const joined = soiree.viewerJoined;
   // Ce que la soirée garde, les deux classements réunis : huit véhicules, un circuit.
   // Le circuit en tête : il n'y en a qu'un, et c'est la première chose qu'on cherche en
   // relisant une soirée — au bout d'une liste de huit voitures, il se manquerait.
@@ -642,7 +654,7 @@ export function SoireeView({
           )}
           <StatBlock
             label="ONT VOTÉ"
-            value={`${soiree.voterCount} / ${memberCount}`}
+            value={`${soiree.voterCount} / ${soiree.participants.length}`}
             valueSize={26}
           />
         </div>
@@ -689,6 +701,7 @@ export function SoireeView({
                     used={used[section.type]}
                     soireeId={soiree.id}
                     readOnly={isReadOnly}
+                    canVote={joined}
                     isAdmin={isAdmin}
                     viewerDiscordId={session?.user?.id}
                     onVoteChange={handleVoteChange}
@@ -701,9 +714,23 @@ export function SoireeView({
         </div>
 
         <div className="flex flex-col gap-3">
+          {/* En tête de colonne tant qu'on n'a pas rejoint : c'est ce qui ouvre tout le
+              reste. Une fois inscrit, la liste descend sous ce qu'on vient faire. */}
+          {!joined && (
+            <SoireeParticipantsCard
+              soireeId={soiree.id}
+              participants={soiree.participants}
+              joined={joined}
+              canChange={!isReadOnly}
+              onChanged={refresh}
+            />
+          )}
+
           {/* US-I2 — une soirée qu'on ne fait que lire n'a rien à garnir. Passé la
               fermeture du vote non plus : le classement est figé, on télécharge. */}
-          {!isReadOnly && <EngageModPicker soireeId={soiree.id} onEngaged={refresh} />}
+          {!isReadOnly && joined && (
+            <EngageModPicker soireeId={soiree.id} onEngaged={refresh} />
+          )}
 
           {/* La fenêtre de retrait : de la fermeture du vote à deux heures après le
               départ. Le bouton n'existe qu'à l'intérieur — avant, le classement peut
@@ -744,46 +771,58 @@ export function SoireeView({
             </div>
           )}
 
-          <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[15px]">
-            <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
-              {isReadOnly ? "TES VOTES" : "TA RÉSERVE DE VOTES"}
-            </div>
-            <div className="mt-[10px] flex flex-col gap-[11px]">
-              {MOD_TYPES.map((type) => (
-                <div key={type}>
-                  <div className="flex items-baseline justify-between font-mono text-[11px]">
-                    <span className="text-[var(--color-text-secondary)]">
-                      {modTypePlural(type)}
-                    </span>
-                    <span>
-                      {used[type]} / {VOTE_QUOTA[type]}
-                    </span>
+          {joined && (
+            <SoireeParticipantsCard
+              soireeId={soiree.id}
+              participants={soiree.participants}
+              joined={joined}
+              canChange={!isReadOnly}
+              onChanged={refresh}
+            />
+          )}
+
+          {(joined || isReadOnly) && (
+            <div className="rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-[15px]">
+              <div className="font-mono text-[10px] tracking-[0.1em] text-[var(--color-text-muted)]">
+                {isReadOnly ? "TES VOTES" : "TA RÉSERVE DE VOTES"}
+              </div>
+              <div className="mt-[10px] flex flex-col gap-[11px]">
+                {MOD_TYPES.map((type) => (
+                  <div key={type}>
+                    <div className="flex items-baseline justify-between font-mono text-[11px]">
+                      <span className="text-[var(--color-text-secondary)]">
+                        {modTypePlural(type)}
+                      </span>
+                      <span>
+                        {used[type]} / {VOTE_QUOTA[type]}
+                      </span>
+                    </div>
+                    <div className="mt-[5px]">
+                      <ProgressBar percent={(used[type] / VOTE_QUOTA[type]) * 100} />
+                    </div>
                   </div>
-                  <div className="mt-[5px]">
-                    <ProgressBar percent={(used[type] / VOTE_QUOTA[type]) * 100} />
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
+              <p className="mt-[11px] font-mono text-[10.5px] leading-[1.7] text-[var(--color-text-muted)]">
+                {isReadOnly ? (
+                  <>
+                    {soiree.isCurrent
+                      ? `Le vote a fermé à ${voteCloseLabel}, 30 minutes avant le départ. `
+                      : "Les votes de cette soirée sont clos : elle ne se modifie plus. "}
+                    Elle a gardé ses {RETAINED_COUNT.CAR} véhicules les plus votés et son
+                    circuit.
+                  </>
+                ) : (
+                  <>
+                    {VOTE_QUOTA.CAR} votes pour les véhicules, {VOTE_QUOTA.TRACK} pour les
+                    circuits : la soirée garde les {RETAINED_COUNT.CAR} véhicules et le
+                    circuit les plus votés. Un vote se retire à tout moment pour le placer
+                    ailleurs.
+                  </>
+                )}
+              </p>
             </div>
-            <p className="mt-[11px] font-mono text-[10.5px] leading-[1.7] text-[var(--color-text-muted)]">
-              {isReadOnly ? (
-                <>
-                  {soiree.isCurrent
-                    ? `Le vote a fermé à ${voteCloseLabel}, 30 minutes avant le départ. `
-                    : "Les votes de cette soirée sont clos : elle ne se modifie plus. "}
-                  Elle a gardé ses {RETAINED_COUNT.CAR} véhicules les plus votés et son
-                  circuit.
-                </>
-              ) : (
-                <>
-                  {VOTE_QUOTA.CAR} votes pour les véhicules, {VOTE_QUOTA.TRACK} pour les
-                  circuits : la soirée garde les {RETAINED_COUNT.CAR} véhicules et le
-                  circuit les plus votés. Un vote se retire à tout moment pour le placer
-                  ailleurs.
-                </>
-              )}
-            </p>
-          </div>
+          )}
 
           {isReadOnly && (
             <div className="flex flex-wrap gap-2">

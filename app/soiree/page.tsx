@@ -25,7 +25,7 @@ export default async function SoireePage() {
   const current = viewer.current;
 
   if (!current) {
-    return <SoireeView soiree={null} memberCount={0} />;
+    return <SoireeView soiree={null} />;
   }
 
   // Le vote de la soirée en cours vient peut-être de fermer : c'est alors cette lecture
@@ -39,16 +39,12 @@ export default async function SoireePage() {
     await settleSoirees({ soireeId: current.id, guildId: viewer.guildId });
   }
 
-  const [soiree, voterCount, memberCount, actor] = await Promise.all([
+  const [soiree, voterCount, actor] = await Promise.all([
     prisma.soiree.findUnique({
       where: { id: current.id },
       include: soireeInclude(session.user.id, viewer),
     }),
     countSoireeVoters(current.id),
-    // Le dénominateur de « 5 / 8 ont voté » : les membres de ce serveur que la base
-    // connaît, c'est-à-dire ceux qui s'y sont déjà connectés. Le serveur Discord en
-    // compte sans doute plus, mais l'application ne les a jamais vus.
-    prisma.user.count({ where: { guildId: viewer.guildId } }),
     // Le rôle n'est pas dans la session : on le relit en base. Il ne sert ici qu'à
     // afficher le bouton « retirer » sur les engagements des autres — la route le
     // revérifie avant d'écrire.
@@ -61,7 +57,7 @@ export default async function SoireePage() {
   // La soirée a disparu entre les deux requêtes — improbable, mais elle est résolue
   // à part.
   if (!soiree) {
-    return <SoireeView soiree={null} memberCount={memberCount} />;
+    return <SoireeView soiree={null} />;
   }
 
   return (
@@ -72,7 +68,6 @@ export default async function SoireePage() {
         currentSoireeId: current.id,
         viewerDiscordId: session.user.id,
       })}
-      memberCount={memberCount}
       isAdmin={actor?.role === "ADMIN"}
       // L'heure du serveur, pour que le premier rendu du navigateur soit le même : la
       // page a une horloge (fermeture du vote, fenêtre de retrait) et prend le relais

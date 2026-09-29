@@ -1,10 +1,12 @@
 import "server-only";
 import { guildWebhookUrl } from "@/lib/admin/guilds";
 import type { ModType } from "@/lib/generated/prisma/enums";
-import { formatSoireeCountdown, formatSoireeDate } from "@/lib/soirees/format";
+import { formatSoireeCountdown, formatSoireeDate, formatSoireeTime } from "@/lib/soirees/format";
+import { voteClosesAt } from "@/lib/soirees/phase";
 import {
   DISCORD_CANCEL_COLOR,
   DISCORD_EMBED_COLOR,
+  MAX_MENTIONED_USERS,
   postDiscordWebhook,
   type DiscordEmbed,
 } from "./webhook";
@@ -13,7 +15,8 @@ import {
  * US-L1/L2 — ce que l'application raconte dans le salon Discord.
  *
  * Trois annonces : une soirée programmée et une soirée annulée (US-L1), un mod proposé
- * (US-L2). Le cahier §1 en donne la raison — le groupe vivait sur des liens éparpillés
+ * (US-L2) — et un rappel : « plus que 30 minutes pour voter », adressé nommément aux
+ * inscrits qui n'ont pas fini. Le cahier §1 en donne la raison — le groupe vivait sur des liens éparpillés
  * dans Discord, et l'application les a rapatriés ; la notification est le chemin de
  * retour, pour que le salon reste l'endroit où l'on apprend qu'il se passe quelque
  * chose, sans redevenir celui où l'on en discute.
@@ -109,7 +112,7 @@ export async function notifySoireeCreated(soiree: SoireeNotification): Promise<v
       `**${when}** · ${formatSoireeCountdown(soiree.date)}\nProgrammée par ${soiree.createdBy}.`,
       DESCRIPTION_MAX,
     ),
-    footer: { text: "Engage tes mods et vote avant le départ." },
+    footer: { text: "Rejoins la soirée, engage tes mods et vote avant le départ." },
     timestamp: soiree.date.toISOString(),
   });
 }
@@ -237,4 +240,96 @@ export async function notifyModCreated(mod: ModNotification): Promise<void> {
     footer: { text: "Nouveau mod au catalogue" },
     timestamp: new Date().toISOString(),
   });
+}
+
+/** Un inscrit qui n'a pas fini de voter, et où il en est. */
+export interface VoteReminderLaggard {
+  discordId: string;
+  /** Votes placés, par type — seuls les types votables ce soir-là sont donnés. */
+  used: Partial<Record<ModType, number>>;
+  quota: Partial<Record<ModType, number>>;
+}
+
+/** Une soirée dont le vote ferme bientôt, et ceux qu'il faut relancer. */
+export interface VoteReminderNotification {
+  id: string;
+  guildId: string;
+  name: string | null;
+  date: Date;
+  laggards: VoteReminderLaggard[];
+  /** L'adresse de l'application, pour le lien — voir `requestOrigin`. */
+  origin: string | null;
+}
+
+/** Combien de membres par message : sous le plafond de Discord et sous 2 000 caractères. */
+const MENTIONS_PER_MESSAGE = Math.min(50, MAX_MENTIONED_USERS);
+
+/** « 3/8 véhicules · 0/3 circuits » — où en est un membre, pour les types votables. */
+function progressLabel(laggard: VoteReminderLaggard): string {
+  return (Object.keys(laggard.quota) as ModType[])
+    .map((type) => {
+      const label = type === "CAR" ? "véhicules" : "circuits";
+      return `${laggard.used[type] ?? 0}/${laggard.quota[type]} ${label}`;
+    })
+    .join(" · ");
+}
+
+/**
+ * « Plus que 30 minutes pour voter » — le seul message qui mentionne quelqu'un.
+ *
+ * Les mentions sont dans `content`, seul endroit où Discord notifie ; l'embed les
+ * reprend avec la progression de chacun, où elles s'affichent sans sonner une seconde
+ * fois. Au-delà de `MENTIONS_PER_MESSAGE` membres, le rappel se poursuit en plusieurs
+ * messages plutôt que d'être refusé en bloc.
+ *
+ * Renvoie `true` si au moins un message est parti.
+ */
+export async function notifyVoteReminder(reminder: VoteReminderNotification): Promise<boolean> {
+  if (reminder.laggards.length === 0) return false;
+
+  const url = await guildWebhookUrl(reminder.guildId);
+  if (!url) return false;
+
+  const closesAt = formatSoireeTime(voteClosesAt(reminder.date));
+  let sent = false;
+
+  for (let start = 0; start < reminder.laggards.length; start += MENTIONS_PER_MESSAGE) {
+    const chunk = reminder.laggards.slice(start, start + MENTIONS_PER_MESSAGE);
+    const ids = chunk.map((laggard) => laggard.discordId);
+    const mentions = ids.map((id) => `<@${id}>`).join(" ");
+    const first = start === 0;
+
+    const lines = chunk.map((laggard) => `<@${laggard.discordId}> — ${progressLabel(laggard)}`);
+
+    const ok = await postDiscordWebhook(
+      url,
+      {
+        content: first
+          ? `⏰ Plus que 30 minutes pour voter — le vote ferme à **${closesAt}**. ${mentions}`
+          : mentions,
+        embeds: [
+          {
+            title: truncate(
+              reminder.name
+                ? `Il vous reste des votes : ${reminder.name}`
+                : "Il vous reste des votes",
+              TITLE_MAX,
+            ),
+            url: link(reminder.origin, `/soiree/${reminder.id}`),
+            color: DISCORD_EMBED_COLOR,
+            // La limite de Discord est 4 096 ; 50 lignes de mention tiennent largement.
+            description: truncate(lines.join("\n"), 4_000),
+            footer: {
+              text: `${formatSoireeDate(reminder.date)} · vote clos à ${closesAt}`,
+            },
+            timestamp: voteClosesAt(reminder.date).toISOString(),
+          },
+        ],
+      },
+      { mentionUserIds: ids },
+    );
+    sent ||= ok;
+  }
+
+  return sent;
 }

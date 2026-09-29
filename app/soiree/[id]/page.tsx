@@ -36,13 +36,12 @@ export default async function SoireeDetailPage(props: PageProps<"/soiree/[id]">)
   // d'une soirée qui vient de fermer emporte les fichiers qu'elle ne retient pas.
   await settleSoirees({ soireeId: id, guildId: viewer.guildId });
 
-  const [soiree, voterCount, memberCount, actor] = await Promise.all([
+  const [soiree, voterCount, actor] = await Promise.all([
     prisma.soiree.findUnique({
       where: { id },
       include: soireeInclude(session.user.id, viewer),
     }),
     countSoireeVoters(id),
-    prisma.user.count({ where: { guildId: viewer.guildId } }),
     prisma.user.findUnique({
       where: { discordId: session.user.id },
       select: { role: true },
@@ -61,7 +60,6 @@ export default async function SoireeDetailPage(props: PageProps<"/soiree/[id]">)
         currentSoireeId: current?.id ?? null,
         viewerDiscordId: session.user.id,
       })}
-      memberCount={memberCount}
       isAdmin={actor?.role === "ADMIN"}
       // L'heure du serveur, pour que le premier rendu du navigateur soit le même : la
       // page a une horloge (fermeture du vote, fenêtre de retrait) et prend le relais

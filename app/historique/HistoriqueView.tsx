@@ -21,8 +21,6 @@ const SPARKLINE_LENGTH = 14;
 interface HistoriqueViewProps {
   /** Les soirées passées, de la plus récente à la plus ancienne (`listPastSoirees`). */
   soirees: ApiPastSoiree[];
-  /** Le dénominateur de « 6 / 9 ont voté » : les membres connus de la base. */
-  memberCount: number;
 }
 
 /**
@@ -32,7 +30,7 @@ interface HistoriqueViewProps {
  * sont clos une fois la soirée passée, il n'y a donc aucune écriture à faire d'ici — le
  * détail d'une soirée (US-I2) est une page à part, en lecture seule elle aussi.
  */
-export function HistoriqueView({ soirees, memberCount }: HistoriqueViewProps) {
+export function HistoriqueView({ soirees }: HistoriqueViewProps) {
   const totalMods = soirees.reduce((sum, soiree) => sum + soiree.modCount, 0);
   const totalVoters = soirees.reduce((sum, soiree) => sum + soiree.voterCount, 0);
   // Sans soirée passée, la moyenne n'existe pas — et « 0.0 » se lirait comme « personne
@@ -131,7 +129,7 @@ export function HistoriqueView({ soirees, memberCount }: HistoriqueViewProps) {
           </div>
 
           {soirees.map((soiree) => (
-            <PastSoireeRow key={soiree.id} soiree={soiree} memberCount={memberCount} />
+            <PastSoireeRow key={soiree.id} soiree={soiree} />
           ))}
         </div>
       )}
@@ -139,13 +137,7 @@ export function HistoriqueView({ soirees, memberCount }: HistoriqueViewProps) {
   );
 }
 
-function PastSoireeRow({
-  soiree,
-  memberCount,
-}: {
-  soiree: ApiPastSoiree;
-  memberCount: number;
-}) {
+function PastSoireeRow({ soiree }: { soiree: ApiPastSoiree }) {
   const podium = soiree.cars.slice(0, PODIUM_SIZE);
   const thumbnails = soiree.cars.slice(0, THUMBNAILS);
   // Comptés sur le total des engagements de la soirée, pas sur les mods chargés : la
@@ -238,7 +230,8 @@ function PastSoireeRow({
 
       <div className="md:text-right">
         <div className="font-mono text-[17px]">
-          {soiree.voterCount}/{memberCount}
+          {/* Rapporté aux inscrits de ce soir-là, pas à tout le serveur. */}
+          {soiree.voterCount}/{soiree.participantCount}
         </div>
         <Link
           href={`/soiree/${soiree.id}`}

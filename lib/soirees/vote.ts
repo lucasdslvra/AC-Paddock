@@ -2,12 +2,14 @@ import "server-only";
 import type { ModType } from "@/lib/generated/prisma/enums";
 import type { VoteState } from "@/lib/mods/vote";
 import { prisma } from "@/lib/prisma";
+import { isParticipant, NOT_JOINED_MESSAGE } from "./participants";
 import { quotaReachedMessage, VOTE_QUOTA } from "./quota";
 
 /** Un vote refusé, dans la forme que les deux routes de vote rendent telle quelle. */
 export interface VoteRejection {
   error: string;
-  status: 409;
+  /** 403 : le membre n'a pas rejoint la soirée. 409 : sa réserve est vide. */
+  status: 403 | 409;
 }
 
 /**
@@ -50,6 +52,12 @@ export async function castVote(vote: {
     // même mod est tombée avec l'empilement (`20260905140000_votes_multiples`), et deux
     // clics sur la même voiture sont exactement le cas qu'elle ne couvrait pas.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey})::bigint)`;
+
+    // Sous le verrou, parce que `leaveSoiree` prend le même : un membre qui quitte
+    // pendant qu'un de ses votes part ne peut pas laisser ce vote derrière lui.
+    if (!(await isParticipant(vote.userId, vote.soireeId, tx))) {
+      return { error: NOT_JOINED_MESSAGE, status: 403 as const };
+    }
 
     const used = await tx.vote.count({
       where: {

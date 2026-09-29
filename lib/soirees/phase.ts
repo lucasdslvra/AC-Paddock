@@ -23,6 +23,18 @@ import { formatSoireeTime } from "./format";
  */
 export const VOTE_CLOSES_BEFORE_MS = 30 * 60_000;
 
+/**
+ * Combien de temps avant la fermeture du vote part le rappel Discord aux inscrits qui
+ * n'ont pas fini de voter (lib/soirees/vote-reminder.ts) : assez tôt pour qu'on ait le
+ * temps d'ouvrir la page, assez tard pour que la liste dise encore quelque chose.
+ */
+export const VOTE_REMINDER_BEFORE_CLOSE_MS = 30 * 60_000;
+
+/** L'instant où part le rappel : 30 minutes avant la fermeture du vote. */
+export function voteReminderAt(date: Date): Date {
+  return new Date(voteClosesAt(date).getTime() - VOTE_REMINDER_BEFORE_CLOSE_MS);
+}
+
 /** Combien de temps le retrait reste ouvert après l'heure de départ. */
 export const DOWNLOAD_OPEN_AFTER_MS = 2 * 60 * 60_000;
 

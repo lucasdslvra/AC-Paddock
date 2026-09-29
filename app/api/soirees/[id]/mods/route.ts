@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { sessionGuildId, upsertSessionUser } from "@/lib/session-user";
 import { currentSoiree } from "@/lib/soirees/current";
+import { isParticipant, NOT_JOINED_MESSAGE } from "@/lib/soirees/participants";
 import { isVoteOpen, voteClosedMessage } from "@/lib/soirees/phase";
 
 const engageSchema = z.object({
@@ -12,9 +13,10 @@ const engageSchema = z.object({
 /**
  * US-G2 — engager un mod du catalogue dans une soirée.
  *
- * Ouvert à tous les membres, contrairement à la création de la soirée : le cahier §2.5
+ * Ouvert à tous les inscrits, contrairement à la création de la soirée : le cahier §2.5
  * dit « les membres associent des mods du catalogue à la soirée et votent », sans
- * restreindre à l'organisateur.
+ * restreindre à l'organisateur. Il faut en revanche avoir rejoint la soirée — la même
+ * règle que pour voter (`castVote`).
  *
  * Seule la soirée en cours accepte des engagements. Une soirée passée est un compte
  * rendu, pas un panier ; et une soirée programmée plus loin n'ouvrira qu'une fois
@@ -70,6 +72,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/soirees/[id
     // zéro — et le groupe est en train de télécharger ce que ce classement a retenu.
     if (!isVoteOpen(current.date)) {
       return Response.json({ error: voteClosedMessage(current.date) }, { status: 409 });
+    }
+    if (!(await isParticipant(member.id, soiree.id))) {
+      return Response.json({ error: NOT_JOINED_MESSAGE }, { status: 403 });
     }
 
     // `skipDuplicates` s'appuie sur `@@unique([soireeId, modId])` : engager deux fois

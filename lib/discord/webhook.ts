@@ -55,6 +55,12 @@ const WEBHOOK_TIMEOUT_MS = 5_000;
  * `ptb.` et `canary.` sont les préversions de Discord, et `discordapp.com` son ancien
  * domaine, encore servi.
  */
+/** Un identifiant Discord (snowflake) — la seule chose qu'on accepte de mentionner. */
+const SNOWFLAKE_PATTERN = /^\d{17,20}$/;
+
+/** Discord refuse un `allowed_mentions.users` de plus de 100 identifiants. */
+export const MAX_MENTIONED_USERS = 100;
+
 const WEBHOOK_URL_PATTERN =
   /^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d{17,20}\/[\w-]{20,120}$/;
 
@@ -107,11 +113,16 @@ export function maskWebhookUrl(url: string): string {
  * corrigé.
  *
  * Renvoie `true` si Discord a accepté le message, pour les appelants qui veulent le
- * savoir (aucun aujourd'hui) et pour les tests.
+ * savoir et pour les tests.
+ *
+ * `mentionUserIds` : les seuls membres que ce message a le droit de notifier. Ce ne sont
+ * jamais des mentions lues dans le texte, mais des identifiants que l'appelant a
+ * choisis — ceux du rappel d'avant fermeture du vote, relus en base.
  */
 export async function postDiscordWebhook(
   url: string,
   payload: DiscordWebhookPayload,
+  options: { mentionUserIds?: readonly string[] } = {},
 ): Promise<boolean> {
   // Le salon est choisi par l'appelant, mais l'adresse est revérifiée ici : c'est le
   // seul endroit par lequel une requête sortante passe, et une ligne modifiée à la main
@@ -120,6 +131,10 @@ export async function postDiscordWebhook(
     console.error("Discord webhook", "URL rejetée");
     return false;
   }
+
+  const mentionUserIds = (options.mentionUserIds ?? [])
+    .filter((id) => SNOWFLAKE_PATTERN.test(id))
+    .slice(0, MAX_MENTIONED_USERS);
 
   try {
     const response = await fetch(url, {
@@ -131,7 +146,11 @@ export async function postDiscordWebhook(
         // contenu vient de champs saisis par les membres (nom d'un mod, description,
         // tags), et un `@everyone` dans un nom de fiche réveillerait tout le serveur.
         // Le webhook, lui, a le droit de le faire — d'où l'interdiction explicite.
-        allowed_mentions: { parse: [] },
+        //
+        // Seule exception : les membres que l'appelant nomme un par un. `parse` reste
+        // vide, donc ni `@everyone`, ni rôle, ni `<@…>` glissé dans un nom de fiche.
+        allowed_mentions:
+          mentionUserIds.length > 0 ? { parse: [], users: mentionUserIds } : { parse: [] },
       }),
       signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
       // Un webhook est une écriture : rien à mettre en cache, et le cache de `fetch`

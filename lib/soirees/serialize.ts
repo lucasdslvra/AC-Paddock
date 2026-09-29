@@ -2,6 +2,7 @@ import type {
   SoireeModel,
   SoireeModModel,
   SoireeModOrderByWithRelationInput,
+  SoireeParticipantModel,
   UserModel,
 } from "@/lib/generated/prisma/models";
 import { modInclude, serializeMod, type ApiMod, type ModWithRelations } from "@/lib/mods/serialize";
@@ -53,6 +54,9 @@ export function soireeInclude(viewerDiscordId: string, viewer: SoireeContext) {
       },
       orderBy: RANKING_ORDER,
     },
+    // Les inscrits, dans l'ordre où ils ont rejoint : c'est la liste qu'affiche la page,
+    // le dénominateur de « ont voté », et ce qui dit au membre s'il en est.
+    participants: { include: { user: true }, orderBy: { joinedAt: "asc" } },
   } as const;
 }
 
@@ -66,6 +70,7 @@ export type SoireeWithRelations = SoireeModel & {
     /** Les votes du membre connecté sur cet engagement — zéro, un, ou plusieurs. */
     votes: { id: string }[];
   })[];
+  participants: (SoireeParticipantModel & { user: UserModel })[];
 };
 
 /** Un membre, réduit à ce que l'interface en affiche. */
@@ -129,6 +134,13 @@ export interface ApiSoiree {
   mods: ApiSoireeMod[];
   /** Membres distincts ayant voté dans cette soirée, pour « 5 / 8 ont voté ». */
   voterCount: number;
+  /**
+   * Les membres qui ont rejoint la soirée, du premier au dernier inscrit. Eux seuls
+   * votent et engagent ; leur nombre est le dénominateur de « ont voté ».
+   */
+  participants: ApiMember[];
+  /** Le membre qui a demandé la soirée en fait-il partie ? */
+  viewerJoined: boolean;
 }
 
 export function serializeSoiree(
@@ -160,6 +172,10 @@ export function serializeSoiree(
       tieBreak: entry.tieBreak,
     })),
     voterCount: context.voterCount,
+    participants: soiree.participants.map((entry) => serializeMember(entry.user)),
+    viewerJoined: soiree.participants.some(
+      (entry) => entry.user.discordId === context.viewerDiscordId,
+    ),
   };
 }
 
@@ -195,7 +211,7 @@ export interface ApiSoireeSummary {
  */
 export const pastSoireeInclude = {
   createdBy: true,
-  _count: { select: { mods: true } },
+  _count: { select: { mods: true, participants: true } },
   mods: {
     where: { mod: { is: { type: "CAR" } } },
     take: RETAINED_COUNT.CAR,
@@ -219,7 +235,7 @@ export type PastSoireeModWithRelations = SoireeModModel & {
 /** Une soirée passée telle que `pastSoireeInclude` la ramène. */
 export type PastSoireeWithRelations = SoireeModel & {
   createdBy: UserModel;
-  _count: { mods: number };
+  _count: { mods: number; participants: number };
   /** Les véhicules retenus, du plus voté au moins voté. */
   mods: PastSoireeModWithRelations[];
 };
@@ -249,6 +265,8 @@ export interface ApiPastSoiree extends ApiSoireeSummary {
   track: ApiPastSoireeMod | null;
   /** Membres distincts ayant voté ce soir-là. */
   voterCount: number;
+  /** Membres inscrits ce soir-là — le dénominateur de « 6 / 9 ont voté ». */
+  participantCount: number;
 }
 
 export function serializePastSoiree(
@@ -275,5 +293,6 @@ export function serializePastSoiree(
     cars: soiree.mods.map(serializeEntry),
     track: track ? serializeEntry(track) : null,
     voterCount,
+    participantCount: soiree._count.participants,
   };
 }
